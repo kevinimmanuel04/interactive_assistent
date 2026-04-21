@@ -15,11 +15,6 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
-    inputs:
-      platforms:
-        description: "Platforms to build (comma-separated: windows, macos, linux)"
-        required: false
-        default: "windows"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -40,11 +35,6 @@ jobs:
             os: ubuntu-latest
             bundle_glob: "src-tauri/target/release/bundle/deb/*.deb"
     runs-on: ${{ matrix.os }}
-    # On workflow_dispatch, skip platforms the user didn't request.
-    # On tag push, build everything in the matrix.
-    if: >-
-      github.event_name != 'workflow_dispatch' ||
-      contains(github.event.inputs.platforms, matrix.platform)
     steps:
       - uses: actions/checkout@v4
 
