@@ -1,0 +1,14 @@
+[package]
+name = "komorebi-llm"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+# llama-cpp-2 будет добавлен в Phase 1 (требует C++ toolchain при сборке).
+# llama-cpp-2 = "0.1"

@@ -1,0 +1,27 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent !important;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Everything in the window is click-through by default;
+   individual interactive elements opt back in via .interactive. */
+#root {
+  pointer-events: none;
+}
+
+.interactive {
+  pointer-events: auto;
+}

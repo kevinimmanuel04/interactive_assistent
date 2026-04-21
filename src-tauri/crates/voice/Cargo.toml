@@ -1,0 +1,16 @@
+[package]
+name = "komorebi-voice"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+# Phase 2 deps (commented out to keep Phase 0 build fast):
+# cpal = "0.15"
+# whisper-rs = "0.12"
+# webrtc-vad = "0.4"
+# rodio = "0.19"
