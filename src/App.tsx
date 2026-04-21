@@ -8,6 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import { avatarState } from "./avatarState";
 import { lipSync } from "./lipsync";
 import { ListenController } from "./listen";
+import { checkForUpdatesQuietly } from "./updater";
 import {
   cancelGeneration,
   ChatEvent,
@@ -44,6 +45,11 @@ export default function App() {
   useEffect(() => {
     refreshSettings();
   }, [refreshSettings]);
+
+  // Check for app updates in the background on startup.
+  useEffect(() => {
+    checkForUpdatesQuietly();
+  }, []);
 
   // Global hotkey toggles input.
   useEffect(() => {

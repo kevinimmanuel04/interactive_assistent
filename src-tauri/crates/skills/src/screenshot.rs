@@ -1,12 +1,21 @@
-//! Screenshot skill — capture the primary display to a PNG file.
+//! Screenshot skill — capture the primary display to a PNG file using
+//! platform-native command-line tools so we don't need any native GUI
+//! dependencies (xcap, CoreGraphics bindings, etc).
 //!
 //! The file is written into the user's pictures directory (or the system
 //! temp dir as fallback) under `Komorebi/screenshot-<ts>.png`. The reply
 //! contains the absolute path so the user (and, later, the assistant) can
 //! reference it.
+//!
+//! Platforms:
+//!   * macOS   — `screencapture -x <path>` (built-in)
+//!   * Windows — PowerShell + System.Drawing (built-in)
+//!   * Linux   — tries `gnome-screenshot`, `grim`, `scrot`, `import`
+//!     in that order. If none are found, returns an informative error.
 
 use async_trait::async_trait;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::{norm, Skill, SkillContext, SkillError, SkillResponse};
 
@@ -22,6 +31,67 @@ fn output_dir() -> PathBuf {
     base.join("Komorebi")
 }
 
+#[cfg(target_os = "macos")]
+fn capture(path: &Path) -> Result<(), SkillError> {
+    let status = Command::new("screencapture")
+        .args(["-x", &path.display().to_string()])
+        .status()
+        .map_err(|e| SkillError::Exec(format!("screencapture: {e}")))?;
+    if !status.success() {
+        return Err(SkillError::Exec(format!(
+            "screencapture exited with {status}"
+        )));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn capture(path: &Path) -> Result<(), SkillError> {
+    let script = format!(
+        r#"Add-Type -AssemblyName System.Windows.Forms,System.Drawing;
+$b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds;
+$bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height;
+$g = [System.Drawing.Graphics]::FromImage($bmp);
+$g.CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size);
+$bmp.Save('{}', [System.Drawing.Imaging.ImageFormat]::Png);
+$g.Dispose(); $bmp.Dispose();"#,
+        path.display().to_string().replace('\'', "''")
+    );
+    let status = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .status()
+        .map_err(|e| SkillError::Exec(format!("powershell: {e}")))?;
+    if !status.success() {
+        return Err(SkillError::Exec(format!("powershell exited with {status}")));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn capture(path: &Path) -> Result<(), SkillError> {
+    let p = path.display().to_string();
+    let attempts: &[(&str, Vec<&str>)] = &[
+        ("gnome-screenshot", vec!["-f", &p]),
+        ("grim", vec![&p]),
+        ("scrot", vec![&p]),
+        ("import", vec!["-window", "root", &p]),
+    ];
+    for (tool, args) in attempts {
+        match Command::new(tool).args(args).status() {
+            Ok(s) if s.success() => return Ok(()),
+            Ok(s) => {
+                tracing::debug!(tool, status = ?s, "screenshot tool failed, trying next");
+            }
+            Err(e) => {
+                tracing::debug!(tool, error = %e, "screenshot tool missing, trying next");
+            }
+        }
+    }
+    Err(SkillError::Exec(
+        "no screenshot tool found (install gnome-screenshot, grim, scrot, or imagemagick)".into(),
+    ))
+}
+
 #[async_trait]
 impl Skill for ScreenshotSkill {
     fn name(&self) -> &'static str {
@@ -34,24 +104,12 @@ impl Skill for ScreenshotSkill {
 
     async fn execute(&self, _ctx: SkillContext) -> Result<SkillResponse, SkillError> {
         tokio::task::spawn_blocking(|| -> Result<SkillResponse, SkillError> {
-            let monitors = xcap::Monitor::all()
-                .map_err(|e| SkillError::Exec(format!("monitor enumerate: {e}")))?;
-            let primary = monitors
-                .into_iter()
-                .next()
-                .ok_or_else(|| SkillError::Exec("no monitors available".into()))?;
-            let image = primary
-                .capture_image()
-                .map_err(|e| SkillError::Exec(format!("capture: {e}")))?;
-
             let dir = output_dir();
             std::fs::create_dir_all(&dir)
                 .map_err(|e| SkillError::Exec(format!("create_dir_all: {e}")))?;
             let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
             let path = dir.join(format!("screenshot-{ts}.png"));
-            image
-                .save(&path)
-                .map_err(|e| SkillError::Exec(format!("save png: {e}")))?;
+            capture(&path)?;
             Ok(SkillResponse {
                 text: format!("Saved screenshot to {}", path.display()),
             })

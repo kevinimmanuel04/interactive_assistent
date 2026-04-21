@@ -16,6 +16,11 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# softprops/action-gh-release needs contents:write to create / update
+# a release. Default GITHUB_TOKEN is read-only since 2023.
+permissions:
+  contents: write
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -27,13 +32,16 @@ jobs:
         include:
           - platform: windows
             os: windows-latest
-            bundle_glob: "src-tauri/target/release/bundle/nsis/*.exe"
+            # nsis/ contains the installer .exe plus the updater .exe.sig / .zip
+            bundle_glob: "src-tauri/target/release/bundle/nsis/*"
           - platform: macos
             os: macos-latest
-            bundle_glob: "src-tauri/target/release/bundle/dmg/*.dmg"
+            # Upload both the .dmg and the .app.tar.gz updater artifact
+            bundle_glob: "src-tauri/target/release/bundle/{dmg,macos}/*"
           - platform: linux
             os: ubuntu-latest
-            bundle_glob: "src-tauri/target/release/bundle/deb/*.deb"
+            # AppImage is self-contained and what the updater uses on Linux
+            bundle_glob: "src-tauri/target/release/bundle/{appimage,deb}/*"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +77,11 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build Tauri bundle
+        env:
+          # Optional: set these repo secrets to produce signed updater
+          # artifacts. If absent, Tauri still builds unsigned installers.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build
 
       - name: Upload installer artifact
@@ -76,7 +89,7 @@ jobs:
         with:
           name: komorebi-${{ matrix.platform }}
           path: ${{ matrix.bundle_glob }}
-          if-no-files-found: error
+          if-no-files-found: warn
 
       # If this was triggered by a version tag, attach binaries to a draft
       # GitHub release so you get a permanent download link.
