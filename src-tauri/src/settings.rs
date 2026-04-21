@@ -24,6 +24,7 @@ const KEY_WAKE_WORD: &str = "wake_word";
 const KEY_LISTEN_ENABLED: &str = "listen_enabled";
 const KEY_SMART_ROUTING: &str = "smart_routing";
 const KEY_CLASSIFIER_MODEL: &str = "classifier_model";
+const KEY_RAG_ENABLED: &str = "rag_enabled";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicSettings {
@@ -41,6 +42,7 @@ pub struct PublicSettings {
     pub listen_enabled: bool,
     pub smart_routing: bool,
     pub classifier_model: String,
+    pub rag_enabled: bool,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -126,6 +128,7 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         listen_enabled: get_listen_enabled(app),
         smart_routing: get_smart_routing(app),
         classifier_model: get_classifier_model(app),
+        rag_enabled: get_rag_enabled(app),
     }
 }
 
@@ -178,6 +181,21 @@ pub fn get_classifier_model(app: &AppHandle<Wry>) -> String {
 
 pub fn set_classifier_model<R: Runtime>(app: &AppHandle<R>, model: &str) -> Result<()> {
     write_optional_string(app, KEY_CLASSIFIER_MODEL, model)
+}
+
+pub fn get_rag_enabled(app: &AppHandle<Wry>) -> bool {
+    app.store(STORE_FILE)
+        .ok()
+        .and_then(|s| s.get(KEY_RAG_ENABLED))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+pub fn set_rag_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_RAG_ENABLED, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
 }
 
 pub fn get_tts_enabled(app: &AppHandle<Wry>) -> bool {

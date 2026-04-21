@@ -1,8 +1,9 @@
-//! Persistence: config snapshots, downloader, keyring (future).
-//! SQLite chat history + RAG index land in Phase 3.
+//! Persistence: config snapshots, downloader, RAG index.
 
 pub mod download;
+pub mod rag;
 pub use download::{download_to, DownloadError, DownloadEvent, DownloadSpec};
+pub use rag::{FolderStats, IndexReport, RagError, RagHit, RagIndex};
 
 use serde::{Deserialize, Serialize};
 

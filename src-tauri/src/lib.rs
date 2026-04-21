@@ -66,9 +66,29 @@ pub fn run() {
             commands::set_listen_enabled,
             commands::set_smart_routing,
             commands::set_classifier_model,
+            commands::set_rag_enabled,
+            commands::rag_list_folders,
+            commands::rag_add_folder,
+            commands::rag_remove_folder,
+            commands::rag_reindex,
         ])
         .setup(move |app| {
             app.global_shortcut().register(toggle_input)?;
+            // Initialize the RAG index in the app's data dir and stash it
+            // on the Tauri state map.
+            match app.path().app_data_dir() {
+                Ok(dir) => {
+                    let db = dir.join("rag.db");
+                    match komorebi_storage::RagIndex::open(&db) {
+                        Ok(idx) => {
+                            app.manage(Arc::new(idx));
+                            tracing::info!(?db, "RAG index opened");
+                        }
+                        Err(e) => tracing::warn!(?e, "failed to open RAG index"),
+                    }
+                }
+                Err(e) => tracing::warn!(?e, "app_data_dir unavailable; RAG disabled"),
+            }
             // Apply persisted TTS config to the shared handle.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

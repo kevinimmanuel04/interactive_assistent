@@ -1,15 +1,22 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import {
+  FolderStats,
   getSettings,
+  IndexReport,
   Mode,
   PublicSettings,
+  ragAddFolder,
+  ragListFolders,
+  ragReindex,
+  ragRemoveFolder,
   setClassifierModel,
   setLive2dModel,
   setMode,
   setOpenRouterKey,
   setPiperBinary,
   setPiperVoice,
+  setRagEnabled,
   setSmartRouting,
   setTtsEnabled,
   setWakeWord,
@@ -234,6 +241,15 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
           />
 
           <SmartRoutingSection
+            settings={settings}
+            onChanged={async () => {
+              const next = await getSettings();
+              setSettings(next);
+              onChanged();
+            }}
+          />
+
+          <RagSection
             settings={settings}
             onChanged={async () => {
               const next = await getSettings();
@@ -588,4 +604,223 @@ function SmartRoutingSection({
       </div>
     </div>
   );
+}
+
+function RagSection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [folders, setFolders] = useState<FolderStats[]>([]);
+  const [pathInput, setPathInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<string | null>(null);
+  const enabled = settings?.rag_enabled ?? false;
+
+  const refresh = async () => {
+    try {
+      setFolders(await ragListFolders());
+    } catch (e) {
+      setStatus(String(e));
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const toggle = async (on: boolean) => {
+    setBusy(true);
+    try {
+      await setRagEnabled(on);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addFolder = async () => {
+    const p = pathInput.trim();
+    if (!p) return;
+    setBusy(true);
+    setStatus(null);
+    try {
+      await ragAddFolder(p);
+      setPathInput("");
+      await refresh();
+      const report = await ragReindex(p);
+      setStatus(reportSummary(report));
+      await refresh();
+    } catch (e) {
+      setStatus(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeFolder = async (p: string) => {
+    setBusy(true);
+    try {
+      await ragRemoveFolder(p);
+      await refresh();
+    } catch (e) {
+      setStatus(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reindexAll = async () => {
+    setBusy(true);
+    setStatus("Reindexing…");
+    try {
+      const report = await ragReindex();
+      setStatus(reportSummary(report));
+      await refresh();
+    } catch (e) {
+      setStatus(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ opacity: 0.7, marginBottom: 6 }}>
+        Knowledge — local files (RAG){" "}
+        {enabled && <span style={{ color: "#a5d6a7" }}>• on</span>}
+      </div>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 6,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={busy}
+          onChange={(e) => toggle(e.target.checked)}
+        />
+        Use indexed folders as context for answers
+      </label>
+
+      {folders.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            marginBottom: 6,
+          }}
+        >
+          {folders.map((f) => (
+            <div
+              key={f.path}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "4px 6px",
+                borderRadius: 6,
+                background: "rgba(0,0,0,0.2)",
+                fontSize: 12,
+              }}
+            >
+              <span
+                style={{
+                  flex: 1,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={f.path}
+              >
+                {f.path}
+              </span>
+              <span style={{ opacity: 0.55, fontSize: 11 }}>
+                {f.doc_count} docs · {f.chunk_count} chunks
+              </span>
+              <button
+                onClick={() => removeFolder(f.path)}
+                disabled={busy}
+                style={{
+                  background: "transparent",
+                  border: "1px solid rgba(255,255,255,0.15)",
+                  color: "#ddd",
+                  borderRadius: 6,
+                  padding: "2px 6px",
+                  fontSize: 11,
+                  cursor: "pointer",
+                }}
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        <input
+          type="text"
+          placeholder="C:\\path\\to\\folder"
+          value={pathInput}
+          disabled={busy}
+          onChange={(e) => setPathInput(e.target.value)}
+          style={inputStyle}
+        />
+        <button
+          onClick={addFolder}
+          disabled={busy || !pathInput.trim()}
+          style={{
+            background: "rgba(255,255,255,0.08)",
+            border: "1px solid rgba(255,255,255,0.15)",
+            color: "#fff",
+            borderRadius: 8,
+            padding: "6px 10px",
+            fontSize: 12,
+            cursor: "pointer",
+          }}
+        >
+          Add
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+        <button
+          onClick={reindexAll}
+          disabled={busy || folders.length === 0}
+          style={{
+            background: "rgba(255,255,255,0.08)",
+            border: "1px solid rgba(255,255,255,0.15)",
+            color: "#fff",
+            borderRadius: 8,
+            padding: "6px 10px",
+            fontSize: 12,
+            cursor: folders.length === 0 ? "default" : "pointer",
+          }}
+        >
+          Reindex all
+        </button>
+        {status && (
+          <span style={{ opacity: 0.6, fontSize: 11 }}>{status}</span>
+        )}
+      </div>
+
+      <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
+        Text files are split into chunks and indexed locally with SQLite
+        FTS5. When enabled, the top matches for your prompt are prepended as
+        context. Nothing leaves your machine for indexing.
+      </div>
+    </div>
+  );
+}
+
+function reportSummary(r: IndexReport): string {
+  return `${r.files_indexed} indexed · ${r.files_skipped} skipped · ${r.chunks_written} chunks`;
 }

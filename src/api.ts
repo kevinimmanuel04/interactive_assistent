@@ -24,6 +24,21 @@ export interface PublicSettings {
   listen_enabled: boolean;
   smart_routing: boolean;
   classifier_model: string;
+  rag_enabled: boolean;
+}
+
+export interface FolderStats {
+  path: string;
+  doc_count: number;
+  chunk_count: number;
+  indexed_at: number | null;
+}
+
+export interface IndexReport {
+  files_scanned: number;
+  files_indexed: number;
+  files_skipped: number;
+  chunks_written: number;
 }
 
 export type AssetKind =
@@ -146,6 +161,26 @@ export async function setSmartRouting(enabled: boolean): Promise<void> {
 
 export async function setClassifierModel(model: string): Promise<void> {
   await invoke("set_classifier_model", { model });
+}
+
+export async function setRagEnabled(enabled: boolean): Promise<void> {
+  await invoke("set_rag_enabled", { enabled });
+}
+
+export async function ragListFolders(): Promise<FolderStats[]> {
+  return invoke<FolderStats[]>("rag_list_folders");
+}
+
+export async function ragAddFolder(path: string): Promise<void> {
+  await invoke("rag_add_folder", { path });
+}
+
+export async function ragRemoveFolder(path: string): Promise<void> {
+  await invoke("rag_remove_folder", { path });
+}
+
+export async function ragReindex(path?: string): Promise<IndexReport> {
+  return invoke<IndexReport>("rag_reindex", { path: path ?? null });
 }
 
 export function onChat(cb: (e: ChatEvent) => void): Promise<UnlistenFn> {

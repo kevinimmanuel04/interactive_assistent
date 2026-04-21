@@ -13,3 +13,6 @@ tokio.workspace = true
 reqwest.workspace = true
 futures.workspace = true
 sha2 = "0.10"
+rusqlite = { version = "0.32", features = ["bundled"] }
+walkdir = "2.5"
+anyhow.workspace = true
