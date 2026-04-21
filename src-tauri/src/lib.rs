@@ -55,6 +55,7 @@ pub fn run() {
             commands::set_piper_binary,
             commands::set_piper_voice,
             commands::set_tts_enabled,
+            commands::set_live2d_model,
             commands::speak_text,
         ])
         .setup(move |app| {

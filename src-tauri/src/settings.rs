@@ -18,6 +18,7 @@ const KEY_LOCAL_MODEL_PATH: &str = "local_model_path";
 const KEY_TTS_ENABLED: &str = "tts_enabled";
 const KEY_PIPER_BINARY: &str = "piper_binary_path";
 const KEY_PIPER_VOICE: &str = "piper_voice_path";
+const KEY_LIVE2D_MODEL_URL: &str = "live2d_model_url";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicSettings {
@@ -28,6 +29,7 @@ pub struct PublicSettings {
     pub tts_enabled: bool,
     pub piper_binary_path: Option<String>,
     pub piper_voice_path: Option<String>,
+    pub live2d_model_url: Option<String>,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -100,6 +102,7 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         tts_enabled: get_tts_enabled(app),
         piper_binary_path: read_string(app, KEY_PIPER_BINARY),
         piper_voice_path: read_string(app, KEY_PIPER_VOICE),
+        live2d_model_url: read_string(app, KEY_LIVE2D_MODEL_URL),
     }
 }
 
@@ -132,6 +135,10 @@ pub fn get_piper_voice(app: &AppHandle<Wry>) -> Option<String> {
 
 pub fn set_piper_voice<R: Runtime>(app: &AppHandle<R>, path: &str) -> Result<()> {
     write_optional_string(app, KEY_PIPER_VOICE, path)
+}
+
+pub fn set_live2d_model_url<R: Runtime>(app: &AppHandle<R>, url: &str) -> Result<()> {
+    write_optional_string(app, KEY_LIVE2D_MODEL_URL, url)
 }
 
 fn write_optional_string<R: Runtime>(app: &AppHandle<R>, key: &str, value: &str) -> Result<()> {

@@ -4,6 +4,7 @@ import {
   getSettings,
   Mode,
   PublicSettings,
+  setLive2dModel,
   setMode,
   setOpenRouterKey,
   setPiperBinary,
@@ -200,9 +201,70 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
               onChanged();
             }}
           />
+
+          <Live2DSection
+            settings={settings}
+            onChanged={async () => {
+              const next = await getSettings();
+              setSettings(next);
+              onChanged();
+            }}
+          />
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+function Live2DSection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setUrl(settings?.live2d_model_url ?? "");
+  }, [settings?.live2d_model_url]);
+
+  const save = async (value: string) => {
+    setBusy(true);
+    try {
+      await setLive2dModel(value);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ opacity: 0.7, marginBottom: 6 }}>
+        Avatar — Live2D model URL{" "}
+        {settings?.live2d_model_url && (
+          <span style={{ color: "#a5d6a7" }}>• set</span>
+        )}
+      </div>
+      <input
+        type="text"
+        placeholder="/live2d/haru/haru.model3.json"
+        value={url}
+        disabled={busy}
+        onChange={(e) => setUrl(e.target.value)}
+        onBlur={() =>
+          url !== (settings?.live2d_model_url ?? "") && save(url)
+        }
+        style={inputStyle}
+      />
+      <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
+        Drop a Cubism 3/4 model folder into <code>public/live2d/</code> and{" "}
+        <code>live2dcubismcore.min.js</code> from the Live2D SDK into{" "}
+        <code>public/</code>. See <code>public/live2d/README.md</code>.
+      </div>
+    </div>
   );
 }
 

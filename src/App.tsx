@@ -112,7 +112,7 @@ export default function App() {
 
   return (
     <>
-      <AvatarStage />
+      <AvatarStage modelUrl={settings?.live2d_model_url ?? null} />
       <ChatBubble text={bubbleText} route={route} thinking={thinking} />
       <InputField
         open={inputOpen}

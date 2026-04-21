@@ -109,6 +109,11 @@ pub async fn set_tts_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), S
 }
 
 #[tauri::command]
+pub fn set_live2d_model(app: AppHandle<Wry>, url: String) -> Result<(), String> {
+    settings::set_live2d_model_url(&app, &url).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn speak_text(
     tts: State<'_, komorebi_voice::tts::PiperTts>,
     text: String,

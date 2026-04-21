@@ -17,6 +17,7 @@ export interface PublicSettings {
   tts_enabled: boolean;
   piper_binary_path: string | null;
   piper_voice_path: string | null;
+  live2d_model_url: string | null;
 }
 
 export type AssetKind = "llm_gguf" | "piper_voice" | "piper_config";
@@ -95,6 +96,10 @@ export async function setPiperVoice(path: string): Promise<void> {
 
 export async function setTtsEnabled(enabled: boolean): Promise<void> {
   await invoke("set_tts_enabled", { enabled });
+}
+
+export async function setLive2dModel(url: string): Promise<void> {
+  await invoke("set_live2d_model", { url });
 }
 
 export async function speakText(text: string): Promise<void> {
