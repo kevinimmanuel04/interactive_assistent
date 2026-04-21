@@ -33,9 +33,7 @@ fn parse(query: &str) -> Option<Target> {
     if payload.is_empty() {
         return None;
     }
-    if payload.starts_with("http://")
-        || payload.starts_with("https://")
-        || payload.contains("://")
+    if payload.starts_with("http://") || payload.starts_with("https://") || payload.contains("://")
     {
         return Some(Target::Url(payload.to_string()));
     }
@@ -64,8 +62,7 @@ impl Skill for OpenSkill {
         tokio::task::spawn_blocking(move || -> Result<SkillResponse, SkillError> {
             match target {
                 Target::Url(url) => {
-                    opener::open(&url)
-                        .map_err(|e| SkillError::Exec(format!("open {url}: {e}")))?;
+                    opener::open(&url).map_err(|e| SkillError::Exec(format!("open {url}: {e}")))?;
                     Ok(SkillResponse {
                         text: format!("Opened {url}"),
                     })

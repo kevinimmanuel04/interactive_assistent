@@ -81,7 +81,10 @@ fn system_prompt() -> ChatMessage {
 /// query is empty, or no chunks match. Bounded at ~6 snippets / 4 KB to
 /// keep local-model context windows happy.
 fn build_rag_context(app: &AppHandle<Wry>, prompt: &str) -> Option<String> {
-    let rag = app.try_state::<Arc<komorebi_storage::RagIndex>>()?.inner().clone();
+    let rag = app
+        .try_state::<Arc<komorebi_storage::RagIndex>>()?
+        .inner()
+        .clone();
     let hits = match rag.search(prompt, 6) {
         Ok(h) => h,
         Err(e) => {

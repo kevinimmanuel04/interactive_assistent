@@ -27,10 +27,9 @@ const CHUNK_CHARS: usize = 800;
 const CHUNK_OVERLAP: usize = 120;
 const MAX_FILE_BYTES: u64 = 2 * 1024 * 1024; // 2 MB — skip anything bigger.
 const ALLOWED_EXTS: &[&str] = &[
-    "txt", "md", "markdown", "rst", "org", "json", "yaml", "yml", "toml",
-    "csv", "tsv", "log", "ini", "cfg", "py", "rs", "ts", "tsx", "js", "jsx",
-    "go", "java", "kt", "swift", "c", "h", "cpp", "hpp", "cs", "rb", "php",
-    "sh", "ps1", "sql", "html", "css", "scss",
+    "txt", "md", "markdown", "rst", "org", "json", "yaml", "yml", "toml", "csv", "tsv", "log",
+    "ini", "cfg", "py", "rs", "ts", "tsx", "js", "jsx", "go", "java", "kt", "swift", "c", "h",
+    "cpp", "hpp", "cs", "rb", "php", "sh", "ps1", "sql", "html", "css", "scss",
 ];
 
 #[derive(thiserror::Error, Debug)]
@@ -479,10 +478,7 @@ mod tests {
     }
 
     fn tempdir_simple() -> PathBuf {
-        let base = std::env::temp_dir().join(format!(
-            "komorebi-rag-test-{}",
-            std::process::id()
-        ));
+        let base = std::env::temp_dir().join(format!("komorebi-rag-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         base

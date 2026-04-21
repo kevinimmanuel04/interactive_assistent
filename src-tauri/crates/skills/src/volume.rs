@@ -131,9 +131,7 @@ fn apply(action: Action) -> Result<String, SkillError> {
             format!("Volume {n}%"),
         ),
         Action::Delta(d) => (
-            format!(
-                "set volume output volume ((output volume of (get volume settings)) + {d})"
-            ),
+            format!("set volume output volume ((output volume of (get volume settings)) + {d})"),
             format!("Volume {:+}", d),
         ),
     };
@@ -151,11 +149,7 @@ fn apply(action: Action) -> Result<String, SkillError> {
 fn apply(action: Action) -> Result<String, SkillError> {
     let (args, label): (Vec<String>, String) = match action {
         Action::Mute => (
-            vec![
-                "set-sink-mute".into(),
-                "@DEFAULT_SINK@".into(),
-                "1".into(),
-            ],
+            vec!["set-sink-mute".into(), "@DEFAULT_SINK@".into(), "1".into()],
             "Muted".to_string(),
         ),
         Action::Set(n) => (
@@ -170,7 +164,11 @@ fn apply(action: Action) -> Result<String, SkillError> {
             vec![
                 "set-sink-volume".into(),
                 "@DEFAULT_SINK@".into(),
-                if d >= 0 { format!("+{d}%") } else { format!("{d}%") },
+                if d >= 0 {
+                    format!("+{d}%")
+                } else {
+                    format!("{d}%")
+                },
             ],
             format!("Volume {:+}", d),
         ),
