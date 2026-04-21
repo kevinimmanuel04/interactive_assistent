@@ -124,8 +124,26 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
         let mut hist = service.history.lock().await;
         hist.push(ChatMessage::assistant(full_text.clone()));
     }
-    emit(&app, ChatEventOut::Done { id, full_text });
+    emit(&app, ChatEventOut::Done { id, full_text: full_text.clone() });
+    maybe_speak(&app, full_text).await;
     Ok(())
+}
+
+/// Fire-and-forget TTS: if a PiperTts handle is configured, speak the reply
+/// on a background task. Any error is logged but never surfaced to the UI.
+async fn maybe_speak(app: &AppHandle<Wry>, text: String) {
+    let Some(tts) = app.try_state::<komorebi_voice::tts::PiperTts>() else {
+        return;
+    };
+    if !tts.is_configured().await {
+        return;
+    }
+    let tts = tts.inner().clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = tts.speak(&text).await {
+            tracing::warn!(?e, "tts playback failed");
+        }
+    });
 }
 
 async fn stream_cloud(

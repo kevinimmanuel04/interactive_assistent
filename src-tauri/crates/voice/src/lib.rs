@@ -1,14 +1,6 @@
-//! Voice subsystem: STT (Whisper.cpp), TTS (Piper), VAD, wake word.
-//! Phase 1: Piper TTS only. Phase 2: STT + VAD + lip-sync + interruptible TTS + wake word.
+//! Voice subsystem: TTS (Piper) in Phase 1; STT/VAD/wake word arrive in Phase 2.
 
-pub mod tts {
-    //! Piper TTS (Phase 1). Placeholder.
-    #[derive(thiserror::Error, Debug)]
-    pub enum TtsError {
-        #[error("tts not initialized")]
-        NotInitialized,
-    }
-}
+pub mod tts;
 
 pub mod stt {
     //! Whisper.cpp STT (Phase 2). Placeholder.

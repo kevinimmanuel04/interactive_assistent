@@ -5,12 +5,14 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-tokio.workspace = true
+tokio = { workspace = true, features = ["process", "io-util", "sync", "rt", "macros"] }
 serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-# Phase 2 deps (commented out to keep Phase 0 build fast):
+anyhow.workspace = true
+rodio = { version = "0.19", default-features = false, features = ["wav"] }
+
+# Phase 2 deps (commented out to keep Phase 1 build fast):
 # cpal = "0.15"
 # whisper-rs = "0.12"
 # webrtc-vad = "0.4"
-# rodio = "0.19"

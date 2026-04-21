@@ -7,6 +7,7 @@ import {
   listAssets,
   onModelProgress,
   setLocalModel,
+  setPiperVoice,
 } from "../api";
 
 interface Props {
@@ -102,6 +103,12 @@ export default function ModelWizard({ open, onClose, onSettingsChanged }: Props)
 
   const handleUseAsLocal = async (a: Asset) => {
     await setLocalModel(a.id);
+    onSettingsChanged();
+  };
+
+  const handleUseAsVoice = async (a: Asset) => {
+    if (!a.path) return;
+    await setPiperVoice(a.path);
     onSettingsChanged();
   };
 
@@ -208,6 +215,11 @@ export default function ModelWizard({ open, onClose, onSettingsChanged }: Props)
                     {a.installed && a.kind === "llm_gguf" && (
                       <button onClick={() => handleUseAsLocal(a)} style={btn()}>
                         Use as local
+                      </button>
+                    )}
+                    {a.installed && a.kind === "piper_voice" && (
+                      <button onClick={() => handleUseAsVoice(a)} style={btn()}>
+                        Use as voice
                       </button>
                     )}
                   </div>

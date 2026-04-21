@@ -6,6 +6,9 @@ import {
   PublicSettings,
   setMode,
   setOpenRouterKey,
+  setPiperBinary,
+  setPiperVoice,
+  setTtsEnabled,
 } from "../api";
 
 interface Props {
@@ -188,8 +191,122 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
               Model: {settings?.openrouter_model ?? "…"}
             </div>
           </div>
+
+          <TtsSection
+            settings={settings}
+            onChanged={async () => {
+              const next = await getSettings();
+              setSettings(next);
+              onChanged();
+            }}
+          />
         </motion.div>
       )}
     </AnimatePresence>
   );
 }
+
+function TtsSection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [binary, setBinary] = useState("");
+  const [voice, setVoice] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setBinary(settings?.piper_binary_path ?? "");
+    setVoice(settings?.piper_voice_path ?? "");
+  }, [settings?.piper_binary_path, settings?.piper_voice_path]);
+
+  const enabled = settings?.tts_enabled ?? false;
+  const ready =
+    !!settings?.piper_binary_path && !!settings?.piper_voice_path;
+
+  const save = async (fn: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await fn();
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 6,
+        }}
+      >
+        <span style={{ opacity: 0.7 }}>
+          Voice output (Piper){" "}
+          {ready && <span style={{ color: "#a5d6a7" }}>• configured</span>}
+        </span>
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            cursor: ready ? "pointer" : "not-allowed",
+            opacity: ready ? 1 : 0.5,
+          }}
+          title={ready ? "" : "Set binary and voice paths first"}
+        >
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={!ready || busy}
+            onChange={(e) => save(() => setTtsEnabled(e.target.checked))}
+          />
+          <span>{enabled ? "On" : "Off"}</span>
+        </label>
+      </div>
+      <input
+        type="text"
+        placeholder="Path to piper.exe"
+        value={binary}
+        onChange={(e) => setBinary(e.target.value)}
+        onBlur={() =>
+          binary !== (settings?.piper_binary_path ?? "") &&
+          save(() => setPiperBinary(binary))
+        }
+        style={inputStyle}
+      />
+      <input
+        type="text"
+        placeholder="Path to <voice>.onnx"
+        value={voice}
+        onChange={(e) => setVoice(e.target.value)}
+        onBlur={() =>
+          voice !== (settings?.piper_voice_path ?? "") &&
+          save(() => setPiperVoice(voice))
+        }
+        style={{ ...inputStyle, marginTop: 6 }}
+      />
+      <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
+        Download voices from the Models panel (⬇). Piper binary:{" "}
+        <span style={{ color: "#b39ddb" }}>github.com/rhasspy/piper</span>
+      </div>
+    </div>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "6px 8px",
+  borderRadius: 8,
+  border: "1px solid rgba(255,255,255,0.1)",
+  background: "rgba(0,0,0,0.25)",
+  color: "#fff",
+  outline: "none",
+  fontSize: 12,
+  boxSizing: "border-box",
+};

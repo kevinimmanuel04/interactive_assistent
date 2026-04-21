@@ -2,7 +2,7 @@
 
 use crate::{chat::ChatService, models, settings};
 use std::sync::Arc;
-use tauri::{AppHandle, State, Wry};
+use tauri::{AppHandle, Manager, State, Wry};
 
 #[tauri::command]
 pub fn get_settings(app: AppHandle<Wry>) -> settings::PublicSettings {
@@ -85,6 +85,57 @@ pub fn set_local_model(app: AppHandle<Wry>, asset_id: String) -> Result<(), Stri
     }
     settings::set_local_model_path(&app, path.to_string_lossy().as_ref())
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_piper_binary(app: AppHandle<Wry>, path: String) -> Result<(), String> {
+    settings::set_piper_binary(&app, &path).map_err(|e| e.to_string())?;
+    reload_tts(&app).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_piper_voice(app: AppHandle<Wry>, path: String) -> Result<(), String> {
+    settings::set_piper_voice(&app, &path).map_err(|e| e.to_string())?;
+    reload_tts(&app).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_tts_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
+    settings::set_tts_enabled(&app, enabled).map_err(|e| e.to_string())?;
+    reload_tts(&app).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn speak_text(
+    tts: State<'_, komorebi_voice::tts::PiperTts>,
+    text: String,
+) -> Result<(), String> {
+    if text.trim().is_empty() {
+        return Ok(());
+    }
+    tts.speak(&text).await.map_err(|e| e.to_string())
+}
+
+/// Re-reads persisted TTS settings and applies them to the shared handle.
+/// Called on startup and whenever any TTS-related setting changes.
+pub async fn reload_tts(app: &AppHandle<Wry>) {
+    use komorebi_voice::tts::{PiperConfig, PiperTts};
+    let Some(tts) = app.try_state::<PiperTts>() else {
+        return;
+    };
+    let enabled = settings::get_tts_enabled(app);
+    let bin = settings::get_piper_binary(app);
+    let voice = settings::get_piper_voice(app);
+    let cfg = match (enabled, bin, voice) {
+        (true, Some(b), Some(v)) if !b.is_empty() && !v.is_empty() => {
+            Some(PiperConfig::from_voice(b, v))
+        }
+        _ => None,
+    };
+    tts.inner().configure(cfg).await;
 }
 
 /// Lightweight id generator (avoids pulling in the `uuid` crate just for UX).

@@ -41,6 +41,7 @@ pub fn run() {
                 .build(),
         )
         .manage(Arc::new(chat::ChatService::new()))
+        .manage(komorebi_voice::tts::PiperTts::new())
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::set_openrouter_key,
@@ -51,9 +52,18 @@ pub fn run() {
             commands::list_assets,
             commands::download_asset,
             commands::set_local_model,
+            commands::set_piper_binary,
+            commands::set_piper_voice,
+            commands::set_tts_enabled,
+            commands::speak_text,
         ])
         .setup(move |app| {
             app.global_shortcut().register(toggle_input)?;
+            // Apply persisted TTS config to the shared handle.
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                crate::commands::reload_tts(&handle).await;
+            });
             tracing::info!("Komorebi started");
             Ok(())
         })

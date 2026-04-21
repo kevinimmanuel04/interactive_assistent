@@ -15,6 +15,9 @@ const KEY_OPENROUTER_API: &str = "openrouter_api_key";
 const KEY_OPENROUTER_MODEL: &str = "openrouter_model";
 const KEY_MODE: &str = "mode";
 const KEY_LOCAL_MODEL_PATH: &str = "local_model_path";
+const KEY_TTS_ENABLED: &str = "tts_enabled";
+const KEY_PIPER_BINARY: &str = "piper_binary_path";
+const KEY_PIPER_VOICE: &str = "piper_voice_path";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicSettings {
@@ -22,6 +25,9 @@ pub struct PublicSettings {
     pub openrouter_model: String,
     pub mode: String,
     pub local_model_path: Option<String>,
+    pub tts_enabled: bool,
+    pub piper_binary_path: Option<String>,
+    pub piper_voice_path: Option<String>,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -91,7 +97,52 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         }
         .to_string(),
         local_model_path: read_string(app, KEY_LOCAL_MODEL_PATH),
+        tts_enabled: get_tts_enabled(app),
+        piper_binary_path: read_string(app, KEY_PIPER_BINARY),
+        piper_voice_path: read_string(app, KEY_PIPER_VOICE),
     }
+}
+
+pub fn get_tts_enabled(app: &AppHandle<Wry>) -> bool {
+    app.store(STORE_FILE)
+        .ok()
+        .and_then(|s| s.get(KEY_TTS_ENABLED))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+pub fn set_tts_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_TTS_ENABLED, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_piper_binary(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_PIPER_BINARY)
+}
+
+pub fn set_piper_binary<R: Runtime>(app: &AppHandle<R>, path: &str) -> Result<()> {
+    write_optional_string(app, KEY_PIPER_BINARY, path)
+}
+
+pub fn get_piper_voice(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_PIPER_VOICE)
+}
+
+pub fn set_piper_voice<R: Runtime>(app: &AppHandle<R>, path: &str) -> Result<()> {
+    write_optional_string(app, KEY_PIPER_VOICE, path)
+}
+
+fn write_optional_string<R: Runtime>(app: &AppHandle<R>, key: &str, value: &str) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    if value.trim().is_empty() {
+        store.delete(key);
+    } else {
+        store.set(key, serde_json::Value::String(value.to_string()));
+    }
+    store.save()?;
+    Ok(())
 }
 
 fn read_string(app: &AppHandle<Wry>, key: &str) -> Option<String> {
