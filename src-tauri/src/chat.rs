@@ -11,6 +11,7 @@ use crate::settings;
 use futures::StreamExt;
 use komorebi_cloud::{OpenRouterClient, StreamEvent};
 use komorebi_router::{classify, ChatMessage, Role, Route};
+use komorebi_skills::SkillRegistry;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -18,13 +19,24 @@ use tauri::{AppHandle, Emitter, Manager, Wry};
 use tokio::sync::Mutex;
 
 /// Shared orchestrator state held in Tauri's managed state.
-#[derive(Default)]
 pub struct ChatService {
     /// History of the current conversation. For MVP this is in-memory only;
     /// SQLite persistence lands alongside RAG in Phase 3.
     history: Mutex<Vec<ChatMessage>>,
     /// Cooperative cancellation flag for the in-flight generation.
     cancel: AtomicBool,
+    /// Built-in system skills (volume, clipboard, screenshot, open).
+    skills: SkillRegistry,
+}
+
+impl Default for ChatService {
+    fn default() -> Self {
+        Self {
+            history: Mutex::new(Vec::new()),
+            cancel: AtomicBool::new(false),
+            skills: SkillRegistry::with_defaults(),
+        }
+    }
 }
 
 impl ChatService {
@@ -113,16 +125,28 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
         Route::Cloud => stream_cloud(&app, &service, &id, &messages).await?,
         Route::Local => stream_local(&app, &service, &id, &messages).await?,
         Route::Skill => {
-            // Phase 3 will dispatch to the skills crate.
-            let msg = "Skills are coming in Phase 3. For now, try a question or use Cloud mode.";
+            let reply = match service.skills.dispatch(&prompt).await {
+                Ok(resp) => resp.text,
+                Err(komorebi_skills::SkillError::NotApplicable) => {
+                    // Router thought this was a skill but no concrete skill
+                    // matched — fall back to a helpful note instead of
+                    // silently doing nothing.
+                    "I couldn't find a skill for that request. Try rephrasing \
+                     or switch to Cloud/Local mode."
+                        .to_string()
+                }
+                Err(komorebi_skills::SkillError::Exec(msg)) => {
+                    format!("Skill failed: {msg}")
+                }
+            };
             emit(
                 &app,
                 ChatEventOut::Token {
                     id: id.clone(),
-                    text: msg.into(),
+                    text: reply.clone(),
                 },
             );
-            msg.to_string()
+            reply
         }
     };
 

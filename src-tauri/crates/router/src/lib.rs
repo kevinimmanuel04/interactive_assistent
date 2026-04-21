@@ -38,11 +38,24 @@ pub fn classify(query: &str, mode: Mode) -> Route {
     // Skill markers (expanded in Phase 3) — take priority over cloud heuristics
     // so "сделай скриншот" doesn't get routed to the cloud for being long.
     let skill_markers = [
-        "громкость",
+        "громкост",
+        "громче",
+        "тише",
         "volume",
+        "louder",
+        "quieter",
+        "mute",
+        "выключи звук",
         "скриншот",
         "screenshot",
-        "запусти",
+        "снимок экрана",
+        "буфер",
+        "clipboard",
+        "скопируй",
+        "copy ",
+        "запусти ",
+        "launch ",
+        "открой ",
         "open ",
     ];
     if skill_markers.iter().any(|m| q.contains(m)) {
