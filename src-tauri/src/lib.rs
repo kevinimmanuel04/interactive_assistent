@@ -1,5 +1,10 @@
 //! Komorebi desktop entrypoint.
 
+mod chat;
+mod commands;
+mod settings;
+
+use std::sync::Arc;
 use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
@@ -34,6 +39,15 @@ pub fn run() {
                 })
                 .build(),
         )
+        .manage(Arc::new(chat::ChatService::new()))
+        .invoke_handler(tauri::generate_handler![
+            commands::get_settings,
+            commands::set_openrouter_key,
+            commands::set_mode,
+            commands::send_message,
+            commands::cancel_generation,
+            commands::reset_chat,
+        ])
         .setup(move |app| {
             app.global_shortcut().register(toggle_input)?;
             tracing::info!("Komorebi started");

@@ -13,3 +13,9 @@ tracing.workspace = true
 reqwest.workspace = true
 futures.workspace = true
 async-trait.workspace = true
+async-stream = "0.3"
+bytes = "1"
+komorebi-router = { path = "../router" }
+
+[dev-dependencies]
+tokio = { version = "1.40", features = ["macros", "rt"] }

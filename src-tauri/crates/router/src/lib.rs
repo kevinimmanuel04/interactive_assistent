@@ -4,9 +4,13 @@
 //! Phase 1: keyword / rule based.
 //! Phase 3: LLM- or embedding-based classifier with the rules as fallback.
 
+pub mod chat;
+pub use chat::{ChatEvent, ChatMessage, Role};
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Route {
     Local,
     Cloud,
@@ -14,6 +18,7 @@ pub enum Route {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
 pub enum Mode {
     #[default]
     Auto,
@@ -30,6 +35,15 @@ pub fn classify(query: &str, mode: Mode) -> Route {
 
     let q = query.to_lowercase();
 
+    // Skill markers (expanded in Phase 3) — take priority over cloud heuristics
+    // so "сделай скриншот" doesn't get routed to the cloud for being long.
+    let skill_markers = [
+        "громкость", "volume", "скриншот", "screenshot", "запусти", "open ",
+    ];
+    if skill_markers.iter().any(|m| q.contains(m)) {
+        return Route::Skill;
+    }
+
     // Heuristics: long / code / translation / analysis => cloud.
     let cloud_markers = [
         "code", "refactor", "написать код", "translate", "переведи",
@@ -37,12 +51,6 @@ pub fn classify(query: &str, mode: Mode) -> Route {
     ];
     if query.len() > 400 || cloud_markers.iter().any(|m| q.contains(m)) {
         return Route::Cloud;
-    }
-
-    // Skill markers (expanded in Phase 3).
-    let skill_markers = ["громкость", "volume", "скриншот", "screenshot", "запусти", "open "];
-    if skill_markers.iter().any(|m| q.contains(m)) {
-        return Route::Skill;
     }
 
     Route::Local

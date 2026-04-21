@@ -2,12 +2,15 @@ import { AnimatePresence, motion } from "framer-motion";
 
 interface Props {
   text: string | null;
+  route?: "local" | "cloud" | "skill" | null;
+  thinking?: boolean;
 }
 
-export default function ChatBubble({ text }: Props) {
+export default function ChatBubble({ text, route, thinking }: Props) {
+  const show = !!text || !!thinking;
   return (
     <AnimatePresence>
-      {text && (
+      {show && (
         <motion.div
           key="bubble"
           className="interactive"
@@ -33,7 +36,20 @@ export default function ChatBubble({ text }: Props) {
             whiteSpace: "pre-wrap",
           }}
         >
-          {text}
+          {route && (
+            <div
+              style={{
+                fontSize: 10,
+                opacity: 0.65,
+                letterSpacing: 0.5,
+                textTransform: "uppercase",
+                marginBottom: 4,
+              }}
+            >
+              {route}
+            </div>
+          )}
+          {thinking && !text ? <span style={{ opacity: 0.7 }}>…</span> : text}
         </motion.div>
       )}
     </AnimatePresence>
