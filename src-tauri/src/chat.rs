@@ -186,7 +186,12 @@ async fn stream_local(
     messages: &[ChatMessage],
 ) -> Result<String, String> {
     use komorebi_llm::{default_engine, LlmConfig, LlmError, LlmEvent};
-    let engine = default_engine(LlmConfig::default());
+
+    let mut cfg = LlmConfig::default();
+    if let Some(p) = settings::get_local_model_path(app) {
+        cfg.model_path = Some(std::path::PathBuf::from(p));
+    }
+    let engine = default_engine(cfg);
     match engine.stream_chat(messages).await {
         Ok(mut stream) => {
             let mut acc = String::new();

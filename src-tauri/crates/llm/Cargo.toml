@@ -6,8 +6,9 @@ license.workspace = true
 
 [features]
 default = []
-# Enables real llama.cpp FFI via `llama-cpp-2`. Requires a C++ toolchain at build time.
-local-llm = []
+# Enables real llama.cpp FFI via `llama-cpp-2`. Requires a C++ toolchain
+# (MSVC on Windows, clang on macOS, gcc on Linux) and CMake at build time.
+local-llm = ["dep:llama-cpp-2", "dep:encoding_rs", "tokio/sync"]
 
 [dependencies]
 tokio.workspace = true
@@ -18,3 +19,8 @@ async-trait.workspace = true
 async-stream = "0.3"
 futures.workspace = true
 komorebi-router = { path = "../router" }
+
+# Optional: pulled in only when `local-llm` is enabled.
+llama-cpp-2 = { version = "0.1", optional = true }
+encoding_rs = { version = "0.8", optional = true }
+tokio-stream = "0.1"

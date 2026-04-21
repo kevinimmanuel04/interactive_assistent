@@ -70,7 +70,7 @@ pub fn set_mode<R: Runtime>(app: &AppHandle<R>, mode: komorebi_router::Mode) -> 
     Ok(())
 }
 
-#[allow(dead_code)] // consumed by local-llm feature in Phase 1B.3
+#[allow(dead_code)] // used by chat::stream_local when the `local-llm` feature is on
 pub fn get_local_model_path(app: &AppHandle<Wry>) -> Option<String> {
     read_string(app, KEY_LOCAL_MODEL_PATH)
 }

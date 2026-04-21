@@ -1,14 +1,17 @@
 //! Local LLM engine.
 //!
-//! Phase 1 (this commit): trait + config + stub engine.
-//! Phase 1b (next commit): real llama.cpp FFI integration behind the
-//! `local-llm` Cargo feature.
+//! The `local-llm` feature enables the real llama.cpp FFI integration
+//! (see `llama.rs`); without it, `default_engine` returns a stub that
+//! reports `NotAvailable` so callers can route to the cloud.
 
 use async_trait::async_trait;
 use futures::Stream;
 use komorebi_router::ChatMessage;
 use std::pin::Pin;
 use std::time::Duration;
+
+#[cfg(feature = "local-llm")]
+mod llama;
 
 #[derive(Debug, Clone)]
 pub struct LlmConfig {
@@ -69,11 +72,12 @@ impl LlmEngine for StubEngine {
 pub fn default_engine(_cfg: LlmConfig) -> std::sync::Arc<dyn LlmEngine> {
     #[cfg(feature = "local-llm")]
     {
-        // Real llama.cpp engine lands in commit B.
-        std::sync::Arc::new(StubEngine)
+        if _cfg.model_path.is_some() {
+            if let Some(engine) = llama::LlamaEngine::try_new(_cfg.clone()) {
+                return std::sync::Arc::new(engine);
+            }
+            tracing::warn!("llama backend init failed; falling back to stub");
+        }
     }
-    #[cfg(not(feature = "local-llm"))]
-    {
-        std::sync::Arc::new(StubEngine)
-    }
+    std::sync::Arc::new(StubEngine)
 }

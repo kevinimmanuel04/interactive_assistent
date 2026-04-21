@@ -41,6 +41,23 @@ pnpm tauri dev
 - Node 20+, pnpm 9+
 - Windows: Visual Studio Build Tools (C++) + WebView2 Runtime
 
+### Локальный LLM (опционально)
+
+Реальная интеграция llama.cpp живёт за Cargo feature `local-llm`. Сборка с ней требует C++-тулчейна и CMake:
+
+- **Windows:** Visual Studio Build Tools 2022 с "Desktop development with C++" + CMake
+- **Linux:** `cmake`, `clang`, `libclang-dev`
+- **macOS:** Xcode Command Line Tools + `brew install cmake`
+
+Запуск:
+```powershell
+pnpm tauri dev -- --features local-llm
+# или для чистой проверки:
+cd src-tauri; cargo check -p komorebi-llm --features local-llm
+```
+
+Без этого флага приложение использует заглушку для локального движка и маршрутизирует запросы на OpenRouter.
+
 ## Роадмап
 
 - **Phase 0** — Скелет проекта, overlay-окно, hotkey Alt+Space. ✓
