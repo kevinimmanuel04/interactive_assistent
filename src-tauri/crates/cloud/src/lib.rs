@@ -128,6 +128,136 @@ impl OpenRouterClient {
     }
 }
 
+// --- Intent classification -------------------------------------------------
+
+pub const DEFAULT_CLASSIFIER_MODEL: &str = "meta-llama/llama-3.2-3b-instruct";
+
+/// Uses a small OpenRouter model to decide between `Local` and `Cloud`
+/// when the keyword router is inconclusive. Skill detection stays in the
+/// keyword layer — this classifier is only asked to judge task complexity.
+pub struct CloudIntentClassifier {
+    http: reqwest::Client,
+    api_key: String,
+    model: String,
+    timeout: std::time::Duration,
+}
+
+impl CloudIntentClassifier {
+    pub fn new(api_key: impl Into<String>, model: impl Into<String>) -> Result<Self, CloudError> {
+        let api_key = api_key.into();
+        if api_key.trim().is_empty() {
+            return Err(CloudError::MissingApiKey);
+        }
+        let http = reqwest::Client::builder()
+            .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
+            .build()?;
+        Ok(Self {
+            http,
+            api_key,
+            model: model.into(),
+            timeout: std::time::Duration::from_secs(3),
+        })
+    }
+
+    pub fn with_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    async fn call(&self, query: &str) -> Result<String, CloudError> {
+        let system = ChatMessage::system(CLASSIFIER_SYSTEM_PROMPT);
+        let user = ChatMessage::user(query.to_string());
+        let body = RequestBody {
+            model: &self.model,
+            messages: &[system, user],
+            stream: false,
+            temperature: Some(0.0),
+            max_tokens: Some(4),
+        };
+        let fut = self
+            .http
+            .post(OPENROUTER_URL)
+            .bearer_auth(&self.api_key)
+            .header("HTTP-Referer", "https://komorebi.app")
+            .header("X-Title", "Komorebi")
+            .json(&body)
+            .send();
+        let resp = tokio::time::timeout(self.timeout, fut)
+            .await
+            .map_err(|_| CloudError::Stream("classifier timeout".into()))??;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(CloudError::Api {
+                status: status.as_u16(),
+                body,
+            });
+        }
+        #[derive(serde::Deserialize)]
+        struct Resp {
+            choices: Vec<RespChoice>,
+        }
+        #[derive(serde::Deserialize)]
+        struct RespChoice {
+            message: RespMessage,
+        }
+        #[derive(serde::Deserialize)]
+        struct RespMessage {
+            #[serde(default)]
+            content: String,
+        }
+        let parsed: Resp = resp.json().await.map_err(CloudError::Http)?;
+        Ok(parsed
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content)
+            .unwrap_or_default())
+    }
+}
+
+const CLASSIFIER_SYSTEM_PROMPT: &str = "You classify user queries for an on-device \
+assistant. Output exactly one token: LOCAL or CLOUD.\n\n\
+LOCAL = small talk, greetings, short factual questions, simple requests a 3B \
+model can handle.\n\
+CLOUD = coding help, translations, long analysis, nuanced reasoning, essays, \
+anything that benefits from a large model.\n\n\
+Respond with only the single word LOCAL or CLOUD. No punctuation, no explanation.";
+
+fn parse_classifier_reply(raw: &str) -> Option<komorebi_router::Route> {
+    let s = raw.trim().to_ascii_uppercase();
+    // The model sometimes wraps the answer in quotes or adds a period.
+    let s = s
+        .trim_start_matches(['"', '\'', '`'])
+        .trim_end_matches(['"', '\'', '`', '.', ',']);
+    if s.starts_with("LOCAL") {
+        Some(komorebi_router::Route::Local)
+    } else if s.starts_with("CLOUD") {
+        Some(komorebi_router::Route::Cloud)
+    } else {
+        None
+    }
+}
+
+#[async_trait::async_trait]
+impl komorebi_router::IntentClassifier for CloudIntentClassifier {
+    async fn decide(&self, query: &str) -> Option<komorebi_router::Route> {
+        match self.call(query).await {
+            Ok(reply) => {
+                let parsed = parse_classifier_reply(&reply);
+                if parsed.is_none() {
+                    tracing::debug!(raw = %reply, "classifier returned unparseable reply");
+                }
+                parsed
+            }
+            Err(e) => {
+                tracing::debug!(?e, "classifier call failed, falling back to keywords");
+                None
+            }
+        }
+    }
+}
+
 fn sse_to_events<S>(bytes: S) -> impl Stream<Item = Result<StreamEvent, CloudError>> + Send
 where
     S: Stream<Item = Result<bytes::Bytes, reqwest::Error>> + Send + 'static,
@@ -229,5 +359,20 @@ mod tests {
             })
             .collect();
         assert_eq!(tokens, vec!["ok"]);
+    }
+
+    #[test]
+    fn classifier_reply_parses_variants() {
+        use komorebi_router::Route;
+        assert_eq!(parse_classifier_reply("LOCAL"), Some(Route::Local));
+        assert_eq!(parse_classifier_reply("  local\n"), Some(Route::Local));
+        assert_eq!(parse_classifier_reply("\"CLOUD\"."), Some(Route::Cloud));
+        assert_eq!(parse_classifier_reply("cloud,"), Some(Route::Cloud));
+        assert_eq!(
+            parse_classifier_reply("LOCAL — small talk"),
+            Some(Route::Local)
+        );
+        assert_eq!(parse_classifier_reply("maybe"), None);
+        assert_eq!(parse_classifier_reply(""), None);
     }
 }

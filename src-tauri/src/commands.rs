@@ -157,6 +157,16 @@ pub fn set_listen_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), Stri
 }
 
 #[tauri::command]
+pub fn set_smart_routing(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
+    settings::set_smart_routing(&app, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_classifier_model(app: AppHandle<Wry>, model: String) -> Result<(), String> {
+    settings::set_classifier_model(&app, &model).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn speak_text(
     app: AppHandle<Wry>,
     tts: State<'_, komorebi_voice::tts::PiperTts>,

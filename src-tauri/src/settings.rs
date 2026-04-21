@@ -22,6 +22,8 @@ const KEY_LIVE2D_MODEL_URL: &str = "live2d_model_url";
 const KEY_WHISPER_MODEL_PATH: &str = "whisper_model_path";
 const KEY_WAKE_WORD: &str = "wake_word";
 const KEY_LISTEN_ENABLED: &str = "listen_enabled";
+const KEY_SMART_ROUTING: &str = "smart_routing";
+const KEY_CLASSIFIER_MODEL: &str = "classifier_model";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicSettings {
@@ -37,6 +39,8 @@ pub struct PublicSettings {
     pub stt_available: bool,
     pub wake_word: Option<String>,
     pub listen_enabled: bool,
+    pub smart_routing: bool,
+    pub classifier_model: String,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -120,6 +124,8 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         stt_available: komorebi_voice::stt::is_available(),
         wake_word: read_string(app, KEY_WAKE_WORD),
         listen_enabled: get_listen_enabled(app),
+        smart_routing: get_smart_routing(app),
+        classifier_model: get_classifier_model(app),
     }
 }
 
@@ -148,6 +154,30 @@ pub fn set_listen_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()
     store.set(KEY_LISTEN_ENABLED, serde_json::Value::Bool(on));
     store.save()?;
     Ok(())
+}
+
+pub fn get_smart_routing(app: &AppHandle<Wry>) -> bool {
+    app.store(STORE_FILE)
+        .ok()
+        .and_then(|s| s.get(KEY_SMART_ROUTING))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+pub fn set_smart_routing<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_SMART_ROUTING, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_classifier_model(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_CLASSIFIER_MODEL)
+        .unwrap_or_else(|| komorebi_cloud::DEFAULT_CLASSIFIER_MODEL.to_string())
+}
+
+pub fn set_classifier_model<R: Runtime>(app: &AppHandle<R>, model: &str) -> Result<()> {
+    write_optional_string(app, KEY_CLASSIFIER_MODEL, model)
 }
 
 pub fn get_tts_enabled(app: &AppHandle<Wry>) -> bool {

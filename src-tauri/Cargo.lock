@@ -2773,7 +2773,9 @@ dependencies = [
 name = "komorebi-router"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "serde",
+ "tokio",
  "tracing",
 ]
 

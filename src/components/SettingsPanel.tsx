@@ -4,11 +4,13 @@ import {
   getSettings,
   Mode,
   PublicSettings,
+  setClassifierModel,
   setLive2dModel,
   setMode,
   setOpenRouterKey,
   setPiperBinary,
   setPiperVoice,
+  setSmartRouting,
   setTtsEnabled,
   setWakeWord,
   setWhisperModel,
@@ -223,6 +225,15 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
           />
 
           <WakeWordSection
+            settings={settings}
+            onChanged={async () => {
+              const next = await getSettings();
+              setSettings(next);
+              onChanged();
+            }}
+          />
+
+          <SmartRoutingSection
             settings={settings}
             onChanged={async () => {
               const next = await getSettings();
@@ -496,6 +507,84 @@ function WakeWordSection({
         In continuous-listen mode, transcripts must contain this phrase to be
         sent. Leave empty to send every utterance. Simple case-insensitive
         substring match — no ML model, just a gate.
+      </div>
+    </div>
+  );
+}
+
+function SmartRoutingSection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [model, setModel] = useState("");
+  const [busy, setBusy] = useState(false);
+  const enabled = settings?.smart_routing ?? false;
+  const hasKey = settings?.has_openrouter_key ?? false;
+
+  useEffect(() => {
+    setModel(settings?.classifier_model ?? "");
+  }, [settings?.classifier_model]);
+
+  const toggle = async (on: boolean) => {
+    setBusy(true);
+    try {
+      await setSmartRouting(on);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveModel = async (value: string) => {
+    setBusy(true);
+    try {
+      await setClassifierModel(value);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ opacity: 0.7, marginBottom: 6 }}>
+        Smart routing{" "}
+        {enabled && <span style={{ color: "#a5d6a7" }}>• on</span>}
+      </div>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 6,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={busy || !hasKey}
+          onChange={(e) => toggle(e.target.checked)}
+        />
+        Use a small cloud model to pick Local vs Cloud
+      </label>
+      <input
+        type="text"
+        placeholder="meta-llama/llama-3.2-3b-instruct"
+        value={model}
+        disabled={busy || !enabled}
+        onChange={(e) => setModel(e.target.value)}
+        onBlur={() =>
+          model !== (settings?.classifier_model ?? "") && saveModel(model)
+        }
+        style={inputStyle}
+      />
+      <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
+        {hasKey
+          ? "When Auto mode is active, a quick classifier call decides whether to use the local LLM or the cloud. Falls back to keyword rules on timeout. Skill detection stays keyword-based."
+          : "Requires an OpenRouter API key."}
       </div>
     </div>
   );

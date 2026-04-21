@@ -9,8 +9,8 @@
 
 use crate::settings;
 use futures::StreamExt;
-use komorebi_cloud::{OpenRouterClient, StreamEvent};
-use komorebi_router::{classify, ChatMessage, Role, Route};
+use komorebi_cloud::{CloudIntentClassifier, OpenRouterClient, StreamEvent};
+use komorebi_router::{classify, classify_async, ChatMessage, Role, Route};
 use komorebi_skills::SkillRegistry;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -95,7 +95,22 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
     service.cancel.store(false, Ordering::SeqCst);
 
     let mode = settings::get_mode(&app);
-    let route = classify(&prompt, mode);
+    let route = if settings::get_smart_routing(&app) {
+        if let Some(key) = settings::get_openrouter_key(&app) {
+            let model = settings::get_classifier_model(&app);
+            match CloudIntentClassifier::new(key, model) {
+                Ok(c) => classify_async(&prompt, mode, Some(&c)).await,
+                Err(e) => {
+                    tracing::debug!(?e, "classifier init failed; using keyword router");
+                    classify(&prompt, mode)
+                }
+            }
+        } else {
+            classify(&prompt, mode)
+        }
+    } else {
+        classify(&prompt, mode)
+    };
     emit(
         &app,
         ChatEventOut::Started {

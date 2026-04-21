@@ -22,6 +22,8 @@ export interface PublicSettings {
   stt_available: boolean;
   wake_word: string | null;
   listen_enabled: boolean;
+  smart_routing: boolean;
+  classifier_model: string;
 }
 
 export type AssetKind =
@@ -136,6 +138,14 @@ export async function setWakeWord(phrase: string): Promise<void> {
 
 export async function setListenEnabled(enabled: boolean): Promise<void> {
   await invoke("set_listen_enabled", { enabled });
+}
+
+export async function setSmartRouting(enabled: boolean): Promise<void> {
+  await invoke("set_smart_routing", { enabled });
+}
+
+export async function setClassifierModel(model: string): Promise<void> {
+  await invoke("set_classifier_model", { model });
 }
 
 export function onChat(cb: (e: ChatEvent) => void): Promise<UnlistenFn> {

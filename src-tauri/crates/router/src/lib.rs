@@ -1,12 +1,17 @@
 //! Request router: decides whether a user query goes to the local LLM,
 //! the cloud (OpenRouter), or a system skill.
 //!
-//! Phase 1: keyword / rule based.
-//! Phase 3: LLM- or embedding-based classifier with the rules as fallback.
+//! Two layers:
+//! - [`classify`] — synchronous keyword / rule-based routing. Fast path,
+//!   used offline and as the fallback when an LLM classifier fails.
+//! - [`classify_async`] — optionally consults an [`IntentClassifier`] to
+//!   pick between Local and Cloud based on query complexity. Skills are
+//!   still detected by the keyword layer (high precision, zero latency).
 
 pub mod chat;
 pub use chat::{ChatEvent, ChatMessage, Role};
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,17 +31,16 @@ pub enum Mode {
     Cloud,
 }
 
-pub fn classify(query: &str, mode: Mode) -> Route {
-    match mode {
-        Mode::Local => return Route::Local,
-        Mode::Cloud => return Route::Cloud,
-        Mode::Auto => {}
-    }
+/// Async classifier that chooses Local or Cloud based on a query.
+/// Implementations may return `None` to defer to the keyword fallback
+/// (e.g. on timeout or network error).
+#[async_trait]
+pub trait IntentClassifier: Send + Sync {
+    async fn decide(&self, query: &str) -> Option<Route>;
+}
 
-    let q = query.to_lowercase();
-
-    // Skill markers (expanded in Phase 3) — take priority over cloud heuristics
-    // so "сделай скриншот" doesn't get routed to the cloud for being long.
+/// Keyword skill detector extracted so it can be reused by [`classify_async`].
+fn detect_skill(q_lower: &str, query: &str) -> bool {
     let skill_markers = [
         "громкост",
         "громче",
@@ -58,11 +62,11 @@ pub fn classify(query: &str, mode: Mode) -> Route {
         "открой ",
         "open ",
     ];
-    if skill_markers.iter().any(|m| q.contains(m)) {
-        return Route::Skill;
-    }
+    let _ = query;
+    skill_markers.iter().any(|m| q_lower.contains(m))
+}
 
-    // Heuristics: long / code / translation / analysis => cloud.
+fn keyword_local_vs_cloud(q_lower: &str, raw_len: usize) -> Route {
     let cloud_markers = [
         "code",
         "refactor",
@@ -75,11 +79,51 @@ pub fn classify(query: &str, mode: Mode) -> Route {
         "философ",
         "explain in detail",
     ];
-    if query.len() > 400 || cloud_markers.iter().any(|m| q.contains(m)) {
-        return Route::Cloud;
+    if raw_len > 400 || cloud_markers.iter().any(|m| q_lower.contains(m)) {
+        Route::Cloud
+    } else {
+        Route::Local
     }
+}
 
-    Route::Local
+pub fn classify(query: &str, mode: Mode) -> Route {
+    match mode {
+        Mode::Local => return Route::Local,
+        Mode::Cloud => return Route::Cloud,
+        Mode::Auto => {}
+    }
+    let q = query.to_lowercase();
+    if detect_skill(&q, query) {
+        return Route::Skill;
+    }
+    keyword_local_vs_cloud(&q, query.len())
+}
+
+/// Async variant: skills are still detected by keywords; the Local/Cloud
+/// decision is delegated to `classifier` when one is provided. Falls back
+/// to the keyword heuristic on `None`.
+pub async fn classify_async(
+    query: &str,
+    mode: Mode,
+    classifier: Option<&dyn IntentClassifier>,
+) -> Route {
+    match mode {
+        Mode::Local => return Route::Local,
+        Mode::Cloud => return Route::Cloud,
+        Mode::Auto => {}
+    }
+    let q = query.to_lowercase();
+    if detect_skill(&q, query) {
+        return Route::Skill;
+    }
+    if let Some(c) = classifier {
+        if let Some(route) = c.decide(query).await {
+            // Clamp — the classifier should never return Skill here, but
+            // if it does, respect it.
+            return route;
+        }
+    }
+    keyword_local_vs_cloud(&q, query.len())
 }
 
 #[cfg(test)]
@@ -108,5 +152,65 @@ mod tests {
     #[test]
     fn default_is_local() {
         assert_eq!(classify("привет, как дела?", Mode::Auto), Route::Local);
+    }
+
+    struct FixedClassifier(Route);
+
+    #[async_trait]
+    impl IntentClassifier for FixedClassifier {
+        async fn decide(&self, _query: &str) -> Option<Route> {
+            Some(self.0)
+        }
+    }
+
+    struct AlwaysAbstain;
+
+    #[async_trait]
+    impl IntentClassifier for AlwaysAbstain {
+        async fn decide(&self, _query: &str) -> Option<Route> {
+            None
+        }
+    }
+
+    #[tokio::test]
+    async fn async_skill_detection_bypasses_classifier() {
+        // Skill keywords always win, even when the classifier would say Cloud.
+        let c = FixedClassifier(Route::Cloud);
+        assert_eq!(
+            classify_async("сделай скриншот", Mode::Auto, Some(&c)).await,
+            Route::Skill,
+        );
+    }
+
+    #[tokio::test]
+    async fn async_classifier_overrides_keyword_heuristic() {
+        // "привет" would be Local by keywords; classifier promotes to Cloud.
+        let c = FixedClassifier(Route::Cloud);
+        assert_eq!(
+            classify_async("привет", Mode::Auto, Some(&c)).await,
+            Route::Cloud,
+        );
+    }
+
+    #[tokio::test]
+    async fn async_abstain_falls_back_to_keywords() {
+        let c = AlwaysAbstain;
+        assert_eq!(
+            classify_async("привет", Mode::Auto, Some(&c)).await,
+            Route::Local,
+        );
+        assert_eq!(
+            classify_async("write code for quicksort", Mode::Auto, Some(&c)).await,
+            Route::Cloud,
+        );
+    }
+
+    #[tokio::test]
+    async fn async_forced_mode_wins() {
+        let c = FixedClassifier(Route::Cloud);
+        assert_eq!(
+            classify_async("anything", Mode::Local, Some(&c)).await,
+            Route::Local,
+        );
     }
 }
