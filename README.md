@@ -81,8 +81,8 @@ cd src-tauri; cargo check -p komorebi-voice --features stt
 ## Роадмап
 
 - **Phase 0** — Скелет проекта, overlay-окно, hotkey Alt+Space. ✓
-- **Phase 1 (MVP)** — Локальный LLM (FFI), OpenRouter, Piper TTS, авто-скачивание моделей.
-- **Phase 2** — Live2D, Whisper STT, VAD, lip-sync, wake word.
+- **Phase 1 (MVP)** — Локальный LLM (FFI), OpenRouter, Piper TTS, авто-скачивание моделей. ✓
+- **Phase 2** — Live2D, Whisper STT, VAD, lip-sync, wake word. ✓
 - **Phase 3** — System skills (громкость, скриншот, плеер, буфер), RAG по локальным файлам, emotion detection.
 - **Phase 4** — NSIS installer, auto-updater, code signing, macOS `.dmg`.
 
