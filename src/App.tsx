@@ -6,6 +6,7 @@ import ModelWizard from "./components/ModelWizard";
 import SettingsPanel from "./components/SettingsPanel";
 import { listen } from "@tauri-apps/api/event";
 import { lipSync } from "./lipsync";
+import { ListenController } from "./listen";
 import {
   cancelGeneration,
   ChatEvent,
@@ -14,6 +15,7 @@ import {
   PublicSettings,
   resetChat,
   sendMessage,
+  setListenEnabled,
 } from "./api";
 
 type Route = "local" | "cloud" | "skill";
@@ -26,8 +28,13 @@ export default function App() {
   const [thinking, setThinking] = useState(false);
   const [route, setRoute] = useState<Route | null>(null);
   const [settings, setSettings] = useState<PublicSettings | null>(null);
+  const [listening, setListening] = useState(false);
+  const [heardHint, setHeardHint] = useState(false);
   const activeIdRef = useRef<string | null>(null);
   const bubbleTimer = useRef<number | null>(null);
+  const controllerRef = useRef<ListenController | null>(null);
+  const settingsRef = useRef<PublicSettings | null>(null);
+  const handleSubmitRef = useRef<((text: string) => void) | null>(null);
 
   // Load settings on mount.
   const refreshSettings = useCallback(() => {
@@ -58,6 +65,60 @@ export default function App() {
       p.then((fn) => fn());
     };
   }, []);
+
+  // Continuous-listen controller: lazily created, attached to live settings
+  // through a ref callback so wake-word changes propagate without restart.
+  useEffect(() => {
+    if (!controllerRef.current) {
+      controllerRef.current = new ListenController({
+        getWakeWord: () => settingsRef.current?.wake_word ?? null,
+        onSpeechStart: () => setHeardHint(true),
+        onSpeechEnd: () => setHeardHint(false),
+        onTranscript: (text) => {
+          // Route the transcript through the normal chat pipeline so the
+          // rest of the UI (route badge, streaming tokens) works identically
+          // to keyboard input.
+          handleSubmitRef.current?.(text);
+        },
+        onIgnored: (_text, reason) => {
+          if (reason === "wake-word") {
+            // Silently drop — the user didn't address Komorebi.
+          }
+        },
+        onError: (err) => console.warn("[listen]", err),
+      });
+    }
+    const wantEnabled = settings?.listen_enabled === true;
+    const ctrl = controllerRef.current;
+    const running = ctrl.isEnabled();
+    if (wantEnabled && !running) {
+      ctrl.enable().then(() => setListening(true)).catch((err) => {
+        console.warn("[listen] enable failed:", err);
+        setListenEnabled(false).catch(() => {});
+      });
+    } else if (!wantEnabled && running) {
+      ctrl.disable().then(() => setListening(false));
+    }
+  }, [settings?.listen_enabled]);
+
+  // Keep a ref of the latest settings so the listen controller (created once)
+  // always reads the current wake-word.
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  // Tear down mic stream on unmount.
+  useEffect(() => {
+    return () => {
+      controllerRef.current?.disable().catch(() => {});
+    };
+  }, []);
+
+  const handleToggleListen = useCallback(async () => {
+    const next = !(settings?.listen_enabled ?? false);
+    await setListenEnabled(next);
+    refreshSettings();
+  }, [settings?.listen_enabled, refreshSettings]);
 
   // Stream chat events.
   useEffect(() => {
@@ -114,6 +175,7 @@ export default function App() {
       scheduleBubbleHide(6000);
     }
   };
+  handleSubmitRef.current = handleSubmit;
 
   const handleReset = async () => {
     await cancelGeneration();
@@ -149,6 +211,13 @@ export default function App() {
       <TopBar
         mode={settings?.mode ?? "auto"}
         hasKey={settings?.has_openrouter_key ?? false}
+        listenEnabled={settings?.listen_enabled ?? false}
+        listenReady={Boolean(
+          settings?.stt_available && settings?.whisper_model_path
+        )}
+        listening={listening}
+        heard={heardHint}
+        onToggleListen={handleToggleListen}
         onToggleSettings={() => {
           setWizardOpen(false);
           setSettingsOpen((v) => !v);
@@ -166,10 +235,22 @@ export default function App() {
 function TopBar(props: {
   mode: string;
   hasKey: boolean;
+  listenEnabled: boolean;
+  listenReady: boolean;
+  listening: boolean;
+  heard: boolean;
+  onToggleListen: () => void;
   onToggleSettings: () => void;
   onToggleWizard: () => void;
   onReset: () => void;
 }) {
+  const listenColor = !props.listenReady
+    ? "rgba(20,20,28,0.7)"
+    : props.heard
+    ? "#e24a4a"
+    : props.listening
+    ? "#6fae5a"
+    : "rgba(20,20,28,0.7)";
   return (
     <div
       className="interactive"
@@ -199,24 +280,26 @@ function TopBar(props: {
         {!props.hasKey && props.mode !== "local" && " ⚠"}
       </span>
       <button
-        onClick={props.onReset}
-        style={iconBtn}
-        title="Reset conversation"
+        onClick={props.onToggleListen}
+        disabled={!props.listenReady}
+        style={{ ...iconBtn, background: listenColor }}
+        title={
+          !props.listenReady
+            ? "Set up Whisper first (wizard → Use as STT model)"
+            : props.listening
+            ? "Listening — click to stop"
+            : "Continuous listen"
+        }
       >
+        👂
+      </button>
+      <button onClick={props.onReset} style={iconBtn} title="Reset conversation">
         ↺
       </button>
-      <button
-        onClick={props.onToggleWizard}
-        style={iconBtn}
-        title="Model downloads"
-      >
+      <button onClick={props.onToggleWizard} style={iconBtn} title="Model downloads">
         ⬇
       </button>
-      <button
-        onClick={props.onToggleSettings}
-        style={iconBtn}
-        title="Settings"
-      >
+      <button onClick={props.onToggleSettings} style={iconBtn} title="Settings">
         ⚙
       </button>
     </div>

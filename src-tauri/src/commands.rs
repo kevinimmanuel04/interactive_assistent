@@ -147,6 +147,16 @@ pub fn cancel_recording(recorder: State<'_, komorebi_voice::stt::Recorder>) -> R
 }
 
 #[tauri::command]
+pub fn set_wake_word(app: AppHandle<Wry>, phrase: String) -> Result<(), String> {
+    settings::set_wake_word(&app, &phrase).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_listen_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
+    settings::set_listen_enabled(&app, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn speak_text(
     app: AppHandle<Wry>,
     tts: State<'_, komorebi_voice::tts::PiperTts>,

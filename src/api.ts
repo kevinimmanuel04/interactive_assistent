@@ -20,6 +20,8 @@ export interface PublicSettings {
   live2d_model_url: string | null;
   whisper_model_path: string | null;
   stt_available: boolean;
+  wake_word: string | null;
+  listen_enabled: boolean;
 }
 
 export type AssetKind =
@@ -126,6 +128,14 @@ export async function stopRecording(): Promise<string> {
 
 export async function cancelRecording(): Promise<void> {
   await invoke("cancel_recording");
+}
+
+export async function setWakeWord(phrase: string): Promise<void> {
+  await invoke("set_wake_word", { phrase });
+}
+
+export async function setListenEnabled(enabled: boolean): Promise<void> {
+  await invoke("set_listen_enabled", { enabled });
 }
 
 export function onChat(cb: (e: ChatEvent) => void): Promise<UnlistenFn> {

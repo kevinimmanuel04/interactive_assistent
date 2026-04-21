@@ -10,6 +10,7 @@ import {
   setPiperBinary,
   setPiperVoice,
   setTtsEnabled,
+  setWakeWord,
   setWhisperModel,
 } from "../api";
 
@@ -213,6 +214,15 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
           />
 
           <SttSection
+            settings={settings}
+            onChanged={async () => {
+              const next = await getSettings();
+              setSettings(next);
+              onChanged();
+            }}
+          />
+
+          <WakeWordSection
             settings={settings}
             onChanged={async () => {
               const next = await getSettings();
@@ -436,6 +446,56 @@ function SttSection({
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
         Download a Whisper ggml model via the wizard, then click "Use as STT
         model". A 🎙 button will appear in the input field.
+      </div>
+    </div>
+  );
+}
+
+function WakeWordSection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [phrase, setPhrase] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setPhrase(settings?.wake_word ?? "");
+  }, [settings?.wake_word]);
+
+  const save = async (value: string) => {
+    setBusy(true);
+    try {
+      await setWakeWord(value);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ opacity: 0.7, marginBottom: 6 }}>
+        Wake word{" "}
+        {settings?.wake_word && (
+          <span style={{ color: "#a5d6a7" }}>• set</span>
+        )}
+      </div>
+      <input
+        type="text"
+        placeholder='e.g. "Komorebi" (leave empty to disable)'
+        value={phrase}
+        disabled={busy}
+        onChange={(e) => setPhrase(e.target.value)}
+        onBlur={() => phrase !== (settings?.wake_word ?? "") && save(phrase)}
+        style={inputStyle}
+      />
+      <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
+        In continuous-listen mode, transcripts must contain this phrase to be
+        sent. Leave empty to send every utterance. Simple case-insensitive
+        substring match — no ML model, just a gate.
       </div>
     </div>
   );

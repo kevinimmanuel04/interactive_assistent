@@ -20,6 +20,8 @@ const KEY_PIPER_BINARY: &str = "piper_binary_path";
 const KEY_PIPER_VOICE: &str = "piper_voice_path";
 const KEY_LIVE2D_MODEL_URL: &str = "live2d_model_url";
 const KEY_WHISPER_MODEL_PATH: &str = "whisper_model_path";
+const KEY_WAKE_WORD: &str = "wake_word";
+const KEY_LISTEN_ENABLED: &str = "listen_enabled";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicSettings {
@@ -33,6 +35,8 @@ pub struct PublicSettings {
     pub live2d_model_url: Option<String>,
     pub whisper_model_path: Option<String>,
     pub stt_available: bool,
+    pub wake_word: Option<String>,
+    pub listen_enabled: bool,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -114,6 +118,8 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         live2d_model_url: read_string(app, KEY_LIVE2D_MODEL_URL),
         whisper_model_path: read_string(app, KEY_WHISPER_MODEL_PATH),
         stt_available: komorebi_voice::stt::is_available(),
+        wake_word: read_string(app, KEY_WAKE_WORD),
+        listen_enabled: get_listen_enabled(app),
     }
 }
 
@@ -123,6 +129,25 @@ pub fn get_whisper_model_path(app: &AppHandle<Wry>) -> Option<String> {
 
 pub fn set_whisper_model_path<R: Runtime>(app: &AppHandle<R>, path: &str) -> Result<()> {
     write_optional_string(app, KEY_WHISPER_MODEL_PATH, path)
+}
+
+pub fn set_wake_word<R: Runtime>(app: &AppHandle<R>, phrase: &str) -> Result<()> {
+    write_optional_string(app, KEY_WAKE_WORD, phrase)
+}
+
+pub fn get_listen_enabled(app: &AppHandle<Wry>) -> bool {
+    app.store(STORE_FILE)
+        .ok()
+        .and_then(|s| s.get(KEY_LISTEN_ENABLED))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+pub fn set_listen_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_LISTEN_ENABLED, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
 }
 
 pub fn get_tts_enabled(app: &AppHandle<Wry>) -> bool {

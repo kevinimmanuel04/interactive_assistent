@@ -62,6 +62,8 @@ pub fn run() {
             commands::start_recording,
             commands::stop_recording,
             commands::cancel_recording,
+            commands::set_wake_word,
+            commands::set_listen_enabled,
         ])
         .setup(move |app| {
             app.global_shortcut().register(toggle_input)?;
