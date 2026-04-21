@@ -1,6 +1,6 @@
 //! Tauri command surface.
 
-use crate::{chat::ChatService, settings};
+use crate::{chat::ChatService, models, settings};
 use std::sync::Arc;
 use tauri::{AppHandle, State, Wry};
 
@@ -46,6 +46,45 @@ pub async fn cancel_generation(service: State<'_, Arc<ChatService>>) -> Result<(
 pub async fn reset_chat(service: State<'_, Arc<ChatService>>) -> Result<(), String> {
     service.clear().await;
     Ok(())
+}
+
+#[tauri::command]
+pub fn list_assets(app: AppHandle<Wry>) -> Vec<serde_json::Value> {
+    let statuses = models::statuses(&app);
+    models::catalog()
+        .into_iter()
+        .map(|a| {
+            let st = statuses.iter().find(|s| s.id == a.id);
+            serde_json::json!({
+                "id": a.id,
+                "kind": a.kind,
+                "title": a.title,
+                "description": a.description,
+                "file_name": a.file_name,
+                "approx_size_mb": a.approx_size_mb,
+                "installed": st.map(|s| s.installed).unwrap_or(false),
+                "path": st.and_then(|s| s.path.clone()),
+            })
+        })
+        .collect()
+}
+
+#[tauri::command]
+pub fn download_asset(app: AppHandle<Wry>, asset_id: String) -> Result<(), String> {
+    let asset = models::find(&asset_id).ok_or_else(|| format!("unknown asset: {asset_id}"))?;
+    models::spawn_download(app, asset);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_local_model(app: AppHandle<Wry>, asset_id: String) -> Result<(), String> {
+    let asset = models::find(&asset_id).ok_or_else(|| format!("unknown asset: {asset_id}"))?;
+    let path = models::asset_path(&app, &asset)?;
+    if !path.exists() {
+        return Err("asset is not downloaded yet".into());
+    }
+    settings::set_local_model_path(&app, path.to_string_lossy().as_ref())
+        .map_err(|e| e.to_string())
 }
 
 /// Lightweight id generator (avoids pulling in the `uuid` crate just for UX).

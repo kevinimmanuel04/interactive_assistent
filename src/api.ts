@@ -16,6 +16,36 @@ export interface PublicSettings {
   local_model_path: string | null;
 }
 
+export type AssetKind = "llm_gguf" | "piper_voice" | "piper_config";
+
+export interface Asset {
+  id: string;
+  kind: AssetKind;
+  title: string;
+  description: string;
+  file_name: string;
+  approx_size_mb: number;
+  installed: boolean;
+  path: string | null;
+}
+
+export type DownloadEvent =
+  | {
+      kind: "started";
+      file_name: string;
+      total: number | null;
+      resumed_from: number;
+    }
+  | {
+      kind: "progress";
+      file_name: string;
+      downloaded: number;
+      total: number | null;
+    }
+  | { kind: "verifying"; file_name: string }
+  | { kind: "finished"; file_name: string; path: string }
+  | { kind: "failed"; file_name: string; message: string };
+
 export async function getSettings(): Promise<PublicSettings> {
   return invoke<PublicSettings>("get_settings");
 }
@@ -40,6 +70,24 @@ export async function resetChat(): Promise<void> {
   await invoke("reset_chat");
 }
 
+export async function listAssets(): Promise<Asset[]> {
+  return invoke<Asset[]>("list_assets");
+}
+
+export async function downloadAsset(assetId: string): Promise<void> {
+  await invoke("download_asset", { assetId });
+}
+
+export async function setLocalModel(assetId: string): Promise<void> {
+  await invoke("set_local_model", { assetId });
+}
+
 export function onChat(cb: (e: ChatEvent) => void): Promise<UnlistenFn> {
   return listen<ChatEvent>("chat", (evt) => cb(evt.payload));
+}
+
+export function onModelProgress(
+  cb: (e: DownloadEvent) => void
+): Promise<UnlistenFn> {
+  return listen<DownloadEvent>("models:progress", (evt) => cb(evt.payload));
 }

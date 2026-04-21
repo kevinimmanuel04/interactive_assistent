@@ -64,6 +64,22 @@ pub fn set_mode<R: Runtime>(app: &AppHandle<R>, mode: komorebi_router::Mode) -> 
     Ok(())
 }
 
+#[allow(dead_code)] // consumed by local-llm feature in Phase 1B.3
+pub fn get_local_model_path(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_LOCAL_MODEL_PATH)
+}
+
+pub fn set_local_model_path<R: Runtime>(app: &AppHandle<R>, path: &str) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    if path.trim().is_empty() {
+        store.delete(KEY_LOCAL_MODEL_PATH);
+    } else {
+        store.set(KEY_LOCAL_MODEL_PATH, serde_json::Value::String(path.to_string()));
+    }
+    store.save()?;
+    Ok(())
+}
+
 pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
     PublicSettings {
         has_openrouter_key: get_openrouter_key(app).is_some(),

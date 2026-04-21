@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import AvatarStage from "./components/AvatarStage";
 import ChatBubble from "./components/ChatBubble";
 import InputField from "./components/InputField";
+import ModelWizard from "./components/ModelWizard";
 import SettingsPanel from "./components/SettingsPanel";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -19,6 +20,7 @@ type Route = "local" | "cloud" | "skill";
 export default function App() {
   const [inputOpen, setInputOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const [bubbleText, setBubbleText] = useState<string | null>(null);
   const [thinking, setThinking] = useState(false);
   const [route, setRoute] = useState<Route | null>(null);
@@ -122,10 +124,22 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         onChanged={refreshSettings}
       />
+      <ModelWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onSettingsChanged={refreshSettings}
+      />
       <TopBar
         mode={settings?.mode ?? "auto"}
         hasKey={settings?.has_openrouter_key ?? false}
-        onToggleSettings={() => setSettingsOpen((v) => !v)}
+        onToggleSettings={() => {
+          setWizardOpen(false);
+          setSettingsOpen((v) => !v);
+        }}
+        onToggleWizard={() => {
+          setSettingsOpen(false);
+          setWizardOpen((v) => !v);
+        }}
         onReset={handleReset}
       />
     </>
@@ -136,6 +150,7 @@ function TopBar(props: {
   mode: string;
   hasKey: boolean;
   onToggleSettings: () => void;
+  onToggleWizard: () => void;
   onReset: () => void;
 }) {
   return (
@@ -172,6 +187,13 @@ function TopBar(props: {
         title="Reset conversation"
       >
         ↺
+      </button>
+      <button
+        onClick={props.onToggleWizard}
+        style={iconBtn}
+        title="Model downloads"
+      >
+        ⬇
       </button>
       <button
         onClick={props.onToggleSettings}

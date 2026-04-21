@@ -2,6 +2,7 @@
 
 mod chat;
 mod commands;
+mod models;
 mod settings;
 
 use std::sync::Arc;
@@ -47,6 +48,9 @@ pub fn run() {
             commands::send_message,
             commands::cancel_generation,
             commands::reset_chat,
+            commands::list_assets,
+            commands::download_asset,
+            commands::set_local_model,
         ])
         .setup(move |app| {
             app.global_shortcut().register(toggle_input)?;
