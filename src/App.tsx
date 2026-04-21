@@ -5,6 +5,7 @@ import InputField from "./components/InputField";
 import ModelWizard from "./components/ModelWizard";
 import SettingsPanel from "./components/SettingsPanel";
 import { listen } from "@tauri-apps/api/event";
+import { lipSync } from "./lipsync";
 import {
   cancelGeneration,
   ChatEvent,
@@ -40,6 +41,18 @@ export default function App() {
   useEffect(() => {
     const p = listen<string>("hotkey:toggle-input", () => {
       setInputOpen((v) => !v);
+    });
+    return () => {
+      p.then((fn) => fn());
+    };
+  }, []);
+
+  // Backend-synthesized TTS audio: play via Web Audio + drive Live2D mouth.
+  useEffect(() => {
+    const p = listen<string>("tts:play", (evt) => {
+      lipSync.play(evt.payload).catch((e) => {
+        console.warn("[tts] playback failed:", e);
+      });
     });
     return () => {
       p.then((fn) => fn());
@@ -105,6 +118,7 @@ export default function App() {
   const handleReset = async () => {
     await cancelGeneration();
     await resetChat();
+    lipSync.stop();
     setBubbleText(null);
     setRoute(null);
     setThinking(false);

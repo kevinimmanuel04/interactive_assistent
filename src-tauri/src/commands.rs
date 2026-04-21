@@ -2,7 +2,7 @@
 
 use crate::{chat::ChatService, models, settings};
 use std::sync::Arc;
-use tauri::{AppHandle, Manager, State, Wry};
+use tauri::{AppHandle, Emitter, Manager, State, Wry};
 
 #[tauri::command]
 pub fn get_settings(app: AppHandle<Wry>) -> settings::PublicSettings {
@@ -148,13 +148,27 @@ pub fn cancel_recording(recorder: State<'_, komorebi_voice::stt::Recorder>) -> R
 
 #[tauri::command]
 pub async fn speak_text(
+    app: AppHandle<Wry>,
     tts: State<'_, komorebi_voice::tts::PiperTts>,
     text: String,
 ) -> Result<(), String> {
     if text.trim().is_empty() {
         return Ok(());
     }
-    tts.speak(&text).await.map_err(|e| e.to_string())
+    let wav = tts.synthesize(&text).await.map_err(|e| e.to_string())?;
+    emit_tts_wav(&app, &wav);
+    Ok(())
+}
+
+/// Emit synthesized WAV audio to the frontend as a base64 data URL.
+/// The frontend plays it via Web Audio API and drives Live2D lip-sync.
+pub fn emit_tts_wav(app: &AppHandle<Wry>, wav: &[u8]) {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let encoded = STANDARD.encode(wav);
+    let data_url = format!("data:audio/wav;base64,{encoded}");
+    if let Err(e) = app.emit("tts:play", data_url) {
+        tracing::warn!(?e, "failed to emit tts:play");
+    }
 }
 
 /// Re-reads persisted TTS settings and applies them to the shared handle.

@@ -86,12 +86,19 @@ impl PiperTts {
     /// Synthesize `text` and play it on the default output device.
     /// Blocks (asynchronously) until playback finishes.
     pub async fn speak(&self, text: &str) -> Result<(), TtsError> {
+        let wav = self.synthesize(text).await?;
+        play_wav_blocking(wav).await
+    }
+
+    /// Synthesize `text` and return the raw WAV bytes without playing them.
+    /// Used by the frontend lip-sync pipeline (Phase 2C), which plays the
+    /// audio via Web Audio API and drives the Live2D mouth parameter.
+    pub async fn synthesize(&self, text: &str) -> Result<Vec<u8>, TtsError> {
         let cfg = {
             let guard = self.inner.lock().await;
             guard.clone().ok_or(TtsError::NotConfigured)?
         };
-        let wav = synthesize(&cfg, text).await?;
-        play_wav_blocking(wav).await
+        synthesize(&cfg, text).await
     }
 }
 

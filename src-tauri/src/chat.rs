@@ -141,8 +141,9 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
     Ok(())
 }
 
-/// Fire-and-forget TTS: if a PiperTts handle is configured, speak the reply
-/// on a background task. Any error is logged but never surfaced to the UI.
+/// Fire-and-forget TTS: if a PiperTts handle is configured, synthesize the
+/// reply and emit it to the frontend for playback + Live2D lip-sync.
+/// Any error is logged but never surfaced to the UI.
 async fn maybe_speak(app: &AppHandle<Wry>, text: String) {
     let Some(tts) = app.try_state::<komorebi_voice::tts::PiperTts>() else {
         return;
@@ -151,9 +152,11 @@ async fn maybe_speak(app: &AppHandle<Wry>, text: String) {
         return;
     }
     let tts = tts.inner().clone();
+    let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = tts.speak(&text).await {
-            tracing::warn!(?e, "tts playback failed");
+        match tts.synthesize(&text).await {
+            Ok(wav) => crate::commands::emit_tts_wav(&app, &wav),
+            Err(e) => tracing::warn!(?e, "tts synthesis failed"),
         }
     });
 }

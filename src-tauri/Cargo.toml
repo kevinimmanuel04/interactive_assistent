@@ -59,6 +59,7 @@ thiserror.workspace = true
 futures.workspace = true
 async-stream = "0.3"
 reqwest.workspace = true
+base64 = "0.22"
 
 # Internal crates (stub for now, wired in next phases).
 komorebi-llm = { path = "crates/llm" }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { lipSync } from "../lipsync";
 
 /**
  * Loads `live2dcubismcore.min.js` once from `/live2dcubismcore.min.js`
@@ -95,7 +96,39 @@ export default function Live2DCanvas({
 
         app.stage.addChild(model as unknown as (typeof PIXI)["DisplayObject"]["prototype"]);
 
+        // Lip-sync: feed AnalyserNode RMS into ParamMouthOpenY every frame.
+        // We keep the latest level in a closure variable and apply it after
+        // Live2D's motion update (via the PIXI ticker, which runs Live2DModel
+        // update first because of registerTicker above).
+        let mouth = 0;
+        const unsubscribe = lipSync.subscribe((level) => {
+          mouth = level;
+        });
+        const coreModel = (model as unknown as {
+          internalModel?: {
+            coreModel?: {
+              setParameterValueById?: (id: string, value: number) => void;
+            };
+          };
+        }).internalModel?.coreModel;
+        const applyMouth = () => {
+          if (coreModel?.setParameterValueById) {
+            try {
+              coreModel.setParameterValueById("ParamMouthOpenY", mouth);
+            } catch {
+              /* model may not have this parameter */
+            }
+          }
+        };
+        app.ticker.add(applyMouth);
+
         cleanup = () => {
+          unsubscribe();
+          try {
+            app.ticker.remove(applyMouth);
+          } catch {
+            /* ignore */
+          }
           try {
             model.destroy({ children: true, texture: true, baseTexture: true });
           } catch {
