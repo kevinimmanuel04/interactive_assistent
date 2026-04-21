@@ -5,6 +5,7 @@ import InputField from "./components/InputField";
 import ModelWizard from "./components/ModelWizard";
 import SettingsPanel from "./components/SettingsPanel";
 import { listen } from "@tauri-apps/api/event";
+import { avatarState } from "./avatarState";
 import { lipSync } from "./lipsync";
 import { ListenController } from "./listen";
 import {
@@ -72,8 +73,14 @@ export default function App() {
     if (!controllerRef.current) {
       controllerRef.current = new ListenController({
         getWakeWord: () => settingsRef.current?.wake_word ?? null,
-        onSpeechStart: () => setHeardHint(true),
-        onSpeechEnd: () => setHeardHint(false),
+        onSpeechStart: () => {
+          setHeardHint(true);
+          avatarState.setListening(true);
+        },
+        onSpeechEnd: () => {
+          setHeardHint(false);
+          avatarState.setListening(false);
+        },
         onTranscript: (text) => {
           // Route the transcript through the normal chat pipeline so the
           // rest of the UI (route badge, streaming tokens) works identically
@@ -132,15 +139,21 @@ export default function App() {
           break;
         case "token":
           setThinking(false);
-          setBubbleText((t) => (t ?? "") + e.text);
+          setBubbleText((t) => {
+            const next = (t ?? "") + e.text;
+            avatarState.onToken(next);
+            return next;
+          });
           break;
         case "done":
           setThinking(false);
+          avatarState.onDone();
           scheduleBubbleHide();
           activeIdRef.current = null;
           break;
         case "error":
           setThinking(false);
+          avatarState.onDone(500);
           setBubbleText(`⚠ ${e.message}`);
           scheduleBubbleHide(6000);
           activeIdRef.current = null;
@@ -166,11 +179,13 @@ export default function App() {
     setBubbleText("");
     setThinking(true);
     setRoute(null);
+    avatarState.setThinking();
     try {
       const id = await sendMessage(text);
       activeIdRef.current = id;
     } catch (err) {
       setThinking(false);
+      avatarState.onDone(500);
       setBubbleText(`⚠ ${String(err)}`);
       scheduleBubbleHide(6000);
     }
@@ -181,6 +196,7 @@ export default function App() {
     await cancelGeneration();
     await resetChat();
     lipSync.stop();
+    avatarState.reset();
     setBubbleText(null);
     setRoute(null);
     setThinking(false);

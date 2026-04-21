@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { avatarState, AvatarState } from "../avatarState";
+import { Emotion } from "../emotion";
 import { lipSync } from "../lipsync";
 
 /**
@@ -111,19 +113,49 @@ export default function Live2DCanvas({
             };
           };
         }).internalModel?.coreModel;
+
+        // Idle body sway: gentle sinusoidal drift on head/body params.
+        // Keeps the character visibly alive when no motion is playing.
+        const bornAt = performance.now();
+
         const applyMouth = () => {
+          const t = (performance.now() - bornAt) / 1000;
           if (coreModel?.setParameterValueById) {
             try {
               coreModel.setParameterValueById("ParamMouthOpenY", mouth);
             } catch {
               /* model may not have this parameter */
             }
+            // Best-effort idle sway — all parameters are optional; each is
+            // wrapped in its own try/catch because some models lack them.
+            trySet(coreModel, "ParamAngleX", Math.sin(t * 0.6) * 6);
+            trySet(coreModel, "ParamAngleY", Math.sin(t * 0.4) * 3);
+            trySet(coreModel, "ParamBodyAngleX", Math.sin(t * 0.3) * 3);
+            trySet(coreModel, "ParamBreath", 0.5 + Math.sin(t * 1.2) * 0.5);
           }
         };
         app.ticker.add(applyMouth);
 
+        // Drive Live2D expressions and occasional motions from avatar state.
+        // Expression and motion names are best-effort; we silently ignore
+        // models that don't define them.
+        let lastEmotion: Emotion = "neutral";
+        let lastMode: AvatarState["mode"] = "idle";
+        const unsubState = avatarState.subscribe((s) => {
+          if (s.emotion !== lastEmotion) {
+            lastEmotion = s.emotion;
+            tryExpression(model, EXPRESSION_MAP[s.emotion]);
+          }
+          if (s.mode !== lastMode) {
+            lastMode = s.mode;
+            const motion = MOTION_MAP[s.mode];
+            if (motion) tryMotion(model, motion);
+          }
+        });
+
         cleanup = () => {
           unsubscribe();
+          unsubState();
           try {
             app.ticker.remove(applyMouth);
           } catch {
@@ -160,4 +192,70 @@ export default function Live2DCanvas({
       }}
     />
   );
+}
+
+// --- Live2D helpers --------------------------------------------------------
+
+/**
+ * Conventional expression file names. If the loaded model exposes one of
+ * these in its `.model3.json` expressions list, it will be activated when
+ * the corresponding emotion becomes dominant. Any miss is silent.
+ */
+const EXPRESSION_MAP: Record<Emotion, string> = {
+  neutral: "neutral",
+  happy: "happy",
+  sad: "sad",
+  angry: "angry",
+  surprised: "surprised",
+  thinking: "thinking",
+};
+
+/**
+ * Motion group hints played on mode changes. Names follow the usual
+ * Cubism convention (`Idle`, `TapBody`, etc.); again, misses are silent.
+ */
+const MOTION_MAP: Record<AvatarState["mode"], string | null> = {
+  idle: "Idle",
+  listening: null, // let the last motion continue
+  thinking: "Thinking",
+  speaking: "Speaking",
+};
+
+interface ExpressiveModel {
+  expression?: (name: string) => unknown;
+  motion?: (group: string, index?: number, priority?: number) => unknown;
+}
+
+function tryExpression(model: unknown, name: string) {
+  const m = model as ExpressiveModel;
+  if (typeof m.expression !== "function") return;
+  try {
+    m.expression(name);
+  } catch {
+    /* model doesn't define this expression — ignore */
+  }
+}
+
+function tryMotion(model: unknown, group: string) {
+  const m = model as ExpressiveModel;
+  if (typeof m.motion !== "function") return;
+  try {
+    // Priority 2 = NORMAL in pixi-live2d-display; lets idle interrupt nothing
+    // but intentional mode motions interrupt idle.
+    m.motion(group, undefined, 2);
+  } catch {
+    /* no such motion group — ignore */
+  }
+}
+
+function trySet(
+  coreModel: { setParameterValueById?: (id: string, value: number) => void },
+  id: string,
+  value: number,
+) {
+  try {
+    coreModel.setParameterValueById?.(id, value);
+  } catch {
+    /* parameter missing on this model */
+  }
 }
