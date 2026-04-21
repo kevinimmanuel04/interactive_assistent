@@ -38,7 +38,12 @@ pub fn classify(query: &str, mode: Mode) -> Route {
     // Skill markers (expanded in Phase 3) — take priority over cloud heuristics
     // so "сделай скриншот" doesn't get routed to the cloud for being long.
     let skill_markers = [
-        "громкость", "volume", "скриншот", "screenshot", "запусти", "open ",
+        "громкость",
+        "volume",
+        "скриншот",
+        "screenshot",
+        "запусти",
+        "open ",
     ];
     if skill_markers.iter().any(|m| q.contains(m)) {
         return Route::Skill;
@@ -46,8 +51,16 @@ pub fn classify(query: &str, mode: Mode) -> Route {
 
     // Heuristics: long / code / translation / analysis => cloud.
     let cloud_markers = [
-        "code", "refactor", "написать код", "translate", "переведи",
-        "анализ", "analyze", "essay", "философ", "explain in detail",
+        "code",
+        "refactor",
+        "написать код",
+        "translate",
+        "переведи",
+        "анализ",
+        "analyze",
+        "essay",
+        "философ",
+        "explain in detail",
     ];
     if query.len() > 400 || cloud_markers.iter().any(|m| q.contains(m)) {
         return Route::Cloud;
@@ -68,7 +81,10 @@ mod tests {
 
     #[test]
     fn code_goes_to_cloud() {
-        assert_eq!(classify("write code for a quicksort", Mode::Auto), Route::Cloud);
+        assert_eq!(
+            classify("write code for a quicksort", Mode::Auto),
+            Route::Cloud
+        );
     }
 
     #[test]

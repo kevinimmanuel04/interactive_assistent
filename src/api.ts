@@ -18,9 +18,15 @@ export interface PublicSettings {
   piper_binary_path: string | null;
   piper_voice_path: string | null;
   live2d_model_url: string | null;
+  whisper_model_path: string | null;
+  stt_available: boolean;
 }
 
-export type AssetKind = "llm_gguf" | "piper_voice" | "piper_config";
+export type AssetKind =
+  | "llm_gguf"
+  | "piper_voice"
+  | "piper_config"
+  | "whisper_ggml";
 
 export interface Asset {
   id: string;
@@ -104,6 +110,22 @@ export async function setLive2dModel(url: string): Promise<void> {
 
 export async function speakText(text: string): Promise<void> {
   await invoke("speak_text", { text });
+}
+
+export async function setWhisperModel(path: string): Promise<void> {
+  await invoke("set_whisper_model", { path });
+}
+
+export async function startRecording(): Promise<void> {
+  await invoke("start_recording");
+}
+
+export async function stopRecording(): Promise<string> {
+  return invoke<string>("stop_recording");
+}
+
+export async function cancelRecording(): Promise<void> {
+  await invoke("cancel_recording");
 }
 
 export function onChat(cb: (e: ChatEvent) => void): Promise<UnlistenFn> {

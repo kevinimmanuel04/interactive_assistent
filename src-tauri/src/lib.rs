@@ -42,6 +42,7 @@ pub fn run() {
         )
         .manage(Arc::new(chat::ChatService::new()))
         .manage(komorebi_voice::tts::PiperTts::new())
+        .manage(komorebi_voice::stt::Recorder::new())
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::set_openrouter_key,
@@ -57,6 +58,10 @@ pub fn run() {
             commands::set_tts_enabled,
             commands::set_live2d_model,
             commands::speak_text,
+            commands::set_whisper_model,
+            commands::start_recording,
+            commands::stop_recording,
+            commands::cancel_recording,
         ])
         .setup(move |app| {
             app.global_shortcut().register(toggle_input)?;

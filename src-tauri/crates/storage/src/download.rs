@@ -22,11 +22,27 @@ pub struct DownloadSpec {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DownloadEvent {
-    Started { file_name: String, total: Option<u64>, resumed_from: u64 },
-    Progress { file_name: String, downloaded: u64, total: Option<u64> },
-    Verifying { file_name: String },
-    Finished { file_name: String, path: String },
-    Failed { file_name: String, message: String },
+    Started {
+        file_name: String,
+        total: Option<u64>,
+        resumed_from: u64,
+    },
+    Progress {
+        file_name: String,
+        downloaded: u64,
+        total: Option<u64>,
+    },
+    Verifying {
+        file_name: String,
+    },
+    Finished {
+        file_name: String,
+        path: String,
+    },
+    Failed {
+        file_name: String,
+        message: String,
+    },
 }
 
 #[derive(Error, Debug)]
@@ -58,7 +74,9 @@ where
 
     if final_path.exists() {
         if let Some(expected) = &spec.sha256 {
-            progress(DownloadEvent::Verifying { file_name: spec.file_name.clone() });
+            progress(DownloadEvent::Verifying {
+                file_name: spec.file_name.clone(),
+            });
             let actual = sha256_of(&final_path).await?;
             if actual.eq_ignore_ascii_case(expected) {
                 progress(DownloadEvent::Finished {
@@ -129,7 +147,9 @@ where
     drop(file);
 
     if let Some(expected) = &spec.sha256 {
-        progress(DownloadEvent::Verifying { file_name: spec.file_name.clone() });
+        progress(DownloadEvent::Verifying {
+            file_name: spec.file_name.clone(),
+        });
         let actual = sha256_of(&part_path).await?;
         if !actual.eq_ignore_ascii_case(expected) {
             // Leave the .part in place for diagnostics; user can retry.

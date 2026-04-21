@@ -114,7 +114,10 @@ impl OpenRouterClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(CloudError::Api { status: status.as_u16(), body });
+            return Err(CloudError::Api {
+                status: status.as_u16(),
+                body,
+            });
         }
 
         // Parse Server-Sent Events: lines starting with "data: " carry JSON payloads,

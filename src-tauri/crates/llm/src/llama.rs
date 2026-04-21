@@ -106,8 +106,7 @@ fn generate_blocking(
     n_threads: i32,
     tx: &mpsc::Sender<Result<LlmEvent, LlmError>>,
 ) -> Result<(), LlmError> {
-    let mut ctx_params =
-        LlamaContextParams::default().with_n_ctx(NonZeroU32::new(n_ctx.max(512)));
+    let mut ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(n_ctx.max(512)));
     if n_threads > 0 {
         ctx_params = ctx_params.with_n_threads(n_threads);
     }

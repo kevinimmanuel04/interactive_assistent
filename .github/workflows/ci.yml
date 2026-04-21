@@ -55,3 +55,21 @@ jobs:
           workspaces: src-tauri
           key: local-llm
       - run: cargo check -p komorebi-llm --features local-llm
+
+  rust-stt:
+    # Verifies the `stt` feature compiles (pulls in whisper.cpp via CMake +
+    # bindgen). Runs only on Linux for the same reason as rust-local-llm.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install build deps
+        run: sudo apt-get update && sudo apt-get install -y cmake clang libclang-dev libasound2-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: stt
+      - run: cargo check -p komorebi-voice --features stt

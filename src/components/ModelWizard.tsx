@@ -8,6 +8,7 @@ import {
   onModelProgress,
   setLocalModel,
   setPiperVoice,
+  setWhisperModel,
 } from "../api";
 
 interface Props {
@@ -109,6 +110,12 @@ export default function ModelWizard({ open, onClose, onSettingsChanged }: Props)
   const handleUseAsVoice = async (a: Asset) => {
     if (!a.path) return;
     await setPiperVoice(a.path);
+    onSettingsChanged();
+  };
+
+  const handleUseAsStt = async (a: Asset) => {
+    if (!a.path) return;
+    await setWhisperModel(a.path);
     onSettingsChanged();
   };
 
@@ -220,6 +227,11 @@ export default function ModelWizard({ open, onClose, onSettingsChanged }: Props)
                     {a.installed && a.kind === "piper_voice" && (
                       <button onClick={() => handleUseAsVoice(a)} style={btn()}>
                         Use as voice
+                      </button>
+                    )}
+                    {a.installed && a.kind === "whisper_ggml" && (
+                      <button onClick={() => handleUseAsStt(a)} style={btn()}>
+                        Use as STT model
                       </button>
                     )}
                   </div>

@@ -115,7 +115,13 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
         Route::Skill => {
             // Phase 3 will dispatch to the skills crate.
             let msg = "Skills are coming in Phase 3. For now, try a question or use Cloud mode.";
-            emit(&app, ChatEventOut::Token { id: id.clone(), text: msg.into() });
+            emit(
+                &app,
+                ChatEventOut::Token {
+                    id: id.clone(),
+                    text: msg.into(),
+                },
+            );
             msg.to_string()
         }
     };
@@ -124,7 +130,13 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
         let mut hist = service.history.lock().await;
         hist.push(ChatMessage::assistant(full_text.clone()));
     }
-    emit(&app, ChatEventOut::Done { id, full_text: full_text.clone() });
+    emit(
+        &app,
+        ChatEventOut::Done {
+            id,
+            full_text: full_text.clone(),
+        },
+    );
     maybe_speak(&app, full_text).await;
     Ok(())
 }
@@ -170,7 +182,13 @@ async fn stream_cloud(
         match evt {
             Ok(StreamEvent::Token(t)) => {
                 acc.push_str(&t);
-                emit(app, ChatEventOut::Token { id: id.into(), text: t });
+                emit(
+                    app,
+                    ChatEventOut::Token {
+                        id: id.into(),
+                        text: t,
+                    },
+                );
             }
             Ok(StreamEvent::Done) => break,
             Err(e) => return Err(e.to_string()),
@@ -199,7 +217,13 @@ async fn stream_local(
                 match evt {
                     Ok(LlmEvent::Token(t)) => {
                         acc.push_str(&t);
-                        emit(app, ChatEventOut::Token { id: id.into(), text: t });
+                        emit(
+                            app,
+                            ChatEventOut::Token {
+                                id: id.into(),
+                                text: t,
+                            },
+                        );
                     }
                     Ok(LlmEvent::Done) => break,
                     Err(e) => return Err(e.to_string()),
@@ -211,7 +235,13 @@ async fn stream_local(
             // Graceful fallback: tell the user how to proceed.
             let msg = "Local model isn't wired up yet in this build. \
                        Switch to Cloud mode in settings (Auto will still fall back to Cloud for heavy queries).";
-            emit(app, ChatEventOut::Token { id: id.into(), text: msg.into() });
+            emit(
+                app,
+                ChatEventOut::Token {
+                    id: id.into(),
+                    text: msg.into(),
+                },
+            );
             Ok(msg.to_string())
         }
         Err(e) => Err(e.to_string()),

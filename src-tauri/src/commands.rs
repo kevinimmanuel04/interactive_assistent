@@ -83,8 +83,7 @@ pub fn set_local_model(app: AppHandle<Wry>, asset_id: String) -> Result<(), Stri
     if !path.exists() {
         return Err("asset is not downloaded yet".into());
     }
-    settings::set_local_model_path(&app, path.to_string_lossy().as_ref())
-        .map_err(|e| e.to_string())
+    settings::set_local_model_path(&app, path.to_string_lossy().as_ref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -111,6 +110,40 @@ pub async fn set_tts_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), S
 #[tauri::command]
 pub fn set_live2d_model(app: AppHandle<Wry>, url: String) -> Result<(), String> {
     settings::set_live2d_model_url(&app, &url).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_whisper_model(app: AppHandle<Wry>, path: String) -> Result<(), String> {
+    settings::set_whisper_model_path(&app, &path).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn start_recording(recorder: State<'_, komorebi_voice::stt::Recorder>) -> Result<(), String> {
+    recorder.start().map_err(|e| e.to_string())
+}
+
+/// Stops capture and runs Whisper transcription (blocking on a worker thread).
+#[tauri::command]
+pub async fn stop_recording(
+    app: AppHandle<Wry>,
+    recorder: State<'_, komorebi_voice::stt::Recorder>,
+) -> Result<String, String> {
+    let samples = recorder.stop().map_err(|e| e.to_string())?;
+    let model_path = settings::get_whisper_model_path(&app)
+        .ok_or_else(|| "no Whisper model configured".to_string())?;
+    let path = std::path::PathBuf::from(model_path);
+    tauri::async_runtime::spawn_blocking(move || {
+        komorebi_voice::stt::transcribe(&path, &samples).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn cancel_recording(recorder: State<'_, komorebi_voice::stt::Recorder>) -> Result<(), String> {
+    // Stop without transcribing; ignore EmptyRecording / NotRecording.
+    let _ = recorder.stop();
+    Ok(())
 }
 
 #[tauri::command]

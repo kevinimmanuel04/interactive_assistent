@@ -137,11 +137,10 @@ async fn play_wav_blocking(wav: Vec<u8>) -> Result<(), TtsError> {
         use rodio::{Decoder, OutputStream, Sink};
         use std::io::Cursor;
 
-        let (_stream, handle) = OutputStream::try_default()
-            .map_err(|e| TtsError::Audio(e.to_string()))?;
+        let (_stream, handle) =
+            OutputStream::try_default().map_err(|e| TtsError::Audio(e.to_string()))?;
         let sink = Sink::try_new(&handle).map_err(|e| TtsError::Audio(e.to_string()))?;
-        let decoder =
-            Decoder::new(Cursor::new(wav)).map_err(|e| TtsError::Audio(e.to_string()))?;
+        let decoder = Decoder::new(Cursor::new(wav)).map_err(|e| TtsError::Audio(e.to_string()))?;
         sink.append(decoder);
         sink.sleep_until_end();
         Ok(())

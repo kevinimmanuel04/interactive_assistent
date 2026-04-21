@@ -10,6 +10,7 @@ import {
   setPiperBinary,
   setPiperVoice,
   setTtsEnabled,
+  setWhisperModel,
 } from "../api";
 
 interface Props {
@@ -210,6 +211,15 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
               onChanged();
             }}
           />
+
+          <SttSection
+            settings={settings}
+            onChanged={async () => {
+              const next = await getSettings();
+              setSettings(next);
+              onChanged();
+            }}
+          />
         </motion.div>
       )}
     </AnimatePresence>
@@ -372,3 +382,61 @@ const inputStyle: React.CSSProperties = {
   fontSize: 12,
   boxSizing: "border-box",
 };
+
+function SttSection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [path, setPath] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setPath(settings?.whisper_model_path ?? "");
+  }, [settings?.whisper_model_path]);
+
+  const save = async (value: string) => {
+    setBusy(true);
+    try {
+      await setWhisperModel(value);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const available = settings?.stt_available ?? false;
+
+  return (
+    <div>
+      <div style={{ opacity: 0.7, marginBottom: 6 }}>
+        Speech-to-text — Whisper model path{" "}
+        {settings?.whisper_model_path && (
+          <span style={{ color: "#a5d6a7" }}>• set</span>
+        )}
+        {!available && (
+          <span style={{ color: "#ffb74d", marginLeft: 6 }}>
+            • build without <code>stt</code> feature
+          </span>
+        )}
+      </div>
+      <input
+        type="text"
+        placeholder="ggml-base.en.bin path (or use the wizard)"
+        value={path}
+        disabled={busy}
+        onChange={(e) => setPath(e.target.value)}
+        onBlur={() =>
+          path !== (settings?.whisper_model_path ?? "") && save(path)
+        }
+        style={inputStyle}
+      />
+      <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
+        Download a Whisper ggml model via the wizard, then click "Use as STT
+        model". A 🎙 button will appear in the input field.
+      </div>
+    </div>
+  );
+}

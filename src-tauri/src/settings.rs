@@ -19,6 +19,7 @@ const KEY_TTS_ENABLED: &str = "tts_enabled";
 const KEY_PIPER_BINARY: &str = "piper_binary_path";
 const KEY_PIPER_VOICE: &str = "piper_voice_path";
 const KEY_LIVE2D_MODEL_URL: &str = "live2d_model_url";
+const KEY_WHISPER_MODEL_PATH: &str = "whisper_model_path";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicSettings {
@@ -30,6 +31,8 @@ pub struct PublicSettings {
     pub piper_binary_path: Option<String>,
     pub piper_voice_path: Option<String>,
     pub live2d_model_url: Option<String>,
+    pub whisper_model_path: Option<String>,
+    pub stt_available: bool,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -41,7 +44,10 @@ pub fn set_openrouter_key<R: Runtime>(app: &AppHandle<R>, key: &str) -> Result<(
     if key.trim().is_empty() {
         store.delete(KEY_OPENROUTER_API);
     } else {
-        store.set(KEY_OPENROUTER_API, serde_json::Value::String(key.to_string()));
+        store.set(
+            KEY_OPENROUTER_API,
+            serde_json::Value::String(key.to_string()),
+        );
     }
     store.save()?;
     Ok(())
@@ -82,7 +88,10 @@ pub fn set_local_model_path<R: Runtime>(app: &AppHandle<R>, path: &str) -> Resul
     if path.trim().is_empty() {
         store.delete(KEY_LOCAL_MODEL_PATH);
     } else {
-        store.set(KEY_LOCAL_MODEL_PATH, serde_json::Value::String(path.to_string()));
+        store.set(
+            KEY_LOCAL_MODEL_PATH,
+            serde_json::Value::String(path.to_string()),
+        );
     }
     store.save()?;
     Ok(())
@@ -103,7 +112,17 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         piper_binary_path: read_string(app, KEY_PIPER_BINARY),
         piper_voice_path: read_string(app, KEY_PIPER_VOICE),
         live2d_model_url: read_string(app, KEY_LIVE2D_MODEL_URL),
+        whisper_model_path: read_string(app, KEY_WHISPER_MODEL_PATH),
+        stt_available: komorebi_voice::stt::is_available(),
     }
+}
+
+pub fn get_whisper_model_path(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_WHISPER_MODEL_PATH)
+}
+
+pub fn set_whisper_model_path<R: Runtime>(app: &AppHandle<R>, path: &str) -> Result<()> {
+    write_optional_string(app, KEY_WHISPER_MODEL_PATH, path)
 }
 
 pub fn get_tts_enabled(app: &AppHandle<Wry>) -> bool {

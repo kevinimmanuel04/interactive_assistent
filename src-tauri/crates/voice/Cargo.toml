@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+default = []
+# Enables real Whisper.cpp STT via `whisper-rs`. Requires CMake + a C++ toolchain.
+stt = ["dep:whisper-rs", "dep:num_cpus"]
+
 [dependencies]
 tokio = { workspace = true, features = ["process", "io-util", "sync", "rt", "macros"] }
 serde.workspace = true
@@ -11,8 +16,12 @@ thiserror.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
 rodio = { version = "0.19", default-features = false, features = ["wav"] }
+cpal = "0.15"
+parking_lot = "0.12"
 
-# Phase 2 deps (commented out to keep Phase 1 build fast):
-# cpal = "0.15"
-# whisper-rs = "0.12"
+# Optional: pulled in only when the `stt` feature is enabled.
+whisper-rs = { version = "0.12", optional = true }
+num_cpus = { version = "1.16", optional = true }
+
+# Phase 2 deps (not yet wired):
 # webrtc-vad = "0.4"

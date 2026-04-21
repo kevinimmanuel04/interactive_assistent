@@ -18,6 +18,7 @@ pub enum AssetKind {
     LlmGguf,
     PiperVoice,
     PiperConfig,
+    WhisperGgml,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +73,26 @@ pub fn catalog() -> Vec<Asset> {
             url: "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json?download=true".into(),
             file_name: "en_US-amy-medium.onnx.json".into(),
             approx_size_mb: 1,
+            sha256: None,
+        },
+        Asset {
+            id: "whisper-tiny-en".into(),
+            kind: AssetKind::WhisperGgml,
+            title: "Whisper tiny.en (ggml)".into(),
+            description: "Smallest English STT model (~75 MB). Fast, decent quality.".into(),
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin?download=true".into(),
+            file_name: "ggml-tiny.en.bin".into(),
+            approx_size_mb: 75,
+            sha256: None,
+        },
+        Asset {
+            id: "whisper-base-en".into(),
+            kind: AssetKind::WhisperGgml,
+            title: "Whisper base.en (ggml)".into(),
+            description: "Better English accuracy (~142 MB). Recommended default.".into(),
+            url: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin?download=true".into(),
+            file_name: "ggml-base.en.bin".into(),
+            approx_size_mb: 142,
             sha256: None,
         },
     ]

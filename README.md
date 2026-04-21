@@ -58,6 +58,26 @@ cd src-tauri; cargo check -p komorebi-llm --features local-llm
 
 Без этого флага приложение использует заглушку для локального движка и маршрутизирует запросы на OpenRouter.
 
+### Whisper STT (опционально)
+
+Push-to-talk через мик-кнопку в инпуте и транскрипцию Whisper.cpp живут за
+Cargo feature `stt`. Требуется тот же C++-тулчейн + CMake, что и для
+`local-llm`; на Linux дополнительно нужен `libasound2-dev` (ALSA).
+
+```powershell
+pnpm tauri dev -- --features stt
+# или вместе с локальным LLM:
+pnpm tauri dev -- --features "local-llm stt"
+# быстрая проверка:
+cd src-tauri; cargo check -p komorebi-voice --features stt
+```
+
+Без флага аудио-захват (cpal) всё равно собирается, но `transcribe` вернёт
+`NotAvailable`, и 🎙-кнопка просто не появится в UI.
+
+Модели Whisper (`ggml-tiny.en.bin`, `ggml-base.en.bin`) скачиваются через
+визард моделей. После скачивания нажмите «Use as STT model».
+
 ## Роадмап
 
 - **Phase 0** — Скелет проекта, overlay-окно, hotkey Alt+Space. ✓

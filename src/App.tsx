@@ -118,6 +118,9 @@ export default function App() {
         open={inputOpen}
         onClose={() => setInputOpen(false)}
         onSubmit={handleSubmit}
+        sttEnabled={Boolean(
+          settings?.stt_available && settings?.whisper_model_path
+        )}
       />
       <SettingsPanel
         open={settingsOpen}
