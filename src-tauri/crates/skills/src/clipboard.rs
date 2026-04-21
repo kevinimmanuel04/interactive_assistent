@@ -17,15 +17,14 @@ enum Action {
 
 fn parse(query: &str) -> Option<Action> {
     let q = norm(query);
-    if q.contains("буфер") || q.contains("clipboard") {
-        if q.contains("что")
+    if (q.contains("буфер") || q.contains("clipboard"))
+        && (q.contains("что")
             || q.contains("прочит")
             || q.contains("read")
             || q.contains("show")
-            || q.contains("get")
-        {
-            return Some(Action::Read);
-        }
+            || q.contains("get"))
+    {
+        return Some(Action::Read);
     }
     // "скопируй <payload>" / "copy <payload>"
     for prefix in ["скопируй ", "copy "] {
