@@ -2,11 +2,19 @@
 
 mod chat;
 mod commands;
+mod desktop_cmds;
 mod models;
+mod proactive;
 mod settings;
+mod sysctx;
+mod tools;
 
 use std::sync::Arc;
-use tauri::{Emitter, Manager};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Emitter, Manager,
+};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -21,6 +29,14 @@ pub fn run() {
     let toggle_input = Shortcut::new(Some(Modifiers::ALT), Code::Space);
 
     tauri::Builder::default()
+        .on_window_event(|window, event| {
+            // Intercept window close → hide to tray instead of quitting.
+            // Users still have the tray menu "Quit Komorebi" for a real exit.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             if let Some(w) = app.get_webview_window("main") {
                 let _ = w.show();
@@ -44,6 +60,7 @@ pub fn run() {
         )
         .manage(Arc::new(chat::ChatService::new()))
         .manage(komorebi_voice::tts::PiperTts::new())
+        .manage(komorebi_voice::sovits::SoVitsTts::new())
         .manage(komorebi_voice::stt::Recorder::new())
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
@@ -54,6 +71,7 @@ pub fn run() {
             commands::reset_chat,
             commands::list_assets,
             commands::download_asset,
+            commands::delete_asset,
             commands::set_local_model,
             commands::set_piper_binary,
             commands::set_piper_voice,
@@ -73,9 +91,76 @@ pub fn run() {
             commands::rag_add_folder,
             commands::rag_remove_folder,
             commands::rag_reindex,
+            commands::list_audio_devices,
+            commands::set_audio_input,
+            commands::set_audio_output,
+            commands::set_llm_gpu_layers,
+            commands::set_auto_listen,
+            commands::system_info,
+            commands::list_openrouter_models,
+            commands::set_openrouter_model,
+            commands::read_tts_bytes,
+            commands::set_tts_provider,
+            commands::set_tts_prosody,
+            commands::set_tts_volume,
+            commands::set_sovits_config,
+            commands::speak_reaction,
+            commands::set_proactive_enabled,
+            commands::set_desktop_automation_enabled,
+            desktop_cmds::desktop_workspace_root,
+            desktop_cmds::desktop_set_workspace,
+            desktop_cmds::desktop_list_screens,
+            desktop_cmds::desktop_screenshot,
+            desktop_cmds::desktop_screenshot_region,
+            desktop_cmds::desktop_click,
+            desktop_cmds::desktop_move_cursor,
+            desktop_cmds::desktop_type,
+            desktop_cmds::desktop_key,
+            desktop_cmds::desktop_scroll,
+            desktop_cmds::desktop_top_processes,
+            desktop_cmds::desktop_active_window,
+            desktop_cmds::desktop_context_snapshot,
+            desktop_cmds::desktop_write_file,
+            desktop_cmds::desktop_read_file,
+            desktop_cmds::desktop_list_dir,
+            tools::run_tool,
         ])
         .setup(move |app| {
             app.global_shortcut().register(toggle_input)?;
+
+            // System tray: left-click toggles the window, menu offers a
+            // clean exit. Essential because the window is decorationless —
+            // without this, users have no obvious way to quit.
+            let show_item = MenuItem::with_id(app, "show", "Show / Hide", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit Komorebi", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            let mut tray_builder = TrayIconBuilder::with_id("main")
+                .tooltip("Komorebi")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id().as_ref() {
+                    "show" => toggle_main_window(app),
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        toggle_main_window(tray.app_handle());
+                    }
+                });
+            // Window icon may be absent in dev builds; fall back gracefully.
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+            if let Err(e) = tray_builder.build(app) {
+                tracing::warn!(?e, "failed to build tray icon (continuing without tray)");
+            }
+
             // Initialize the RAG index in the app's data dir and stash it
             // on the Tauri state map.
             match app.path().app_data_dir() {
@@ -96,9 +181,29 @@ pub fn run() {
             tauri::async_runtime::spawn(async move {
                 crate::commands::reload_tts(&handle).await;
             });
+
+            // Proactive agent — polls active window/processes and nudges
+            // the user when appropriate (only if enabled in settings).
+            crate::proactive::spawn(app.handle().clone());
+
             tracing::info!("Komorebi started");
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Toggle the main window visibility. Used by tray click and menu.
+pub(crate) fn toggle_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(w) = app.get_webview_window("main") {
+        match w.is_visible() {
+            Ok(true) => {
+                let _ = w.hide();
+            }
+            _ => {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }
+    }
 }

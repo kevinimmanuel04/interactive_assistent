@@ -41,7 +41,10 @@ struct Recording {
 }
 
 enum Command {
-    Start(Sender<Result<(), SttError>>),
+    Start {
+        device: Option<String>,
+        reply: Sender<Result<(), SttError>>,
+    },
     Stop(Sender<Result<Vec<f32>, SttError>>),
 }
 
@@ -78,9 +81,15 @@ impl Recorder {
     }
 
     pub fn start(&self) -> Result<(), SttError> {
+        self.start_with_device(None)
+    }
+
+    /// Start capture from a specific input device by name. Falls back to the
+    /// system default when `name` is `None` or no device matches.
+    pub fn start_with_device(&self, name: Option<String>) -> Result<(), SttError> {
         let (tx, rx) = mpsc::channel();
         self.tx
-            .send(Command::Start(tx))
+            .send(Command::Start { device: name, reply: tx })
             .map_err(|_| SttError::WorkerGone)?;
         rx.recv().map_err(|_| SttError::WorkerGone)?
     }
@@ -99,12 +108,12 @@ fn worker_loop(rx: mpsc::Receiver<Command>, recording_flag: Arc<Mutex<bool>>) {
 
     while let Ok(cmd) = rx.recv() {
         match cmd {
-            Command::Start(reply) => {
+            Command::Start { device, reply } => {
                 if active.is_some() {
                     let _ = reply.send(Err(SttError::Capture("already recording".into())));
                     continue;
                 }
-                match build_stream() {
+                match build_stream(device.as_deref()) {
                     Ok((stream, buf)) => {
                         active = Some((stream, buf));
                         *recording_flag.lock() = true;
@@ -134,9 +143,9 @@ fn worker_loop(rx: mpsc::Receiver<Command>, recording_flag: Arc<Mutex<bool>>) {
     }
 }
 
-fn build_stream() -> Result<(cpal::Stream, Arc<Mutex<Recording>>), SttError> {
+fn build_stream(preferred: Option<&str>) -> Result<(cpal::Stream, Arc<Mutex<Recording>>), SttError> {
     let host = cpal::default_host();
-    let device = host.default_input_device().ok_or(SttError::NoInputDevice)?;
+    let device = pick_input_device(&host, preferred).ok_or(SttError::NoInputDevice)?;
     let config = device
         .default_input_config()
         .map_err(|e| SttError::Capture(e.to_string()))?;
@@ -210,6 +219,38 @@ fn append_mono_f32(dst: &mut Vec<f32>, src: &[f32], channels: usize) {
             dst.push(sum / channels as f32);
         }
     }
+}
+
+fn pick_input_device(host: &cpal::Host, preferred: Option<&str>) -> Option<cpal::Device> {
+    if let Some(want) = preferred {
+        if let Ok(devices) = host.input_devices() {
+            for d in devices {
+                if d.name().ok().as_deref() == Some(want) {
+                    return Some(d);
+                }
+            }
+            tracing::warn!(%want, "preferred input device not found; using default");
+        }
+    }
+    host.default_input_device()
+}
+
+/// Enumerate audio devices so the UI can offer a picker.
+/// Returned tuple: (input_device_names, output_device_names, default_input,
+/// default_output).
+pub fn list_devices() -> (Vec<String>, Vec<String>, Option<String>, Option<String>) {
+    let host = cpal::default_host();
+    let inputs: Vec<String> = host
+        .input_devices()
+        .map(|it| it.filter_map(|d| d.name().ok()).collect())
+        .unwrap_or_default();
+    let outputs: Vec<String> = host
+        .output_devices()
+        .map(|it| it.filter_map(|d| d.name().ok()).collect())
+        .unwrap_or_default();
+    let def_in = host.default_input_device().and_then(|d| d.name().ok());
+    let def_out = host.default_output_device().and_then(|d| d.name().ok());
+    (inputs, outputs, def_in, def_out)
 }
 
 /// Linear resampler. Whisper wants 16 kHz; anything goes in.

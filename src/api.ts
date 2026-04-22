@@ -25,6 +25,21 @@ export interface PublicSettings {
   smart_routing: boolean;
   classifier_model: string;
   rag_enabled: boolean;
+  audio_input_device: string | null;
+  audio_output_device: string | null;
+  llm_gpu_layers: number | null;
+  auto_listen: boolean;
+  tts_provider: string;
+  tts_length_scale: number | null;
+  tts_noise_scale: number | null;
+  tts_noise_w: number | null;
+  tts_volume: number;
+  sovits_endpoint: string | null;
+  sovits_ref_audio: string | null;
+  sovits_prompt_text: string | null;
+  sovits_prompt_lang: string;
+  sovits_text_lang: string;
+  sovits_speed: number;
 }
 
 export interface FolderStats {
@@ -107,6 +122,10 @@ export async function downloadAsset(assetId: string): Promise<void> {
   await invoke("download_asset", { assetId });
 }
 
+export async function deleteAsset(assetId: string): Promise<void> {
+  await invoke("delete_asset", { assetId });
+}
+
 export async function setLocalModel(assetId: string): Promise<void> {
   await invoke("set_local_model", { assetId });
 }
@@ -129,6 +148,46 @@ export async function setLive2dModel(url: string): Promise<void> {
 
 export async function speakText(text: string): Promise<void> {
   await invoke("speak_text", { text });
+}
+
+export async function setTtsProvider(provider: "piper" | "sovits"): Promise<void> {
+  await invoke("set_tts_provider", { provider });
+}
+
+export async function setTtsProsody(
+  lengthScale: number | null,
+  noiseScale: number | null,
+  noiseW: number | null,
+): Promise<void> {
+  await invoke("set_tts_prosody", {
+    lengthScale,
+    noiseScale,
+    noiseW,
+  });
+}
+
+export async function setTtsVolume(volume: number): Promise<void> {
+  await invoke("set_tts_volume", { volume });
+}
+
+export interface SoVitsConfigInput {
+  endpoint: string;
+  refAudio: string;
+  promptText: string;
+  promptLang: string;
+  textLang: string;
+  speed: number;
+}
+
+export async function setSovitsConfig(c: SoVitsConfigInput): Promise<void> {
+  await invoke("set_sovits_config", {
+    endpoint: c.endpoint,
+    refAudio: c.refAudio,
+    promptText: c.promptText,
+    promptLang: c.promptLang,
+    textLang: c.textLang,
+    speed: c.speed,
+  });
 }
 
 export async function setWhisperModel(path: string): Promise<void> {
@@ -177,6 +236,62 @@ export async function ragAddFolder(path: string): Promise<void> {
 
 export async function ragRemoveFolder(path: string): Promise<void> {
   await invoke("rag_remove_folder", { path });
+}
+
+export interface AudioDevices {
+  inputs: string[];
+  outputs: string[];
+  default_input: string | null;
+  default_output: string | null;
+}
+
+export async function listAudioDevices(): Promise<AudioDevices> {
+  return invoke<AudioDevices>("list_audio_devices");
+}
+
+export async function setAudioInput(name: string): Promise<void> {
+  await invoke("set_audio_input", { name });
+}
+
+export async function setAudioOutput(name: string): Promise<void> {
+  await invoke("set_audio_output", { name });
+}
+
+export async function setLlmGpuLayers(layers: number | null): Promise<void> {
+  await invoke("set_llm_gpu_layers", { layers });
+}
+
+export async function setAutoListen(enabled: boolean): Promise<void> {
+  await invoke("set_auto_listen", { enabled });
+}
+
+export interface SystemInfo {
+  os: string;
+  cpu: string;
+  cpu_cores: number;
+  ram_gb: number;
+  gpus: string[];
+  has_nvidia: boolean;
+  hostname: string;
+}
+
+export async function systemInfo(): Promise<SystemInfo> {
+  return invoke<SystemInfo>("system_info");
+}
+
+export interface OpenRouterModel {
+  id: string;
+  name?: string;
+  context_length?: number;
+  pricing?: { prompt?: string; completion?: string };
+}
+
+export async function listOpenRouterModels(): Promise<OpenRouterModel[]> {
+  return invoke<OpenRouterModel[]>("list_openrouter_models");
+}
+
+export async function setOpenRouterModel(model: string): Promise<void> {
+  await invoke("set_openrouter_model", { model });
 }
 
 export async function ragReindex(path?: string): Promise<IndexReport> {

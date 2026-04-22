@@ -60,7 +60,13 @@ impl LlamaEngine {
                 return Ok(l.model.clone());
             }
         }
-        let params = LlamaModelParams::default();
+        let mut params = LlamaModelParams::default();
+        // GPU offload: honor the user's explicit setting when present; in
+        // auto-mode try to offload everything and let the backend clamp to
+        // the number of layers actually available.
+        if let Some(n) = self.cfg.n_gpu_layers {
+            params = params.with_n_gpu_layers(n as u32);
+        }
         let model = LlamaModel::load_from_file(&self.backend, &path, &params)
             .map_err(|e| LlmError::Other(format!("load model: {e}")))?;
         let model = Arc::new(model);

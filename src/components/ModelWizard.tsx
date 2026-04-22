@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   Asset,
   DownloadEvent,
+  deleteAsset,
   downloadAsset,
   listAssets,
   onModelProgress,
@@ -113,6 +114,25 @@ export default function ModelWizard({
 
   const handleDownload = async (a: Asset) => {
     await downloadAsset(a.id);
+  };
+
+  const handleDelete = async (a: Asset) => {
+    const ok = window.confirm(`Delete "${a.title}"?\nThe file will be removed from your app-data folder.`);
+    if (!ok) return;
+    try {
+      await deleteAsset(a.id);
+      flash(`Deleted: ${a.title}`);
+      setProgress((prev) => {
+        const next = { ...prev };
+        delete next[a.file_name];
+        return next;
+      });
+      refresh();
+      onSettingsChanged();
+    } catch (e) {
+      console.error("[wizard] delete_asset failed", e);
+      flash(`Failed: ${e}`);
+    }
   };
 
   const handleUseAsLocal = async (a: Asset) => {
@@ -295,6 +315,15 @@ export default function ModelWizard({
                         Use as STT model
                       </button>
                     )}
+                    {a.installed && (
+                      <button
+                        onClick={() => handleDelete(a)}
+                        style={btn("danger")}
+                        title="Delete downloaded file"
+                      >
+                        Delete
+                      </button>
+                    )}
                   </div>
                 </div>
                 {st && (
@@ -346,7 +375,18 @@ export default function ModelWizard({
   );
 }
 
-function btn(): React.CSSProperties {
+function btn(variant: "default" | "danger" = "default"): React.CSSProperties {
+  if (variant === "danger") {
+    return {
+      padding: "6px 10px",
+      borderRadius: 8,
+      border: "1px solid rgba(239,154,154,0.55)",
+      background: "rgba(239,83,80,0.18)",
+      color: "#fff",
+      cursor: "pointer",
+      fontSize: 12,
+    };
+  }
   return {
     padding: "6px 10px",
     borderRadius: 8,

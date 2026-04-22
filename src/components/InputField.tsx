@@ -35,8 +35,16 @@ export default function InputField({ open, onClose, onSubmit, sttEnabled = false
       try {
         const text = await stopRecording();
         setRecording(false);
-        if (text) setValue((v) => (v ? `${v} ${text}`.trim() : text));
-        queueMicrotask(() => ref.current?.focus());
+        const trimmed = text.trim();
+        if (trimmed) {
+          // Auto-submit: user expectation is that speaking then tapping
+          // "stop" sends the message. Pre-filling the text box and
+          // requiring another Enter press is surprising.
+          setValue("");
+          onSubmit(trimmed);
+        } else {
+          queueMicrotask(() => ref.current?.focus());
+        }
       } catch (err) {
         setRecording(false);
         setMicError(String(err));
@@ -73,16 +81,16 @@ export default function InputField({ open, onClose, onSubmit, sttEnabled = false
           }}
           style={{
             position: "absolute",
-            bottom: 24,
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: 360,
+            bottom: 16,
+            left: 12,
+            right: 12,
+            zIndex: 10,
             padding: "8px 10px",
             borderRadius: 12,
-            background: "rgba(20, 20, 28, 0.82)",
+            background: "rgba(20, 20, 28, 0.88)",
             backdropFilter: "blur(10px)",
             WebkitBackdropFilter: "blur(10px)",
-            boxShadow: "0 6px 24px rgba(0,0,0,0.35)",
+            boxShadow: "0 6px 24px rgba(0,0,0,0.45)",
             display: "flex",
             flexDirection: "column",
             gap: 4,
@@ -118,7 +126,9 @@ export default function InputField({ open, onClose, onSubmit, sttEnabled = false
               value={value}
               onChange={(e) => setValue(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Escape") onClose();
+                if (e.key === "Escape" && (e.target as HTMLInputElement).value === "") {
+                  onClose();
+                }
               }}
               placeholder={recording ? "Listening…" : "Ask anything…"}
               style={{

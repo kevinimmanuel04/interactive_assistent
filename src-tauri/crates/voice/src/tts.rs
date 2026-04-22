@@ -38,6 +38,16 @@ pub struct PiperConfig {
     /// Path to the `<voice>.onnx.json` metadata. If `None` we pass only the
     /// voice path and let Piper discover the sibling JSON.
     pub config: Option<PathBuf>,
+    /// Phoneme length multiplier. `<1.0` → faster/higher-pitched speech,
+    /// `>1.0` → slower/deeper. Piper default is 1.0. `None` leaves the
+    /// setting to the voice's `onnx.json` default.
+    pub length_scale: Option<f32>,
+    /// Phoneme-level variability. Higher = more expressive, lower = flatter.
+    /// Typical range 0.3–1.0. Piper default is 0.667.
+    pub noise_scale: Option<f32>,
+    /// Per-phoneme length noise. Higher = more rhythmic variability.
+    /// Typical range 0.3–1.0. Piper default is 0.8.
+    pub noise_w: Option<f32>,
 }
 
 impl PiperConfig {
@@ -48,7 +58,22 @@ impl PiperConfig {
             binary: binary.into(),
             voice,
             config,
+            length_scale: None,
+            noise_scale: None,
+            noise_w: None,
         }
+    }
+
+    pub fn with_prosody(
+        mut self,
+        length_scale: Option<f32>,
+        noise_scale: Option<f32>,
+        noise_w: Option<f32>,
+    ) -> Self {
+        self.length_scale = length_scale;
+        self.noise_scale = noise_scale;
+        self.noise_w = noise_w;
+        self
     }
 }
 
@@ -103,17 +128,129 @@ impl PiperTts {
 }
 
 async fn synthesize(cfg: &PiperConfig, text: &str) -> Result<Vec<u8>, TtsError> {
+    // DIAGNOSTIC: dump the exact bytes we hand to Piper so we can compare
+    // against a known-good manual invocation. Also save to a temp file so
+    // it can be re-fed to Piper outside the app.
+    let bytes = text.as_bytes();
+    let dump_path = std::env::temp_dir().join("komorebi-tts-last-input.txt");
+    let _ = std::fs::write(&dump_path, bytes);
+    let head: Vec<String> = bytes
+        .iter()
+        .take(32)
+        .map(|b| format!("{b:02X}"))
+        .collect();
+    let tail: Vec<String> = bytes
+        .iter()
+        .rev()
+        .take(16)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|b| format!("{b:02X}"))
+        .collect();
+    tracing::info!(
+        len = bytes.len(),
+        head = %head.join(" "),
+        tail = %tail.join(" "),
+        dump = %dump_path.display(),
+        "piper stdin bytes"
+    );
+
+    tracing::info!(
+        binary = %cfg.binary.display(),
+        voice = %cfg.voice.display(),
+        config = ?cfg.config.as_ref().map(|p| p.display().to_string()),
+        cwd = ?cfg.binary.parent().map(|p| p.display().to_string()),
+        "piper invocation"
+    );
+
     let mut cmd = Command::new(&cfg.binary);
+    // Piper resolves `espeak-ng-data/` relative to its CURRENT WORKING
+    // DIRECTORY — not the binary's own directory. When spawned from a
+    // Tauri GUI the cwd is the app's install/dev dir, so Piper can't find
+    // the phoneme tables and falls back to garbled output.
+    // Explicitly set cwd to the directory that holds piper.exe, where
+    // espeak-ng-data sits alongside.
+    if let Some(parent) = cfg.binary.parent() {
+        cmd.current_dir(parent);
+        // Purge any env that might redirect espeak/onnx to the wrong files.
+        cmd.env_remove("ESPEAK_DATA_PATH");
+        cmd.env_remove("PIPER_DATA_PATH");
+        cmd.env_remove("PIPER_ESPEAK_DATA");
+        // Force onnxruntime to use CPU execution provider only. The bundled
+        // onnxruntime 1.14 ships a `providers_shared` DLL that will happily
+        // pick up CUDA/DirectML if available, but inference on GPU with that
+        // old version produces audible static on recent drivers. CPU is
+        // fast enough for Piper (real-time factor ~0.1).
+        cmd.env("ORT_DISABLE_ALL_OPTIMIZATION", "0");
+        cmd.env_remove("CUDA_VISIBLE_DEVICES");
+        cmd.env("CUDA_VISIBLE_DEVICES", "-1");
+        cmd.env_remove("ONNXRUNTIME_PROVIDERS");
+        // Force a minimal PATH with ONLY piper's own directory, plus the
+        // bare Windows system dirs. This prevents system-wide onnxruntime
+        // DLLs (e.g. Windows ML 1.17) from hijacking Piper's bundled 1.14
+        // through the usual DLL search path.
+        #[cfg(windows)]
+        {
+            let sys = std::env::var("SystemRoot")
+                .unwrap_or_else(|_| "C:\\Windows".to_string());
+            let new_path = format!("{};{sys}\\System32;{sys}", parent.display());
+            cmd.env("PATH", new_path);
+        }
+        #[cfg(not(windows))]
+        {
+            let existing = std::env::var("PATH").unwrap_or_default();
+            let new_path = format!("{}:{existing}", parent.display());
+            cmd.env("PATH", new_path);
+        }
+    }
+    // Pass --espeak_data too, belt-and-braces, so it works even if cwd
+    // is hijacked by something else down the road.
+    if let Some(parent) = cfg.binary.parent() {
+        let espeak = parent.join("espeak-ng-data");
+        if espeak.is_dir() {
+            cmd.arg("--espeak_data").arg(&espeak);
+        }
+    }
     cmd.arg("--model").arg(&cfg.voice);
     if let Some(c) = &cfg.config {
         cmd.arg("--config").arg(c);
     }
-    // `-` routes WAV to stdout.
-    cmd.arg("--output_file").arg("-");
+    if let Some(v) = cfg.length_scale {
+        cmd.arg("--length_scale").arg(format!("{v:.3}"));
+    }
+    if let Some(v) = cfg.noise_scale {
+        cmd.arg("--noise_scale").arg(format!("{v:.3}"));
+    }
+    if let Some(v) = cfg.noise_w {
+        cmd.arg("--noise_w").arg(format!("{v:.3}"));
+    }
+    // Keep Piper verbose so we can inspect the phonemes it chose — helps
+    // diagnose cases where the phonemizer falls back to nonsense.
+    cmd.arg("--debug");
+    // Write the WAV to a temp file instead of routing through stdout.
+    // Piper on Windows leaves stdout in TEXT mode when `--output_file -`
+    // is used, which causes every 0x0A byte in the PCM stream to be
+    // translated to 0x0D 0x0A by the C runtime — silently corrupting
+    // the audio with static/garbage. Writing to a real file avoids that.
+    let out_path = std::env::temp_dir().join(format!(
+        "komorebi-piper-{}.wav",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    cmd.arg("--output_file").arg(&out_path);
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    // Windows: suppress the transient console window that flashes every time
+    // Piper is spawned from a GUI app. CREATE_NO_WINDOW = 0x08000000.
+    #[cfg(windows)]
+    {
+        cmd.creation_flags(0x0800_0000);
+    }
 
     let mut child = cmd
         .spawn()
@@ -132,9 +269,31 @@ async fn synthesize(cfg: &PiperConfig, text: &str) -> Result<Vec<u8>, TtsError> 
         let code = output.status.code().unwrap_or(-1);
         let stderr = String::from_utf8_lossy(&output.stderr);
         tracing::warn!(%code, stderr = %stderr, "piper failed");
+        let _ = std::fs::remove_file(&out_path);
         return Err(TtsError::PiperExit(code));
     }
-    Ok(output.stdout)
+    // Read the WAV written to disk (binary-safe), then clean up.
+    let wav = std::fs::read(&out_path).map_err(|e| {
+        tracing::warn!(?e, path = %out_path.display(), "failed to read piper output");
+        TtsError::Audio(format!("failed to read piper output: {e}"))
+    })?;
+    let _ = std::fs::remove_file(&out_path);
+    if wav.is_empty() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        tracing::warn!(stderr = %stderr, "piper produced empty WAV");
+        return Err(TtsError::Audio(format!(
+            "piper returned no audio (stderr: {stderr})"
+        )));
+    }
+    tracing::debug!(bytes = wav.len(), "piper synthesized");
+    // Always log stderr for diagnostics — Piper reports the phonemes it
+    // used via stderr when run interactively, which tells us whether the
+    // espeak-ng phonemizer is behaving correctly.
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.is_empty() {
+        tracing::info!(stderr = %stderr, "piper stderr");
+    }
+    Ok(wav)
 }
 
 async fn play_wav_blocking(wav: Vec<u8>) -> Result<(), TtsError> {

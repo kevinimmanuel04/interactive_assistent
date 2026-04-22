@@ -1,28 +1,25 @@
-name: Release build
+﻿name: Release build
 
-# Builds a downloadable Komorebi installer for manual testing.
+# Builds a downloadable Komorebi installer for every supported OS.
 #
 # Triggers:
-#   * push of a tag like v0.1.0  -> builds + (optionally) drafts a GitHub release
-#   * manual workflow_dispatch   -> builds + uploads artifacts you can grab from the
-#                                   run's "Artifacts" section (no release needed)
-#
-# The default build is cloud-only (no `local-llm`, no `stt`) so it compiles
-# quickly and produces a slim NSIS installer. Local LLM / Whisper assets are
-# downloaded at runtime from the app itself.
+#   * push of a tag like v0.1.0  -> draft GitHub release + latest.json
+#   * manual workflow_dispatch   -> per-run artifacts
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
 
-# softprops/action-gh-release needs contents:write to create / update
-# a release. Default GITHUB_TOKEN is read-only since 2023.
 permissions:
   contents: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_RETRY: "10"
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
 
 jobs:
   build:
@@ -32,16 +29,20 @@ jobs:
         include:
           - platform: windows
             os: windows-latest
-            # nsis/ contains the installer .exe plus the updater .exe.sig / .zip
-            bundle_glob: "src-tauri/target/release/bundle/nsis/*"
-          - platform: macos
+            bundle_glob: "src-tauri/target/*/release/bundle/nsis/*"
+            target: x86_64-pc-windows-msvc
+          - platform: macos-intel
+            os: macos-13
+            bundle_glob: "src-tauri/target/*/release/bundle/{dmg,macos}/*"
+            target: x86_64-apple-darwin
+          - platform: macos-arm
             os: macos-latest
-            # Upload both the .dmg and the .app.tar.gz updater artifact
-            bundle_glob: "src-tauri/target/release/bundle/{dmg,macos}/*"
+            bundle_glob: "src-tauri/target/*/release/bundle/{dmg,macos}/*"
+            target: aarch64-apple-darwin
           - platform: linux
-            os: ubuntu-latest
-            # AppImage is self-contained and what the updater uses on Linux
-            bundle_glob: "src-tauri/target/release/bundle/{appimage,deb}/*"
+            os: ubuntu-22.04
+            bundle_glob: "src-tauri/target/*/release/bundle/{appimage,deb}/*"
+            target: x86_64-unknown-linux-gnu
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -56,11 +57,17 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: sccache
+        uses: mozilla-actions/sccache-action@v0.0.6
 
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
           key: release-${{ matrix.platform }}
+          cache-all-crates: true
 
       - name: Install Linux bundle deps
         if: matrix.platform == 'linux'
@@ -71,7 +78,20 @@ jobs:
             libappindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libasound2-dev
+            libasound2-dev \
+            cmake \
+            clang \
+            libclang-dev
+
+      - name: Install macOS build deps
+        if: startsWith(matrix.platform, 'macos')
+        run: brew install cmake
+
+      - name: Install LLVM (Windows)
+        if: matrix.platform == 'windows'
+        run: |
+          choco install llvm --yes --no-progress
+          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
@@ -81,11 +101,15 @@ jobs:
 
       - name: Build Tauri bundle
         env:
-          # Optional: set these repo secrets to produce signed updater
-          # artifacts. If absent, Tauri still builds unsigned installers.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: pnpm tauri build
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm tauri build --target ${{ matrix.target }} -- --features full
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
@@ -94,11 +118,57 @@ jobs:
           path: ${{ matrix.bundle_glob }}
           if-no-files-found: warn
 
-      # If this was triggered by a version tag, attach binaries to a draft
-      # GitHub release so you get a permanent download link.
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           draft: true
           files: ${{ matrix.bundle_glob }}
+
+  updater-manifest:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download platform bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: bundles
+
+      - name: Build latest.json
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          win=$(find bundles/komorebi-windows -name '*-setup.nsis.zip' | head -n1 || true)
+          mac_x=$(find bundles/komorebi-macos-intel -name '*.app.tar.gz' | head -n1 || true)
+          mac_a=$(find bundles/komorebi-macos-arm -name '*.app.tar.gz' | head -n1 || true)
+          lin=$(find bundles/komorebi-linux -name '*.AppImage.tar.gz' | head -n1 || true)
+          version="${TAG#v}"
+          base="https://github.com/${REPO}/releases/download/${TAG}"
+          sig() { [ -n "${1:-}" ] && [ -f "${1}.sig" ] && cat "${1}.sig" || echo ""; }
+          url() { [ -n "${1:-}" ] && echo "${base}/$(basename "$1")" || echo ""; }
+
+          cat > latest.json <<EOF
+          {
+            "version": "${version}",
+            "notes": "See release notes on GitHub.",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "windows-x86_64": { "signature": "$(sig "$win")",   "url": "$(url "$win")" },
+              "darwin-x86_64":  { "signature": "$(sig "$mac_x")", "url": "$(url "$mac_x")" },
+              "darwin-aarch64": { "signature": "$(sig "$mac_a")", "url": "$(url "$mac_a")" },
+              "linux-x86_64":   { "signature": "$(sig "$lin")",   "url": "$(url "$lin")" }
+            }
+          }
+          EOF
+          cat latest.json
+
+      - name: Attach latest.json to release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: latest.json

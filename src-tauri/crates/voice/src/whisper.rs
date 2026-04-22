@@ -30,15 +30,16 @@ pub(super) fn transcribe_impl(model_path: &Path, samples: &[f32]) -> Result<Stri
         .full(params, samples)
         .map_err(|e| SttError::Whisper(format!("inference: {e}")))?;
 
-    let num_segments = state
-        .full_n_segments()
-        .map_err(|e| SttError::Whisper(format!("segments: {e}")))?;
+    let num_segments = state.full_n_segments();
     let mut out = String::new();
     for i in 0..num_segments {
         let seg = state
-            .full_get_segment_text(i)
+            .get_segment(i)
+            .ok_or_else(|| SttError::Whisper(format!("segment {i} missing")))?;
+        let text = seg
+            .to_str()
             .map_err(|e| SttError::Whisper(format!("segment {i}: {e}")))?;
-        out.push_str(&seg);
+        out.push_str(text);
     }
     Ok(out.trim().to_string())
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { avatarState, AvatarState } from "../avatarState";
 import { Emotion } from "../emotion";
 import { lipSync } from "../lipsync";
@@ -180,48 +181,162 @@ export default function Live2DCanvas({
           };
         }).internalModel?.coreModel;
 
+        // Parameter naming differs between Cubism 2 and Cubism 4 models:
+        //   Cubism 4 → "ParamMouthOpenY", "ParamAngleX", …
+        //   Cubism 2 → "PARAM_MOUTH_OPEN_Y", "PARAM_ANGLE_X", …
+        // We try the runtime-specific name first and fall back to the other
+        // naming convention transparently, so one code path drives both.
+        const P = runtime === "cubism4"
+          ? {
+              mouth: "ParamMouthOpenY",
+              angleX: "ParamAngleX",
+              angleY: "ParamAngleY",
+              bodyX: "ParamBodyAngleX",
+              breath: "ParamBreath",
+              eyeLOpen: "ParamEyeLOpen",
+              eyeROpen: "ParamEyeROpen",
+              eyeBallX: "ParamEyeBallX",
+              eyeBallY: "ParamEyeBallY",
+            }
+          : {
+              mouth: "PARAM_MOUTH_OPEN_Y",
+              angleX: "PARAM_ANGLE_X",
+              angleY: "PARAM_ANGLE_Y",
+              bodyX: "PARAM_BODY_ANGLE_X",
+              breath: "PARAM_BREATH",
+              eyeLOpen: "PARAM_EYE_L_OPEN",
+              eyeROpen: "PARAM_EYE_R_OPEN",
+              eyeBallX: "PARAM_EYE_BALL_X",
+              eyeBallY: "PARAM_EYE_BALL_Y",
+            };
+
         // Idle body sway: gentle sinusoidal drift on head/body params.
         // Keeps the character visibly alive when no motion is playing.
         const bornAt = performance.now();
 
+        // Track mouse for natural eye-tracking (within canvas bounds).
+        let eyeX = 0;
+        let eyeY = 0;
+        const container = containerRef.current;
+        const onMove = (e: PointerEvent) => {
+          if (!container) return;
+          const r = container.getBoundingClientRect();
+          eyeX = Math.max(-1, Math.min(1, ((e.clientX - r.left) / r.width) * 2 - 1));
+          eyeY = Math.max(-1, Math.min(1, ((e.clientY - r.top) / r.height) * 2 - 1));
+        };
+        window.addEventListener("pointermove", onMove);
+
+        // Blink on a stochastic schedule, like a human.
+        let nextBlinkAt = performance.now() + 2000 + Math.random() * 3000;
+        let blinkStart = 0;
+        const BLINK_MS = 140;
+
         const applyMouth = () => {
-          const t = (performance.now() - bornAt) / 1000;
-          if (coreModel?.setParameterValueById) {
-            try {
-              coreModel.setParameterValueById("ParamMouthOpenY", mouth);
-            } catch {
-              /* model may not have this parameter */
+          const now = performance.now();
+          const t = (now - bornAt) / 1000;
+          if (!coreModel?.setParameterValueById) return;
+          // Mouth from envelope; exaggerate a bit so small RMS still visible.
+          trySet(coreModel, P.mouth, Math.min(1, mouth * 1.2));
+          // Idle sway.
+          trySet(coreModel, P.angleX, Math.sin(t * 0.6) * 10 + eyeX * 12);
+          trySet(coreModel, P.angleY, Math.sin(t * 0.4) * 5 + eyeY * -8);
+          trySet(coreModel, P.bodyX, Math.sin(t * 0.3) * 3);
+          trySet(coreModel, P.breath, 0.5 + Math.sin(t * 1.2) * 0.5);
+          trySet(coreModel, P.eyeBallX, eyeX);
+          trySet(coreModel, P.eyeBallY, -eyeY);
+          // Blink.
+          if (blinkStart === 0 && now >= nextBlinkAt) {
+            blinkStart = now;
+          }
+          if (blinkStart > 0) {
+            const dt = now - blinkStart;
+            if (dt < BLINK_MS) {
+              // Simple triangular envelope: closed at the midpoint.
+              const k = 1 - Math.abs(dt - BLINK_MS / 2) / (BLINK_MS / 2);
+              const open = 1 - k;
+              trySet(coreModel, P.eyeLOpen, open);
+              trySet(coreModel, P.eyeROpen, open);
+            } else {
+              blinkStart = 0;
+              nextBlinkAt = now + 2500 + Math.random() * 4000;
+              trySet(coreModel, P.eyeLOpen, 1);
+              trySet(coreModel, P.eyeROpen, 1);
             }
-            // Best-effort idle sway — all parameters are optional; each is
-            // wrapped in its own try/catch because some models lack them.
-            trySet(coreModel, "ParamAngleX", Math.sin(t * 0.6) * 6);
-            trySet(coreModel, "ParamAngleY", Math.sin(t * 0.4) * 3);
-            trySet(coreModel, "ParamBodyAngleX", Math.sin(t * 0.3) * 3);
-            trySet(coreModel, "ParamBreath", 0.5 + Math.sin(t * 1.2) * 0.5);
           }
         };
         app.ticker.add(applyMouth);
 
         // Drive Live2D expressions and occasional motions from avatar state.
-        // Expression and motion names are best-effort; we silently ignore
-        // models that don't define them.
+        // For Cubism 2 models expressions usually don't exist, so we also
+        // map emotions to motion groups as a fallback.
         let lastEmotion: Emotion = "neutral";
         let lastMode: AvatarState["mode"] = "idle";
         const unsubState = avatarState.subscribe((s) => {
           if (s.emotion !== lastEmotion) {
             lastEmotion = s.emotion;
             tryExpression(model, EXPRESSION_MAP[s.emotion]);
+            const emotionMotion = EMOTION_MOTION_MAP[s.emotion];
+            if (emotionMotion) tryMotionAny(model, emotionMotion);
           }
           if (s.mode !== lastMode) {
             lastMode = s.mode;
             const motion = MOTION_MAP[s.mode];
-            if (motion) tryMotion(model, motion);
+            if (motion) tryMotionAny(model, [motion]);
           }
         });
+
+        // Click-to-interact: tap on the avatar → play a random body/head
+        // motion AND have her say a random reaction line. We allow the
+        // event to bubble so AvatarStage's window drag handler still fires
+        // — if the user drags, AvatarStage will move the window; if they
+        // just click (pointerup within a short distance), we treat it as
+        // a tap and trigger the reaction.
+        const canvas = app.view as HTMLCanvasElement;
+        canvas.style.pointerEvents = "auto";
+        canvas.style.cursor = "grab";
+        let pressX = 0;
+        let pressY = 0;
+        let pressAt = 0;
+        const onPointerDown = (e: PointerEvent) => {
+          if (e.button !== 0) return;
+          pressX = e.clientX;
+          pressY = e.clientY;
+          pressAt = performance.now();
+        };
+        const onPointerUp = (e: PointerEvent) => {
+          if (e.button !== 0 || pressAt === 0) return;
+          const dx = e.clientX - pressX;
+          const dy = e.clientY - pressY;
+          const dt = performance.now() - pressAt;
+          pressAt = 0;
+          // Drag threshold: if the pointer moved more than ~6 px or was
+          // held longer than 350 ms, treat it as a drag (AvatarStage is
+          // doing its thing) and don't fire a tap.
+          if (Math.hypot(dx, dy) > 6 || dt > 350) return;
+          const r = canvas.getBoundingClientRect();
+          const ny = (e.clientY - r.top) / r.height;
+          const zone = ny < 0.33 ? "head" : "body";
+          const groups = zone === "head"
+            ? ["tap_head", "TapHead", "tap_body", "TapBody"]
+            : ["tap_body", "TapBody", "tap", "Tap"];
+          tryMotionAny(model, groups);
+          // Fire-and-forget reaction line through whichever TTS provider
+          // is active. Silent when TTS is disabled.
+          invoke("speak_reaction", { zone }).catch(() => {});
+        };
+        canvas.addEventListener("pointerdown", onPointerDown);
+        canvas.addEventListener("pointerup", onPointerUp);
 
         cleanup = () => {
           unsubscribe();
           unsubState();
+          window.removeEventListener("pointermove", onMove);
+          try {
+            canvas.removeEventListener("pointerdown", onPointerDown);
+            canvas.removeEventListener("pointerup", onPointerUp);
+          } catch {
+            /* ignore */
+          }
           try {
             app.ticker.remove(applyMouth);
           } catch {
@@ -254,6 +369,9 @@ export default function Live2DCanvas({
       style={{
         width,
         height,
+        // The canvas inside enables pointer-events itself so clicks on
+        // the avatar are captured. Clicks on transparent areas bubble
+        // up to AvatarStage for window dragging.
         pointerEvents: "none",
       }}
     />
@@ -287,9 +405,36 @@ const MOTION_MAP: Record<AvatarState["mode"], string | null> = {
   speaking: "Speaking",
 };
 
+/**
+ * Emotion → list of candidate motion group names. We try them in order
+ * and play the first one the model actually defines. This lets Cubism 2
+ * models (no expression files) still show emotion via motions.
+ */
+const EMOTION_MOTION_MAP: Record<Emotion, string[]> = {
+  neutral: [],
+  happy: ["Happy", "happy", "tap_body", "TapBody"],
+  sad: ["Sad", "sad"],
+  angry: ["Angry", "angry"],
+  surprised: ["Surprised", "surprised", "tap_head", "TapHead"],
+  thinking: ["Thinking", "thinking"],
+};
+
 interface ExpressiveModel {
   expression?: (name: string) => unknown;
   motion?: (group: string, index?: number, priority?: number) => unknown;
+  internalModel?: {
+    motionManager?: {
+      definitions?: unknown;
+      motionGroups?: unknown;
+      settings?: unknown;
+    };
+  };
+}
+
+function tryMotionAny(model: unknown, groups: string[]) {
+  for (const g of groups) {
+    if (tryMotion(model, g)) return;
+  }
 }
 
 function tryExpression(model: unknown, name: string) {
@@ -302,15 +447,23 @@ function tryExpression(model: unknown, name: string) {
   }
 }
 
-function tryMotion(model: unknown, group: string) {
+function tryMotion(model: unknown, group: string): boolean {
   const m = model as ExpressiveModel;
-  if (typeof m.motion !== "function") return;
+  if (typeof m.motion !== "function") return false;
   try {
     // Priority 2 = NORMAL in pixi-live2d-display; lets idle interrupt nothing
     // but intentional mode motions interrupt idle.
-    m.motion(group, undefined, 2);
+    const result = m.motion(group, undefined, 2);
+    // pixi-live2d-display returns a Promise<boolean> that resolves false
+    // when the motion group is missing. We fire-and-forget but return
+    // true for the sync path so the caller can at least try others on throw.
+    if (result && typeof (result as Promise<unknown>).then === "function") {
+      return true;
+    }
+    return !!result;
   } catch {
     /* no such motion group — ignore */
+    return false;
   }
 }
 

@@ -5,6 +5,7 @@ import InputField from "./components/InputField";
 import ModelWizard from "./components/ModelWizard";
 import SettingsPanel from "./components/SettingsPanel";
 import { listen } from "@tauri-apps/api/event";
+import { exit as tauriExit } from "@tauri-apps/plugin-process";
 import { avatarState } from "./avatarState";
 import { lipSync } from "./lipsync";
 import { ListenController } from "./listen";
@@ -23,10 +24,11 @@ import {
 type Route = "local" | "cloud" | "skill";
 
 export default function App() {
-  const [inputOpen, setInputOpen] = useState(false);
+  const [inputOpen, setInputOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [bubbleText, setBubbleText] = useState<string | null>(null);
+  const [userEcho, setUserEcho] = useState<string | null>(null);
   const [thinking, setThinking] = useState(false);
   const [route, setRoute] = useState<Route | null>(null);
   const [settings, setSettings] = useState<PublicSettings | null>(null);
@@ -61,9 +63,34 @@ export default function App() {
     };
   }, []);
 
+  // Apply output-device preference: browsers identify outputs by deviceId
+  // (MediaDevices), not cpal's device name. Resolve by matching the label.
+  useEffect(() => {
+    const want = settings?.audio_output_device;
+    if (!want) {
+      lipSync.setSinkId(null);
+      return;
+    }
+    navigator.mediaDevices
+      ?.enumerateDevices()
+      .then((devs) => {
+        const match = devs.find(
+          (d) => d.kind === "audiooutput" && d.label === want,
+        );
+        lipSync.setSinkId(match?.deviceId ?? null);
+      })
+      .catch(() => {});
+  }, [settings?.audio_output_device]);
+
+  // Apply TTS volume from settings to the shared lip-sync audio element.
+  useEffect(() => {
+    lipSync.setVolume(settings?.tts_volume ?? 1);
+  }, [settings?.tts_volume]);
+
   // Backend-synthesized TTS audio: play via Web Audio + drive Live2D mouth.
   useEffect(() => {
     const p = listen<string>("tts:play", (evt) => {
+      console.log("[tts:play] event received:", typeof evt.payload, evt.payload?.slice?.(0, 80));
       lipSync.play(evt.payload).catch((e) => {
         console.warn("[tts] playback failed:", e);
       });
@@ -72,6 +99,16 @@ export default function App() {
       p.then((fn) => fn());
     };
   }, []);
+
+  // Auto-listen: when enabled, keep the continuous-listen switch on so the
+  // assistant can hear the next prompt without a mic click. The existing
+  // ListenController already handles VAD + re-arming between utterances.
+  useEffect(() => {
+    if (settings?.auto_listen && !settings?.listen_enabled) {
+      setListenEnabled(true).catch(() => {});
+      refreshSettings();
+    }
+  }, [settings?.auto_listen, settings?.listen_enabled, refreshSettings]);
 
   // Continuous-listen controller: lazily created, attached to live settings
   // through a ref callback so wake-word changes propagate without restart.
@@ -136,6 +173,11 @@ export default function App() {
   // Stream chat events.
   useEffect(() => {
     const p = onChat((e: ChatEvent) => {
+      // Race-free id matching: the backend starts emitting events on a
+      // spawned task before `sendMessage` returns the id. Reserve the slot
+      // with the sentinel "pending" on submit; the first event adopts its
+      // real id.
+      if (activeIdRef.current === "pending") activeIdRef.current = e.id;
       if (e.id !== activeIdRef.current) return;
       switch (e.kind) {
         case "started":
@@ -175,21 +217,24 @@ export default function App() {
     if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current);
     bubbleTimer.current = window.setTimeout(() => {
       setBubbleText(null);
+      setUserEcho(null);
       setRoute(null);
     }, ms);
   };
 
   const handleSubmit = async (text: string) => {
     if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current);
-    setInputOpen(false);
     setBubbleText("");
+    setUserEcho(text);
     setThinking(true);
     setRoute(null);
     avatarState.setThinking();
+    activeIdRef.current = "pending";
     try {
       const id = await sendMessage(text);
-      activeIdRef.current = id;
+      if (activeIdRef.current === "pending") activeIdRef.current = id;
     } catch (err) {
+      activeIdRef.current = null;
       setThinking(false);
       avatarState.onDone(500);
       setBubbleText(`⚠ ${String(err)}`);
@@ -204,6 +249,7 @@ export default function App() {
     lipSync.stop();
     avatarState.reset();
     setBubbleText(null);
+    setUserEcho(null);
     setRoute(null);
     setThinking(false);
   };
@@ -211,9 +257,9 @@ export default function App() {
   return (
     <>
       <AvatarStage modelUrl={settings?.live2d_model_url ?? null} />
-      <ChatBubble text={bubbleText} route={route} thinking={thinking} />
+      <ChatBubble text={bubbleText} route={route} thinking={thinking} userEcho={userEcho} />
       <InputField
-        open={inputOpen}
+        open={inputOpen && !settingsOpen && !wizardOpen}
         onClose={() => setInputOpen(false)}
         onSubmit={handleSubmit}
         sttEnabled={Boolean(
@@ -250,6 +296,7 @@ export default function App() {
           setWizardOpen((v) => !v);
         }}
         onReset={handleReset}
+        onQuit={() => tauriExit(0)}
       />
     </>
   );
@@ -266,6 +313,7 @@ function TopBar(props: {
   onToggleSettings: () => void;
   onToggleWizard: () => void;
   onReset: () => void;
+  onQuit: () => void;
 }) {
   const listenColor = !props.listenReady
     ? "rgba(20,20,28,0.7)"
@@ -324,6 +372,13 @@ function TopBar(props: {
       </button>
       <button onClick={props.onToggleSettings} style={iconBtn} title="Settings">
         ⚙
+      </button>
+      <button
+        onClick={props.onQuit}
+        style={{ ...iconBtn, background: "rgba(226, 74, 74, 0.7)" }}
+        title="Quit Komorebi"
+      >
+        ✕
       </button>
     </div>
   );

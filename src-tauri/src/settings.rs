@@ -25,6 +25,24 @@ const KEY_LISTEN_ENABLED: &str = "listen_enabled";
 const KEY_SMART_ROUTING: &str = "smart_routing";
 const KEY_CLASSIFIER_MODEL: &str = "classifier_model";
 const KEY_RAG_ENABLED: &str = "rag_enabled";
+const KEY_AUDIO_INPUT: &str = "audio_input_device";
+const KEY_AUDIO_OUTPUT: &str = "audio_output_device";
+const KEY_GPU_LAYERS: &str = "llm_gpu_layers";
+const KEY_AUTO_LISTEN: &str = "auto_listen";
+const KEY_TTS_PROVIDER: &str = "tts_provider";
+const KEY_TTS_LENGTH_SCALE: &str = "tts_length_scale";
+const KEY_TTS_NOISE_SCALE: &str = "tts_noise_scale";
+const KEY_TTS_NOISE_W: &str = "tts_noise_w";
+const KEY_TTS_VOLUME: &str = "tts_volume";
+const KEY_SOVITS_ENDPOINT: &str = "sovits_endpoint";
+const KEY_SOVITS_REF_AUDIO: &str = "sovits_ref_audio";
+const KEY_SOVITS_PROMPT_TEXT: &str = "sovits_prompt_text";
+const KEY_SOVITS_PROMPT_LANG: &str = "sovits_prompt_lang";
+const KEY_SOVITS_TEXT_LANG: &str = "sovits_text_lang";
+const KEY_SOVITS_SPEED: &str = "sovits_speed";
+const KEY_AGENT_WORKSPACE: &str = "agent_workspace";
+const KEY_PROACTIVE_ENABLED: &str = "proactive_enabled";
+const KEY_DESKTOP_AUTOMATION: &str = "desktop_automation_enabled";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicSettings {
@@ -43,6 +61,24 @@ pub struct PublicSettings {
     pub smart_routing: bool,
     pub classifier_model: String,
     pub rag_enabled: bool,
+    pub audio_input_device: Option<String>,
+    pub audio_output_device: Option<String>,
+    pub llm_gpu_layers: Option<i64>,
+    pub auto_listen: bool,
+    pub tts_provider: String,
+    pub tts_length_scale: Option<f64>,
+    pub tts_noise_scale: Option<f64>,
+    pub tts_noise_w: Option<f64>,
+    pub tts_volume: f64,
+    pub sovits_endpoint: Option<String>,
+    pub sovits_ref_audio: Option<String>,
+    pub sovits_prompt_text: Option<String>,
+    pub sovits_prompt_lang: String,
+    pub sovits_text_lang: String,
+    pub sovits_speed: f64,
+    pub agent_workspace: Option<String>,
+    pub proactive_enabled: bool,
+    pub desktop_automation_enabled: bool,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -66,6 +102,18 @@ pub fn set_openrouter_key<R: Runtime>(app: &AppHandle<R>, key: &str) -> Result<(
 pub fn get_openrouter_model(app: &AppHandle<Wry>) -> String {
     read_string(app, KEY_OPENROUTER_MODEL)
         .unwrap_or_else(|| komorebi_cloud::DEFAULT_MODEL.to_string())
+}
+
+pub fn set_openrouter_model<R: Runtime>(app: &AppHandle<R>, model: &str) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    let trimmed = model.trim();
+    if trimmed.is_empty() {
+        store.delete(KEY_OPENROUTER_MODEL);
+    } else {
+        store.set(KEY_OPENROUTER_MODEL, trimmed.to_string());
+    }
+    store.save()?;
+    Ok(())
 }
 
 pub fn get_mode(app: &AppHandle<Wry>) -> komorebi_router::Mode {
@@ -129,7 +177,75 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         smart_routing: get_smart_routing(app),
         classifier_model: get_classifier_model(app),
         rag_enabled: get_rag_enabled(app),
+        audio_input_device: read_string(app, KEY_AUDIO_INPUT),
+        audio_output_device: read_string(app, KEY_AUDIO_OUTPUT),
+        llm_gpu_layers: get_gpu_layers(app),
+        auto_listen: get_auto_listen(app),
+        tts_provider: get_tts_provider(app),
+        tts_length_scale: get_f64(app, KEY_TTS_LENGTH_SCALE),
+        tts_noise_scale: get_f64(app, KEY_TTS_NOISE_SCALE),
+        tts_noise_w: get_f64(app, KEY_TTS_NOISE_W),
+        tts_volume: get_f64(app, KEY_TTS_VOLUME).unwrap_or(1.0),
+        sovits_endpoint: read_string(app, KEY_SOVITS_ENDPOINT),
+        sovits_ref_audio: read_string(app, KEY_SOVITS_REF_AUDIO),
+        sovits_prompt_text: read_string(app, KEY_SOVITS_PROMPT_TEXT),
+        sovits_prompt_lang: read_string(app, KEY_SOVITS_PROMPT_LANG).unwrap_or_else(|| "ja".into()),
+        sovits_text_lang: read_string(app, KEY_SOVITS_TEXT_LANG).unwrap_or_else(|| "auto".into()),
+        sovits_speed: get_f64(app, KEY_SOVITS_SPEED).unwrap_or(1.0),
+        agent_workspace: read_string(app, KEY_AGENT_WORKSPACE),
+        proactive_enabled: get_bool(app, KEY_PROACTIVE_ENABLED, false),
+        desktop_automation_enabled: get_bool(app, KEY_DESKTOP_AUTOMATION, false),
     }
+}
+
+pub fn get_audio_input(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_AUDIO_INPUT)
+}
+
+pub fn set_audio_input<R: Runtime>(app: &AppHandle<R>, name: &str) -> Result<()> {
+    write_optional_string(app, KEY_AUDIO_INPUT, name)
+}
+
+pub fn set_audio_output<R: Runtime>(app: &AppHandle<R>, name: &str) -> Result<()> {
+    write_optional_string(app, KEY_AUDIO_OUTPUT, name)
+}
+
+/// `None` means "auto" (use GPU if available, otherwise CPU). `Some(0)`
+/// forces CPU; `Some(n > 0)` offloads n layers to GPU; `Some(-1)` offloads
+/// everything. Only meaningful when the `local-llm` feature is compiled
+/// with a GPU backend (CUDA / Vulkan).
+pub fn get_gpu_layers(app: &AppHandle<Wry>) -> Option<i64> {
+    app.store(STORE_FILE)
+        .ok()
+        .and_then(|s| s.get(KEY_GPU_LAYERS))
+        .and_then(|v| v.as_i64())
+}
+
+pub fn set_gpu_layers<R: Runtime>(app: &AppHandle<R>, layers: Option<i64>) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    match layers {
+        Some(n) => store.set(KEY_GPU_LAYERS, serde_json::Value::from(n)),
+        None => {
+            store.delete(KEY_GPU_LAYERS);
+        }
+    }
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_auto_listen(app: &AppHandle<Wry>) -> bool {
+    app.store(STORE_FILE)
+        .ok()
+        .and_then(|s| s.get(KEY_AUTO_LISTEN))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+pub fn set_auto_listen<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_AUTO_LISTEN, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
 }
 
 pub fn get_whisper_model_path(app: &AppHandle<Wry>) -> Option<String> {
@@ -247,4 +363,141 @@ fn write_optional_string<R: Runtime>(app: &AppHandle<R>, key: &str, value: &str)
 fn read_string(app: &AppHandle<Wry>, key: &str) -> Option<String> {
     let store = app.store(STORE_FILE).ok()?;
     store.get(key).and_then(|v| v.as_str().map(str::to_string))
+}
+
+fn get_f64(app: &AppHandle<Wry>, key: &str) -> Option<f64> {
+    let store = app.store(STORE_FILE).ok()?;
+    store.get(key).and_then(|v| v.as_f64())
+}
+
+fn write_optional_f64<R: Runtime>(app: &AppHandle<R>, key: &str, value: Option<f64>) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    match value {
+        Some(n) if n.is_finite() => store.set(key, serde_json::Value::from(n)),
+        _ => {
+            store.delete(key);
+        }
+    }
+    store.save()?;
+    Ok(())
+}
+
+// --- TTS provider selection & prosody -------------------------------------
+
+pub fn get_tts_provider(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_TTS_PROVIDER).unwrap_or_else(|| "piper".into())
+}
+
+pub fn set_tts_provider<R: Runtime>(app: &AppHandle<R>, provider: &str) -> Result<()> {
+    // Sanity: only allow known providers.
+    let p = match provider {
+        "piper" | "sovits" => provider,
+        _ => "piper",
+    };
+    write_optional_string(app, KEY_TTS_PROVIDER, p)
+}
+
+pub fn get_tts_length_scale(app: &AppHandle<Wry>) -> Option<f64> {
+    get_f64(app, KEY_TTS_LENGTH_SCALE)
+}
+pub fn set_tts_length_scale<R: Runtime>(app: &AppHandle<R>, v: Option<f64>) -> Result<()> {
+    write_optional_f64(app, KEY_TTS_LENGTH_SCALE, v)
+}
+
+pub fn get_tts_noise_scale(app: &AppHandle<Wry>) -> Option<f64> {
+    get_f64(app, KEY_TTS_NOISE_SCALE)
+}
+pub fn set_tts_noise_scale<R: Runtime>(app: &AppHandle<R>, v: Option<f64>) -> Result<()> {
+    write_optional_f64(app, KEY_TTS_NOISE_SCALE, v)
+}
+
+pub fn get_tts_noise_w(app: &AppHandle<Wry>) -> Option<f64> {
+    get_f64(app, KEY_TTS_NOISE_W)
+}
+pub fn set_tts_noise_w<R: Runtime>(app: &AppHandle<R>, v: Option<f64>) -> Result<()> {
+    write_optional_f64(app, KEY_TTS_NOISE_W, v)
+}
+
+pub fn set_tts_volume<R: Runtime>(app: &AppHandle<R>, v: f64) -> Result<()> {
+    let clamped = v.max(0.0).min(2.0);
+    write_optional_f64(app, KEY_TTS_VOLUME, Some(clamped))
+}
+
+// --- SoVITS settings ------------------------------------------------------
+
+pub fn get_sovits_config(app: &AppHandle<Wry>) -> Option<komorebi_voice::sovits::SoVitsConfig> {
+    let endpoint = read_string(app, KEY_SOVITS_ENDPOINT)?;
+    if endpoint.trim().is_empty() {
+        return None;
+    }
+    let ref_audio = read_string(app, KEY_SOVITS_REF_AUDIO).unwrap_or_default();
+    let prompt_text = read_string(app, KEY_SOVITS_PROMPT_TEXT).unwrap_or_default();
+    let prompt_lang = read_string(app, KEY_SOVITS_PROMPT_LANG).unwrap_or_else(|| "ja".into());
+    let text_lang = read_string(app, KEY_SOVITS_TEXT_LANG).unwrap_or_else(|| "auto".into());
+    let speed = get_f64(app, KEY_SOVITS_SPEED).unwrap_or(1.0) as f32;
+    Some(komorebi_voice::sovits::SoVitsConfig {
+        endpoint,
+        ref_audio_path: ref_audio,
+        prompt_text,
+        prompt_lang,
+        text_lang,
+        speed,
+    })
+}
+
+pub fn set_sovits_endpoint<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_SOVITS_ENDPOINT, v)
+}
+pub fn set_sovits_ref_audio<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_SOVITS_REF_AUDIO, v)
+}
+pub fn set_sovits_prompt_text<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_SOVITS_PROMPT_TEXT, v)
+}
+pub fn set_sovits_prompt_lang<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_SOVITS_PROMPT_LANG, v)
+}
+pub fn set_sovits_text_lang<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_SOVITS_TEXT_LANG, v)
+}
+pub fn set_sovits_speed<R: Runtime>(app: &AppHandle<R>, v: f64) -> Result<()> {
+    let clamped = v.max(0.25).min(3.0);
+    write_optional_f64(app, KEY_SOVITS_SPEED, Some(clamped))
+}
+
+// --- Agent / automation ---------------------------------------------------
+
+fn get_bool(app: &AppHandle<Wry>, key: &str, default: bool) -> bool {
+    app.store(STORE_FILE)
+        .ok()
+        .and_then(|s| s.get(key))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(default)
+}
+
+pub fn get_agent_workspace(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_AGENT_WORKSPACE)
+}
+pub fn set_agent_workspace<R: Runtime>(app: &AppHandle<R>, path: &str) -> Result<()> {
+    write_optional_string(app, KEY_AGENT_WORKSPACE, path)
+}
+
+pub fn get_proactive_enabled(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_PROACTIVE_ENABLED, false)
+}
+pub fn set_proactive_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_PROACTIVE_ENABLED, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_desktop_automation_enabled(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_DESKTOP_AUTOMATION, false)
+}
+pub fn set_desktop_automation_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_DESKTOP_AUTOMATION, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
 }

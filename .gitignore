@@ -11,6 +11,8 @@ dist/
 target/
 src-tauri/target/
 src-tauri/gen/
+src-tauri/cargo_output.txt
+src-tauri/.cargo/
 
 # Models (downloaded on first run, never committed)
 models/
@@ -25,6 +27,10 @@ src-tauri/binaries/
 .env
 .env.local
 .env.*.local
+# Tauri updater signing keys — never commit these
+*.key
+*.key.pub
+~/
 
 # OS
 .DS_Store

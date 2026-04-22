@@ -4,10 +4,11 @@ interface Props {
   text: string | null;
   route?: "local" | "cloud" | "skill" | null;
   thinking?: boolean;
+  userEcho?: string | null;
 }
 
-export default function ChatBubble({ text, route, thinking }: Props) {
-  const show = !!text || !!thinking;
+export default function ChatBubble({ text, route, thinking, userEcho }: Props) {
+  const show = !!text || !!thinking || !!userEcho;
   return (
     <AnimatePresence>
       {show && (
@@ -23,19 +24,19 @@ export default function ChatBubble({ text, route, thinking }: Props) {
             top: 44,
             left: 12,
             right: 12,
-            maxWidth: "calc(100% - 24px)",
+            zIndex: 10,
             padding: "10px 14px",
             borderRadius: 14,
-            background: "rgba(20, 20, 28, 0.82)",
+            background: "rgba(20, 20, 28, 0.88)",
             color: "#fff",
             fontSize: 14,
             lineHeight: 1.4,
             backdropFilter: "blur(10px)",
             WebkitBackdropFilter: "blur(10px)",
-            boxShadow: "0 6px 24px rgba(0,0,0,0.35)",
-            border: "1px solid rgba(255,255,255,0.08)",
+            boxShadow: "0 6px 24px rgba(0,0,0,0.45)",
+            border: "1px solid rgba(255,255,255,0.1)",
             whiteSpace: "pre-wrap",
-            maxHeight: "40vh",
+            maxHeight: "45vh",
             overflowY: "auto",
           }}
         >
@@ -50,6 +51,22 @@ export default function ChatBubble({ text, route, thinking }: Props) {
               }}
             >
               {route}
+            </div>
+          )}
+          {userEcho && (
+            <div
+              style={{
+                fontSize: 12,
+                opacity: 0.85,
+                padding: "4px 8px",
+                borderRadius: 8,
+                background: "rgba(179,157,219,0.18)",
+                border: "1px solid rgba(179,157,219,0.3)",
+                marginBottom: text || thinking ? 8 : 0,
+              }}
+            >
+              <span style={{ opacity: 0.6, marginRight: 4 }}>You:</span>
+              {userEcho}
             </div>
           )}
           {thinking && !text ? <span style={{ opacity: 0.7 }}>…</span> : text}

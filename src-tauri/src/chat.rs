@@ -173,8 +173,14 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
 
     let messages: Vec<ChatMessage> = {
         let hist = service.history.lock().await;
-        let mut m = Vec::with_capacity(hist.len() + 2);
+        let mut m = Vec::with_capacity(hist.len() + 3);
         m.push(system_prompt());
+        // Always include a fresh machine/time context so the LLM can
+        // answer simple environment questions ("what time is it", "how
+        // much RAM do I have") without a dedicated skill.
+        if !matches!(route, Route::Skill) {
+            m.push(ChatMessage::system(crate::sysctx::render_context_message()));
+        }
         // RAG: retrieve top-k chunks for the current user prompt and
         // prepend them as an additional system message. Only runs for
         // Local/Cloud routes — skills don't use the LLM.
@@ -231,24 +237,80 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
     Ok(())
 }
 
-/// Fire-and-forget TTS: if a PiperTts handle is configured, synthesize the
+/// Fire-and-forget TTS: if a TTS provider is configured, synthesize the
 /// reply and emit it to the frontend for playback + Live2D lip-sync.
 /// Any error is logged but never surfaced to the UI.
 async fn maybe_speak(app: &AppHandle<Wry>, text: String) {
-    let Some(tts) = app.try_state::<komorebi_voice::tts::PiperTts>() else {
-        return;
-    };
-    if !tts.is_configured().await {
+    let clean = sanitize_for_tts(&text);
+    if clean.trim().is_empty() {
         return;
     }
-    let tts = tts.inner().clone();
+    tracing::info!(
+        raw_len = text.len(),
+        clean_len = clean.len(),
+        preview = %clean.chars().take(120).collect::<String>(),
+        "tts input"
+    );
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        match tts.synthesize(&text).await {
-            Ok(wav) => crate::commands::emit_tts_wav(&app, &wav),
-            Err(e) => tracing::warn!(?e, "tts synthesis failed"),
+        match crate::commands::synthesize_via_provider(&app, &clean).await {
+            Ok(Some(wav)) => crate::commands::emit_tts_wav(&app, &wav),
+            Ok(None) => {}
+            Err(e) => tracing::warn!(%e, "tts synthesis failed"),
         }
     });
+}
+
+/// Strip markdown/code fences and other symbols Piper mispronounces as
+/// clicks, buzzes, or garbled phonemes. Keeps letters, digits, basic
+/// punctuation, and common Unicode letters (Cyrillic, etc.).
+fn sanitize_for_tts(text: &str) -> String {
+    // Remove fenced code blocks entirely.
+    let mut out = String::with_capacity(text.len());
+    let mut in_fence = false;
+    for line in text.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    // Strip inline markdown markers and URL/path noise.
+    let mut buf = String::with_capacity(out.len());
+    let mut prev_space = true;
+    for ch in out.chars() {
+        let keep = match ch {
+            // Preserve sentence structure.
+            '.' | ',' | '!' | '?' | ':' | ';' | '\'' | '"' | '-' | '\n' | ' ' => true,
+            // Remove markdown noise / code symbols that Piper pronounces as
+            // static ("asterisk", "hash", "underscore", backtick clicks).
+            '*' | '#' | '`' | '_' | '~' | '[' | ']' | '(' | ')' | '{' | '}' | '<' | '>'
+            | '|' | '\\' | '/' | '=' | '+' => false,
+            c if c.is_alphanumeric() => true,
+            _ => false,
+        };
+        if keep {
+            if ch.is_whitespace() {
+                if !prev_space {
+                    buf.push(' ');
+                    prev_space = true;
+                }
+            } else {
+                buf.push(ch);
+                prev_space = false;
+            }
+        } else if !prev_space {
+            // Collapse a removed symbol into a single space to keep word
+            // boundaries, e.g. "foo*bar*baz" → "foo bar baz".
+            buf.push(' ');
+            prev_space = true;
+        }
+    }
+    buf.trim().to_string()
 }
 
 async fn stream_cloud(
@@ -301,6 +363,9 @@ async fn stream_local(
     let mut cfg = LlmConfig::default();
     if let Some(p) = settings::get_local_model_path(app) {
         cfg.model_path = Some(std::path::PathBuf::from(p));
+    }
+    if let Some(n) = settings::get_gpu_layers(app) {
+        cfg.n_gpu_layers = Some(n as i32);
     }
     let engine = default_engine(cfg);
     match engine.stream_chat(messages).await {

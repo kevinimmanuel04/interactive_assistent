@@ -32,6 +32,7 @@ pub fn send_message(app: AppHandle<Wry>, prompt: String) -> Result<String, Strin
         return Err("empty prompt".into());
     }
     let id = uuid_like();
+    crate::proactive::bump_last_interaction();
     crate::chat::spawn_generation(app, id.clone(), prompt);
     Ok(id)
 }
@@ -76,6 +77,42 @@ pub fn download_asset(app: AppHandle<Wry>, asset_id: String) -> Result<(), Strin
     Ok(())
 }
 
+/// Deletes a downloaded asset from disk and clears it from the corresponding
+/// active-model setting if that setting currently points at the deleted file.
+/// Missing files are treated as success (idempotent).
+#[tauri::command]
+pub async fn delete_asset(app: AppHandle<Wry>, asset_id: String) -> Result<(), String> {
+    let asset = models::find(&asset_id).ok_or_else(|| format!("unknown asset: {asset_id}"))?;
+    let path = models::asset_path(&app, &asset)?;
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    let path_str = path.to_string_lossy().to_string();
+    // Clear whichever active-setting pointed at this file so the UI stops
+    // pretending the model is active.
+    use crate::models::AssetKind;
+    match asset.kind {
+        AssetKind::LlmGguf => {
+            if settings::get_local_model_path(&app).as_deref() == Some(path_str.as_str()) {
+                settings::set_local_model_path(&app, "").map_err(|e| e.to_string())?;
+            }
+        }
+        AssetKind::PiperVoice => {
+            if settings::get_piper_voice(&app).as_deref() == Some(path_str.as_str()) {
+                settings::set_piper_voice(&app, "").map_err(|e| e.to_string())?;
+                reload_tts(&app).await;
+            }
+        }
+        AssetKind::WhisperGgml => {
+            if settings::get_whisper_model_path(&app).as_deref() == Some(path_str.as_str()) {
+                settings::set_whisper_model_path(&app, "").map_err(|e| e.to_string())?;
+            }
+        }
+        AssetKind::PiperConfig => { /* no active-setting; config auto-pairs with voice */ }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_local_model(app: AppHandle<Wry>, asset_id: String) -> Result<(), String> {
     let asset = models::find(&asset_id).ok_or_else(|| format!("unknown asset: {asset_id}"))?;
@@ -108,6 +145,62 @@ pub async fn set_tts_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), S
 }
 
 #[tauri::command]
+pub async fn set_tts_provider(app: AppHandle<Wry>, provider: String) -> Result<(), String> {
+    settings::set_tts_provider(&app, &provider).map_err(|e| e.to_string())?;
+    reload_tts(&app).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_tts_prosody(
+    app: AppHandle<Wry>,
+    length_scale: Option<f64>,
+    noise_scale: Option<f64>,
+    noise_w: Option<f64>,
+) -> Result<(), String> {
+    settings::set_tts_length_scale(&app, length_scale).map_err(|e| e.to_string())?;
+    settings::set_tts_noise_scale(&app, noise_scale).map_err(|e| e.to_string())?;
+    settings::set_tts_noise_w(&app, noise_w).map_err(|e| e.to_string())?;
+    reload_tts(&app).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_tts_volume(app: AppHandle<Wry>, volume: f64) -> Result<(), String> {
+    settings::set_tts_volume(&app, volume).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_sovits_config(
+    app: AppHandle<Wry>,
+    endpoint: String,
+    ref_audio: String,
+    prompt_text: String,
+    prompt_lang: String,
+    text_lang: String,
+    speed: f64,
+) -> Result<(), String> {
+    settings::set_sovits_endpoint(&app, &endpoint).map_err(|e| e.to_string())?;
+    settings::set_sovits_ref_audio(&app, &ref_audio).map_err(|e| e.to_string())?;
+    settings::set_sovits_prompt_text(&app, &prompt_text).map_err(|e| e.to_string())?;
+    settings::set_sovits_prompt_lang(&app, &prompt_lang).map_err(|e| e.to_string())?;
+    settings::set_sovits_text_lang(&app, &text_lang).map_err(|e| e.to_string())?;
+    settings::set_sovits_speed(&app, speed).map_err(|e| e.to_string())?;
+    reload_tts(&app).await;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_proactive_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
+    settings::set_proactive_enabled(&app, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_desktop_automation_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
+    settings::set_desktop_automation_enabled(&app, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn set_live2d_model(app: AppHandle<Wry>, url: String) -> Result<(), String> {
     settings::set_live2d_model_url(&app, &url).map_err(|e| e.to_string())
 }
@@ -118,8 +211,12 @@ pub fn set_whisper_model(app: AppHandle<Wry>, path: String) -> Result<(), String
 }
 
 #[tauri::command]
-pub fn start_recording(recorder: State<'_, komorebi_voice::stt::Recorder>) -> Result<(), String> {
-    recorder.start().map_err(|e| e.to_string())
+pub fn start_recording(
+    app: AppHandle<Wry>,
+    recorder: State<'_, komorebi_voice::stt::Recorder>,
+) -> Result<(), String> {
+    let device = settings::get_audio_input(&app);
+    recorder.start_with_device(device).map_err(|e| e.to_string())
 }
 
 /// Stops capture and runs Whisper transcription (blocking on a worker thread).
@@ -169,6 +266,103 @@ pub fn set_classifier_model(app: AppHandle<Wry>, model: String) -> Result<(), St
 #[tauri::command]
 pub fn set_rag_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
     settings::set_rag_enabled(&app, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_openrouter_model(app: AppHandle<Wry>, model: String) -> Result<(), String> {
+    settings::set_openrouter_model(&app, &model).map_err(|e| e.to_string())
+}
+
+/// List the available audio input & output devices so the UI can render a
+/// picker. Also returns the system defaults for each direction.
+#[tauri::command]
+pub fn list_audio_devices() -> serde_json::Value {
+    let (inputs, outputs, def_in, def_out) = komorebi_voice::stt::list_devices();
+    serde_json::json!({
+        "inputs": inputs,
+        "outputs": outputs,
+        "default_input": def_in,
+        "default_output": def_out,
+    })
+}
+
+#[tauri::command]
+pub fn set_audio_input(app: AppHandle<Wry>, name: String) -> Result<(), String> {
+    settings::set_audio_input(&app, &name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_audio_output(app: AppHandle<Wry>, name: String) -> Result<(), String> {
+    settings::set_audio_output(&app, &name).map_err(|e| e.to_string())
+}
+
+/// None = auto (CPU, or GPU if the GGML backend has a GPU runtime);
+/// Some(0) = force CPU; Some(n>0) = offload n layers to the GPU.
+#[tauri::command]
+pub fn set_llm_gpu_layers(app: AppHandle<Wry>, layers: Option<i64>) -> Result<(), String> {
+    settings::set_gpu_layers(&app, layers).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_auto_listen(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
+    settings::set_auto_listen(&app, enabled).map_err(|e| e.to_string())
+}
+
+/// Returns cached machine info so the settings page can show detected GPUs
+/// and let the user know whether local-LLM GPU offload is feasible.
+#[tauri::command]
+pub fn system_info() -> serde_json::Value {
+    let snap = crate::sysctx::snapshot();
+    serde_json::json!({
+        "os": snap.os_long,
+        "cpu": snap.cpu_brand,
+        "cpu_cores": snap.cpu_cores,
+        "ram_gb": snap.total_memory_gb,
+        "gpus": snap.gpus,
+        "has_nvidia": crate::sysctx::has_nvidia_gpu(),
+        "hostname": snap.hostname,
+    })
+}
+
+/// Fetches the OpenRouter model catalog using the configured API key so
+/// the settings page can offer a search/autocomplete picker. Returns a
+/// pruned list — only id + name + context_length + pricing — to keep the
+/// payload small.
+#[tauri::command]
+pub async fn list_openrouter_models(app: AppHandle<Wry>) -> Result<serde_json::Value, String> {
+    let key = settings::get_openrouter_key(&app)
+        .ok_or_else(|| "OpenRouter API key is not set.".to_string())?;
+    let client = reqwest::Client::builder()
+        .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get("https://openrouter.ai/api/v1/models")
+        .bearer_auth(&key)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("openrouter: {}", resp.status()));
+    }
+    let body: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    let list = body
+        .get("data")
+        .and_then(|d| d.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let pruned: Vec<_> = list
+        .into_iter()
+        .map(|m| {
+            serde_json::json!({
+                "id": m.get("id"),
+                "name": m.get("name"),
+                "context_length": m.get("context_length"),
+                "pricing": m.get("pricing"),
+            })
+        })
+        .collect();
+    Ok(serde_json::Value::Array(pruned))
 }
 
 #[tauri::command]
@@ -223,26 +417,157 @@ pub async fn rag_reindex(
 #[tauri::command]
 pub async fn speak_text(
     app: AppHandle<Wry>,
-    tts: State<'_, komorebi_voice::tts::PiperTts>,
     text: String,
 ) -> Result<(), String> {
     if text.trim().is_empty() {
         return Ok(());
     }
-    let wav = tts.synthesize(&text).await.map_err(|e| e.to_string())?;
-    emit_tts_wav(&app, &wav);
+    match synthesize_via_provider(&app, &text).await {
+        Ok(Some(wav)) => {
+            emit_tts_wav(&app, &wav);
+            Ok(())
+        }
+        Ok(None) => Err("no TTS provider configured".into()),
+        Err(e) => Err(e),
+    }
+}
+
+/// Route a text snippet through the currently selected TTS provider and
+/// return the synthesized WAV bytes. Returns Ok(None) when no provider is
+/// configured (TTS disabled or mis-configured) — callers should silently
+/// skip playback in that case.
+pub async fn synthesize_via_provider(
+    app: &AppHandle<Wry>,
+    text: &str,
+) -> Result<Option<Vec<u8>>, String> {
+    let provider = settings::get_tts_provider(app);
+    match provider.as_str() {
+        "sovits" => {
+            let Some(sovits) = app.try_state::<komorebi_voice::sovits::SoVitsTts>() else {
+                return Ok(None);
+            };
+            if !sovits.is_configured().await {
+                return Ok(None);
+            }
+            sovits
+                .synthesize(text)
+                .await
+                .map(Some)
+                .map_err(|e| e.to_string())
+        }
+        _ => {
+            let Some(tts) = app.try_state::<komorebi_voice::tts::PiperTts>() else {
+                return Ok(None);
+            };
+            if !tts.is_configured().await {
+                return Ok(None);
+            }
+            tts.synthesize(text)
+                .await
+                .map(Some)
+                .map_err(|e| e.to_string())
+        }
+    }
+}
+
+/// Canned reaction lines played when the user taps the avatar. Picks a
+/// random line (seeded by the current timestamp) localized roughly by the
+/// reference-voice language, and emits it through the active TTS provider.
+#[tauri::command]
+pub async fn speak_reaction(
+    app: AppHandle<Wry>,
+    zone: String,
+) -> Result<(), String> {
+    let lang = settings::public_snapshot(&app).sovits_text_lang;
+    let provider = settings::get_tts_provider(&app);
+    let text = pick_reaction(&zone, &lang, &provider);
+    if text.is_empty() {
+        return Ok(());
+    }
+    if let Ok(Some(wav)) = synthesize_via_provider(&app, &text).await {
+        emit_tts_wav(&app, &wav);
+    }
     Ok(())
 }
 
-/// Emit synthesized WAV audio to the frontend as a base64 data URL.
-/// The frontend plays it via Web Audio API and drives Live2D lip-sync.
+fn pick_reaction(zone: &str, lang: &str, _provider: &str) -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    // Normalize language: for Piper we pick by piper voice locale; for now
+    // trust the user's SoVITS text_lang setting for both. "auto" → English.
+    let lang_key = match lang {
+        "ja" | "jp" => "ja",
+        "ru" => "ru",
+        "zh" => "zh",
+        _ => "en",
+    };
+    let pool: &[&str] = match (zone, lang_key) {
+        ("head", "ru") => &["Эй, щекотно!", "Ты меня гладишь?", "Хе-хе, приятно.", "Не трогай волосы!"],
+        ("head", "ja") => &["ふふっ、なでなで？", "きゃっ、くすぐったい！", "もっと撫でて〜", "えへへ♪"],
+        ("head", "zh") => &["嘿嘿，好痒~", "摸摸头~", "再来一下嘛", "嗯~舒服"],
+        ("head", _) => &["Hey, that tickles!", "Are you petting me?", "Hehe, that's nice.", "Careful with the hair!"],
+        ("body", "ru") => &["Ой!", "Эй, полегче!", "Ты чего?", "Хи-хи."],
+        ("body", "ja") => &["きゃっ！", "もう〜", "どうしたの？", "ふふっ"],
+        ("body", "zh") => &["哎呀！", "干嘛啦~", "讨厌~", "嘻嘻"],
+        ("body", _) => &["Oh!", "Hey, easy!", "What are you doing?", "Hee hee."],
+        (_, "ru") => &["Да?", "Что такое?", "Я тут."],
+        (_, "ja") => &["はい？", "なに？", "ここだよ〜"],
+        (_, "zh") => &["嗯？", "怎么了？", "我在这里"],
+        _ => &["Yes?", "What's up?", "I'm here."],
+    };
+    let idx = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as usize)
+        .unwrap_or(0)
+        % pool.len();
+    pool[idx].to_string()
+}
+
+/// Emit synthesized WAV audio to the frontend.
+/// Writes the WAV to a temp file and emits the file path. The frontend
+/// reads the bytes via `read_tts_bytes` → Blob → object URL, which goes
+/// through the native media pipeline (no base64 data URL, no asset: proto).
 pub fn emit_tts_wav(app: &AppHandle<Wry>, wav: &[u8]) {
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
-    let encoded = STANDARD.encode(wav);
-    let data_url = format!("data:audio/wav;base64,{encoded}");
-    if let Err(e) = app.emit("tts:play", data_url) {
+    let dir = std::env::temp_dir().join("komorebi-tts");
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        tracing::warn!(?e, "failed to create tts temp dir");
+        return;
+    }
+    // Best-effort cleanup of older files (keep dir small).
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    let fname = format!(
+        "tts-{}.wav",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let path = dir.join(fname);
+    if let Err(e) = std::fs::write(&path, wav) {
+        tracing::warn!(?e, "failed to write tts wav");
+        return;
+    }
+    let path_str = path.to_string_lossy().to_string();
+    if let Err(e) = app.emit("tts:play", path_str) {
         tracing::warn!(?e, "failed to emit tts:play");
     }
+}
+
+/// Read raw bytes from a TTS temp file (used by the frontend to construct
+/// a Blob/object-URL for `<audio>` playback).
+#[tauri::command]
+pub async fn read_tts_bytes(path: String) -> Result<tauri::ipc::Response, String> {
+    // Only allow reading from our own temp dir.
+    let expected_root = std::env::temp_dir().join("komorebi-tts");
+    let p = std::path::PathBuf::from(&path);
+    if !p.starts_with(&expected_root) {
+        return Err("path outside tts temp dir".into());
+    }
+    let bytes = std::fs::read(&p).map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// Resolves the bundled Piper binary shipped as a Tauri resource.
@@ -279,11 +604,29 @@ pub async fn reload_tts(app: &AppHandle<Wry>) {
         .map(std::path::PathBuf::from)
         .or_else(|| bundled_piper(app));
 
+    let length = settings::get_tts_length_scale(app).map(|v| v as f32);
+    let noise = settings::get_tts_noise_scale(app).map(|v| v as f32);
+    let noise_w = settings::get_tts_noise_w(app).map(|v| v as f32);
+
     let cfg = match (enabled, bin, voice) {
-        (true, Some(b), Some(v)) if !v.is_empty() => Some(PiperConfig::from_voice(b, v)),
+        (true, Some(b), Some(v)) if !v.is_empty() => {
+            Some(PiperConfig::from_voice(b, v).with_prosody(length, noise, noise_w))
+        }
         _ => None,
     };
     tts.inner().configure(cfg).await;
+
+    // SoVITS provider — independent of the Piper path. Only enabled when
+    // TTS is on and an endpoint URL is configured; the provider selector
+    // (`tts_provider`) decides which one is actually used at synth time.
+    if let Some(sovits) = app.try_state::<komorebi_voice::sovits::SoVitsTts>() {
+        let sv_cfg = if enabled {
+            settings::get_sovits_config(app)
+        } else {
+            None
+        };
+        sovits.inner().configure(sv_cfg).await;
+    }
 }
 
 /// Lightweight id generator (avoids pulling in the `uuid` crate just for UX).

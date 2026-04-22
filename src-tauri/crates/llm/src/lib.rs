@@ -19,6 +19,10 @@ pub struct LlmConfig {
     pub n_ctx: u32,
     pub n_threads: i32,
     pub idle_unload_after: Duration,
+    /// Number of layers to offload to the GPU. `None` = auto (let backend
+    /// decide), `Some(0)` = CPU only, `Some(n > 0)` = offload n layers,
+    /// `Some(-1)` / very large = offload everything.
+    pub n_gpu_layers: Option<i32>,
 }
 
 impl Default for LlmConfig {
@@ -28,6 +32,7 @@ impl Default for LlmConfig {
             n_ctx: 4096,
             n_threads: 0, // auto
             idle_unload_after: Duration::from_secs(180),
+            n_gpu_layers: None,
         }
     }
 }

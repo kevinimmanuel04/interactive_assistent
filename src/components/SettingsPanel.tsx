@@ -5,23 +5,37 @@ import {
   FolderStats,
   getSettings,
   IndexReport,
+  listAudioDevices,
+  listOpenRouterModels,
   Mode,
+  OpenRouterModel,
   PublicSettings,
   ragAddFolder,
   ragListFolders,
   ragReindex,
   ragRemoveFolder,
+  setAudioInput,
+  setAudioOutput,
+  setAutoListen,
   setClassifierModel,
   setLive2dModel,
+  setLlmGpuLayers,
   setMode,
   setOpenRouterKey,
+  setOpenRouterModel,
   setPiperBinary,
   setPiperVoice,
   setRagEnabled,
   setSmartRouting,
   setTtsEnabled,
+  setTtsProvider,
+  setTtsProsody,
+  setTtsVolume,
+  setSovitsConfig,
   setWakeWord,
   setWhisperModel,
+  systemInfo,
+  SystemInfo,
 } from "../api";
 
 interface Props {
@@ -286,6 +300,24 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
               onChanged();
             }}
           />
+
+          <HardwareSection
+            settings={settings}
+            onChanged={async () => {
+              const next = await getSettings();
+              setSettings(next);
+              onChanged();
+            }}
+          />
+
+          <OpenRouterModelSection
+            settings={settings}
+            onChanged={async () => {
+              const next = await getSettings();
+              setSettings(next);
+              onChanged();
+            }}
+          />
           </div>
         </motion.div>
       )}
@@ -443,6 +475,318 @@ function TtsSection({
           OHF-Voice/piper1-gpl
         </ExternalLink>
         .
+      </div>
+
+      <ProsodySection settings={settings} onChanged={onChanged} />
+      <ProviderSection settings={settings} onChanged={onChanged} />
+      <SoVitsSection settings={settings} onChanged={onChanged} />
+    </div>
+  );
+}
+
+// -------- Prosody (length / noise / volume) -------------------------------
+
+function ProsodySection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [length, setLength] = useState<number>(settings?.tts_length_scale ?? 1);
+  const [noise, setNoise] = useState<number>(settings?.tts_noise_scale ?? 0.667);
+  const [noiseW, setNoiseW] = useState<number>(settings?.tts_noise_w ?? 0.8);
+  const [volume, setVolume] = useState<number>(settings?.tts_volume ?? 1);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setLength(settings?.tts_length_scale ?? 1);
+    setNoise(settings?.tts_noise_scale ?? 0.667);
+    setNoiseW(settings?.tts_noise_w ?? 0.8);
+    setVolume(settings?.tts_volume ?? 1);
+  }, [
+    settings?.tts_length_scale,
+    settings?.tts_noise_scale,
+    settings?.tts_noise_w,
+    settings?.tts_volume,
+  ]);
+
+  const commitProsody = async () => {
+    setBusy(true);
+    try {
+      await setTtsProsody(length, noise, noiseW);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const commitVolume = async (v: number) => {
+    await setTtsVolume(v);
+    await onChanged();
+  };
+
+  return (
+    <div style={{ marginTop: 10, padding: 8, background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
+      <div style={{ opacity: 0.7, fontSize: 11, marginBottom: 4 }}>
+        Voice shape (Piper)
+      </div>
+      <Slider
+        label={`Speed / pitch (length × ${length.toFixed(2)}) · smaller = faster & higher`}
+        min={0.5}
+        max={1.6}
+        step={0.05}
+        value={length}
+        onChange={setLength}
+        onCommit={commitProsody}
+        disabled={busy}
+      />
+      <Slider
+        label={`Expressiveness (noise ${noise.toFixed(2)})`}
+        min={0.1}
+        max={1.2}
+        step={0.05}
+        value={noise}
+        onChange={setNoise}
+        onCommit={commitProsody}
+        disabled={busy}
+      />
+      <Slider
+        label={`Rhythm variability (noise_w ${noiseW.toFixed(2)})`}
+        min={0.1}
+        max={1.2}
+        step={0.05}
+        value={noiseW}
+        onChange={setNoiseW}
+        onCommit={commitProsody}
+        disabled={busy}
+      />
+      <Slider
+        label={`Volume ${Math.round(volume * 100)}%`}
+        min={0}
+        max={1.5}
+        step={0.05}
+        value={volume}
+        onChange={(v) => {
+          setVolume(v);
+          void commitVolume(v);
+        }}
+        onCommit={() => {}}
+      />
+      <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>
+        Tip: for a brighter, anime-ish delivery try length ≈ 0.85, noise ≈ 0.8.
+      </div>
+    </div>
+  );
+}
+
+function Slider({
+  label,
+  min,
+  max,
+  step,
+  value,
+  onChange,
+  onCommit,
+  disabled,
+}: {
+  label: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChange: (v: number) => void;
+  onCommit: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label style={{ display: "block", fontSize: 11, marginTop: 6 }}>
+      <div style={{ opacity: 0.8, marginBottom: 2 }}>{label}</div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        onPointerUp={onCommit}
+        onKeyUp={onCommit}
+        style={{ width: "100%" }}
+      />
+    </label>
+  );
+}
+
+// -------- Provider selector ----------------------------------------------
+
+function ProviderSection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const provider = (settings?.tts_provider ?? "piper") as "piper" | "sovits";
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ opacity: 0.7, fontSize: 11, marginBottom: 4 }}>TTS provider</div>
+      <div style={{ display: "flex", gap: 6 }}>
+        {(["piper", "sovits"] as const).map((p) => (
+          <button
+            key={p}
+            onClick={async () => {
+              await setTtsProvider(p);
+              await onChanged();
+            }}
+            style={{
+              flex: 1,
+              padding: "6px 8px",
+              borderRadius: 6,
+              border: provider === p ? "1px solid #8ab4f8" : "1px solid rgba(255,255,255,0.15)",
+              background: provider === p ? "rgba(138,180,248,0.12)" : "transparent",
+              color: "#fff",
+              cursor: "pointer",
+              fontSize: 12,
+            }}
+          >
+            {p === "piper" ? "Piper (local, light)" : "GPT-SoVITS (external)"}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// -------- SoVITS form ----------------------------------------------------
+
+function SoVitsSection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [endpoint, setEndpoint] = useState(settings?.sovits_endpoint ?? "http://127.0.0.1:9880");
+  const [refAudio, setRefAudio] = useState(settings?.sovits_ref_audio ?? "");
+  const [promptText, setPromptText] = useState(settings?.sovits_prompt_text ?? "");
+  const [promptLang, setPromptLang] = useState(settings?.sovits_prompt_lang ?? "ja");
+  const [textLang, setTextLang] = useState(settings?.sovits_text_lang ?? "auto");
+  const [speed, setSpeed] = useState(settings?.sovits_speed ?? 1);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setEndpoint(settings?.sovits_endpoint ?? "http://127.0.0.1:9880");
+    setRefAudio(settings?.sovits_ref_audio ?? "");
+    setPromptText(settings?.sovits_prompt_text ?? "");
+    setPromptLang(settings?.sovits_prompt_lang ?? "ja");
+    setTextLang(settings?.sovits_text_lang ?? "auto");
+    setSpeed(settings?.sovits_speed ?? 1);
+  }, [
+    settings?.sovits_endpoint,
+    settings?.sovits_ref_audio,
+    settings?.sovits_prompt_text,
+    settings?.sovits_prompt_lang,
+    settings?.sovits_text_lang,
+    settings?.sovits_speed,
+  ]);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await setSovitsConfig({
+        endpoint,
+        refAudio,
+        promptText,
+        promptLang,
+        textLang,
+        speed,
+      });
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const expanded = (settings?.tts_provider ?? "piper") === "sovits";
+  if (!expanded) return null;
+
+  return (
+    <div style={{ marginTop: 10, padding: 8, background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
+      <div style={{ opacity: 0.7, fontSize: 11, marginBottom: 4 }}>
+        GPT-SoVITS endpoint (external inference server)
+      </div>
+      <input
+        type="text"
+        placeholder="http://127.0.0.1:9880"
+        value={endpoint}
+        onChange={(e) => setEndpoint(e.target.value)}
+        onBlur={save}
+        style={inputStyle}
+      />
+      <input
+        type="text"
+        placeholder="Reference audio path (absolute path on the server)"
+        value={refAudio}
+        onChange={(e) => setRefAudio(e.target.value)}
+        onBlur={save}
+        style={{ ...inputStyle, marginTop: 6 }}
+      />
+      <input
+        type="text"
+        placeholder="Transcript of the reference clip"
+        value={promptText}
+        onChange={(e) => setPromptText(e.target.value)}
+        onBlur={save}
+        style={{ ...inputStyle, marginTop: 6 }}
+      />
+      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+        <select
+          value={promptLang}
+          onChange={(e) => {
+            setPromptLang(e.target.value);
+            void save();
+          }}
+          style={{ ...inputStyle, flex: 1 }}
+        >
+          <option value="ja">Ref: Japanese</option>
+          <option value="en">Ref: English</option>
+          <option value="zh">Ref: Chinese</option>
+          <option value="ru">Ref: Russian</option>
+        </select>
+        <select
+          value={textLang}
+          onChange={(e) => {
+            setTextLang(e.target.value);
+            void save();
+          }}
+          style={{ ...inputStyle, flex: 1 }}
+        >
+          <option value="auto">Text: auto-detect</option>
+          <option value="ja">Text: Japanese</option>
+          <option value="en">Text: English</option>
+          <option value="zh">Text: Chinese</option>
+          <option value="ru">Text: Russian</option>
+        </select>
+      </div>
+      <Slider
+        label={`Speed ×${speed.toFixed(2)}`}
+        min={0.5}
+        max={2}
+        step={0.05}
+        value={speed}
+        onChange={setSpeed}
+        onCommit={save}
+        disabled={busy}
+      />
+      <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4, lineHeight: 1.4 }}>
+        Run GPT-SoVITS separately from{" "}
+        <ExternalLink href="https://github.com/RVC-Boss/GPT-SoVITS">
+          RVC-Boss/GPT-SoVITS
+        </ExternalLink>
+        {" "}(`python api_v2.py` starts the FastAPI server on :9880). Point the
+        reference-audio field at a 3–10 s anime/seiyuu clip and fill in its
+        transcript; Komorebi POSTs text to <code>/tts</code> and plays the
+        returned WAV.
       </div>
     </div>
   );
@@ -863,4 +1207,317 @@ function RagSection({
 
 function reportSummary(r: IndexReport): string {
   return `${r.files_indexed} indexed · ${r.files_skipped} skipped · ${r.chunks_written} chunks`;
+}
+function HardwareSection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [devices, setDevices] = useState<{
+    inputs: string[];
+    outputs: string[];
+    default_input: string | null;
+    default_output: string | null;
+  } | null>(null);
+  const [sys, setSys] = useState<SystemInfo | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    listAudioDevices().then(setDevices).catch(() => {});
+    systemInfo().then(setSys).catch(() => {});
+  }, []);
+
+  const inVal = settings?.audio_input_device ?? "";
+  const outVal = settings?.audio_output_device ?? "";
+  const gpuSetting = settings?.llm_gpu_layers;
+  // null = auto; 0 = CPU; -1 / large = GPU all
+  const gpuMode: "auto" | "cpu" | "gpu" =
+    gpuSetting === null || gpuSetting === undefined
+      ? "auto"
+      : gpuSetting === 0
+        ? "cpu"
+        : "gpu";
+
+  const setGpu = async (mode: "auto" | "cpu" | "gpu") => {
+    setBusy(true);
+    try {
+      const v = mode === "auto" ? null : mode === "cpu" ? 0 : 999;
+      await setLlmGpuLayers(v);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ opacity: 0.7, marginBottom: 6 }}>Hardware & Audio devices</div>
+
+      <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 8 }}>
+        {sys
+          ? `${sys.os} • ${sys.cpu} (${sys.cpu_cores}c) • ${sys.ram_gb} GB RAM${
+              sys.gpus.length ? ` • GPU: ${sys.gpus.join(", ")}` : ""
+            }`
+          : "…"}
+      </div>
+
+      <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
+        <label style={{ opacity: 0.7, fontSize: 12 }}>Microphone input</label>
+        <select
+          value={inVal}
+          disabled={busy || !devices}
+          onChange={async (e) => {
+            setBusy(true);
+            try {
+              await setAudioInput(e.target.value);
+              await onChanged();
+            } finally {
+              setBusy(false);
+            }
+          }}
+          style={inputStyle}
+        >
+          <option value="">
+            System default
+            {devices?.default_input ? ` (${devices.default_input})` : ""}
+          </option>
+          {devices?.inputs.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
+        <label style={{ opacity: 0.7, fontSize: 12 }}>Speaker output</label>
+        <select
+          value={outVal}
+          disabled={busy || !devices}
+          onChange={async (e) => {
+            setBusy(true);
+            try {
+              await setAudioOutput(e.target.value);
+              await onChanged();
+            } finally {
+              setBusy(false);
+            }
+          }}
+          style={inputStyle}
+        >
+          <option value="">
+            System default
+            {devices?.default_output ? ` (${devices.default_output})` : ""}
+          </option>
+          {devices?.outputs.map((d) => (
+            <option key={d} value={d}>
+              {d}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <label style={{ opacity: 0.7, fontSize: 12 }}>
+          Local LLM acceleration
+        </label>
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          {(["auto", "cpu", "gpu"] as const).map((m) => {
+            const active = gpuMode === m;
+            const disabled =
+              m === "gpu" && sys !== null && sys.has_nvidia === false;
+            return (
+              <button
+                key={m}
+                disabled={busy || disabled}
+                onClick={() => setGpu(m)}
+                title={
+                  m === "gpu" && disabled
+                    ? "No NVIDIA GPU detected."
+                    : undefined
+                }
+                style={{
+                  flex: 1,
+                  padding: "6px 8px",
+                  borderRadius: 8,
+                  border: active
+                    ? "1px solid #b39ddb"
+                    : "1px solid rgba(255,255,255,0.1)",
+                  background: active
+                    ? "rgba(179,157,219,0.2)"
+                    : "transparent",
+                  color: disabled ? "#666" : "#fff",
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  textTransform: "uppercase",
+                  fontSize: 11,
+                }}
+              >
+                {m === "auto" ? "Auto" : m === "cpu" ? "CPU" : "GPU"}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
+          Auto picks GPU if an NVIDIA card is detected, otherwise runs on CPU.
+        </div>
+      </div>
+
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 12,
+          opacity: 0.9,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={settings?.auto_listen ?? false}
+          disabled={busy}
+          onChange={async (e) => {
+            setBusy(true);
+            try {
+              await setAutoListen(e.target.checked);
+              await onChanged();
+            } finally {
+              setBusy(false);
+            }
+          }}
+        />
+        Auto-listen after replies (re-arms the mic when the assistant finishes
+        speaking)
+      </label>
+    </div>
+  );
+}
+
+function OpenRouterModelSection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [models, setModels] = useState<OpenRouterModel[] | null>(null);
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const list = await listOpenRouterModels();
+      setModels(list);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const filtered = (models ?? []).filter((m) => {
+    if (!q.trim()) return true;
+    const needle = q.toLowerCase();
+    return (
+      m.id.toLowerCase().includes(needle) ||
+      (m.name ?? "").toLowerCase().includes(needle)
+    );
+  });
+
+  return (
+    <div>
+      <div style={{ opacity: 0.7, marginBottom: 6 }}>
+        OpenRouter model picker{" "}
+        <span style={{ opacity: 0.5, fontSize: 11 }}>
+          (current: {settings?.openrouter_model ?? "—"})
+        </span>
+      </div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
+        <input
+          type="text"
+          placeholder="Search (e.g. llama, sonnet, free)"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          style={{ ...inputStyle, flex: 1 }}
+        />
+        <button
+          onClick={load}
+          disabled={loading || !settings?.has_openrouter_key}
+          style={{
+            padding: "6px 10px",
+            borderRadius: 8,
+            border: "1px solid rgba(255,255,255,0.15)",
+            background: "rgba(255,255,255,0.08)",
+            color: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          {loading ? "…" : models ? "Refresh" : "Load"}
+        </button>
+      </div>
+      {err && (
+        <div style={{ color: "#e57373", fontSize: 11, marginBottom: 6 }}>
+          {err}
+        </div>
+      )}
+      {!settings?.has_openrouter_key && (
+        <div style={{ opacity: 0.5, fontSize: 11 }}>
+          Save an OpenRouter API key above to browse available models.
+        </div>
+      )}
+      {models && (
+        <div
+          style={{
+            maxHeight: 180,
+            overflowY: "auto",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 8,
+          }}
+        >
+          {filtered.slice(0, 100).map((m) => {
+            const active = settings?.openrouter_model === m.id;
+            return (
+              <button
+                key={m.id}
+                onClick={async () => {
+                  await setOpenRouterModel(m.id);
+                  await onChanged();
+                }}
+                style={{
+                  display: "block",
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "6px 8px",
+                  background: active
+                    ? "rgba(179,157,219,0.18)"
+                    : "transparent",
+                  border: "none",
+                  borderBottom: "1px solid rgba(255,255,255,0.04)",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                <div>{m.name ?? m.id}</div>
+                <div style={{ opacity: 0.5, fontSize: 11 }}>
+                  {m.id}
+                  {m.context_length ? ` • ${m.context_length} ctx` : ""}
+                  {m.pricing?.prompt ? ` • $${m.pricing.prompt}/1M in` : ""}
+                </div>
+              </button>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div style={{ opacity: 0.5, fontSize: 11, padding: 8 }}>
+              No matches.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }

@@ -3,6 +3,7 @@
 
 pub mod stt;
 pub mod tts;
+pub mod sovits;
 
 pub mod vad {
     //! Voice activity detection (Phase 2D). Placeholder.
