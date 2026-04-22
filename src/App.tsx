@@ -229,6 +229,7 @@ export default function App() {
         open={wizardOpen}
         onClose={() => setWizardOpen(false)}
         onSettingsChanged={refreshSettings}
+        settings={settings}
       />
       <TopBar
         mode={settings?.mode ?? "auto"}

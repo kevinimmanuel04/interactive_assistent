@@ -252,7 +252,10 @@ fn bundled_piper(app: &AppHandle<Wry>) -> Option<std::path::PathBuf> {
     let name = if cfg!(windows) { "piper.exe" } else { "piper" };
     let path = app
         .path()
-        .resolve(format!("binaries/piper/{name}"), tauri::path::BaseDirectory::Resource)
+        .resolve(
+            format!("binaries/piper/{name}"),
+            tauri::path::BaseDirectory::Resource,
+        )
         .ok()?;
     path.exists().then_some(path)
 }

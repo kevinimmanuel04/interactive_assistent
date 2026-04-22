@@ -6,6 +6,7 @@ import {
   downloadAsset,
   listAssets,
   onModelProgress,
+  PublicSettings,
   setLocalModel,
   setPiperVoice,
   setWhisperModel,
@@ -15,6 +16,7 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onSettingsChanged: () => void;
+  settings: PublicSettings | null;
 }
 
 interface ProgressState {
@@ -25,9 +27,20 @@ interface ProgressState {
   message?: string;
 }
 
-export default function ModelWizard({ open, onClose, onSettingsChanged }: Props) {
+export default function ModelWizard({
+  open,
+  onClose,
+  onSettingsChanged,
+  settings,
+}: Props) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [progress, setProgress] = useState<Record<string, ProgressState>>({});
+  const [toast, setToast] = useState<string | null>(null);
+
+  const flash = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast((t) => (t === msg ? null : t)), 2500);
+  };
 
   const refresh = () => listAssets().then(setAssets).catch(() => {});
 
@@ -103,20 +116,52 @@ export default function ModelWizard({ open, onClose, onSettingsChanged }: Props)
   };
 
   const handleUseAsLocal = async (a: Asset) => {
-    await setLocalModel(a.id);
-    onSettingsChanged();
+    try {
+      await setLocalModel(a.id);
+      flash(`Local LLM set: ${a.title}`);
+      onSettingsChanged();
+    } catch (e) {
+      console.error("[wizard] set_local_model failed", e);
+      flash(`Failed: ${e}`);
+    }
   };
 
   const handleUseAsVoice = async (a: Asset) => {
-    if (!a.path) return;
-    await setPiperVoice(a.path);
-    onSettingsChanged();
+    if (!a.path) {
+      flash("Asset path is missing — re-download the model.");
+      return;
+    }
+    try {
+      await setPiperVoice(a.path);
+      flash(`Voice set: ${a.title}`);
+      onSettingsChanged();
+    } catch (e) {
+      console.error("[wizard] set_piper_voice failed", e);
+      flash(`Failed: ${e}`);
+    }
   };
 
   const handleUseAsStt = async (a: Asset) => {
-    if (!a.path) return;
-    await setWhisperModel(a.path);
-    onSettingsChanged();
+    if (!a.path) {
+      flash("Asset path is missing — re-download the model.");
+      return;
+    }
+    try {
+      await setWhisperModel(a.path);
+      flash(`STT model set: ${a.title}`);
+      onSettingsChanged();
+    } catch (e) {
+      console.error("[wizard] set_whisper_model failed", e);
+      flash(`Failed: ${e}`);
+    }
+  };
+
+  const isActive = (a: Asset): boolean => {
+    if (!a.path || !settings) return false;
+    if (a.kind === "llm_gguf") return settings.local_model_path === a.path;
+    if (a.kind === "piper_voice") return settings.piper_voice_path === a.path;
+    if (a.kind === "whisper_ggml") return settings.whisper_model_path === a.path;
+    return false;
   };
 
   return (
@@ -175,6 +220,19 @@ export default function ModelWizard({ open, onClose, onSettingsChanged }: Props)
             Files are downloaded to your app-data folder. You can close this
             window — downloads continue in the background.
           </div>
+          {toast && (
+            <div
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                background: "rgba(139, 195, 74, 0.18)",
+                border: "1px solid rgba(139, 195, 74, 0.35)",
+                fontSize: 12,
+              }}
+            >
+              {toast}
+            </div>
+          )}
           {assets.map((a) => {
             const st = progress[a.file_name];
             const pct =
@@ -205,6 +263,9 @@ export default function ModelWizard({ open, onClose, onSettingsChanged }: Props)
                     <div style={{ opacity: 0.5, fontSize: 11, marginTop: 2 }}>
                       ~{a.approx_size_mb} MB
                       {a.installed && " • installed"}
+                      {isActive(a) && (
+                        <span style={{ color: "#a5d6a7" }}> • active</span>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
