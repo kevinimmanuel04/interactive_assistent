@@ -89,7 +89,10 @@ impl Recorder {
     pub fn start_with_device(&self, name: Option<String>) -> Result<(), SttError> {
         let (tx, rx) = mpsc::channel();
         self.tx
-            .send(Command::Start { device: name, reply: tx })
+            .send(Command::Start {
+                device: name,
+                reply: tx,
+            })
             .map_err(|_| SttError::WorkerGone)?;
         rx.recv().map_err(|_| SttError::WorkerGone)?
     }
@@ -143,7 +146,9 @@ fn worker_loop(rx: mpsc::Receiver<Command>, recording_flag: Arc<Mutex<bool>>) {
     }
 }
 
-fn build_stream(preferred: Option<&str>) -> Result<(cpal::Stream, Arc<Mutex<Recording>>), SttError> {
+fn build_stream(
+    preferred: Option<&str>,
+) -> Result<(cpal::Stream, Arc<Mutex<Recording>>), SttError> {
     let host = cpal::default_host();
     let device = pick_input_device(&host, preferred).ok_or(SttError::NoInputDevice)?;
     let config = device

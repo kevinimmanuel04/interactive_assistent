@@ -119,10 +119,12 @@ fn detect_gpus() -> Vec<String> {
 /// True when at least one detected GPU looks like an NVIDIA card —
 /// used to pick a sensible default for local-LLM GPU offload.
 pub fn has_nvidia_gpu() -> bool {
-    snapshot()
-        .gpus
-        .iter()
-        .any(|g| g.to_lowercase().contains("nvidia") || g.to_lowercase().contains("geforce") || g.to_lowercase().contains("rtx") || g.to_lowercase().contains("gtx"))
+    snapshot().gpus.iter().any(|g| {
+        g.to_lowercase().contains("nvidia")
+            || g.to_lowercase().contains("geforce")
+            || g.to_lowercase().contains("rtx")
+            || g.to_lowercase().contains("gtx")
+    })
 }
 
 /// Render the system + time context as a short markdown bullet list
@@ -135,9 +137,7 @@ pub fn render_context_message() -> String {
     let time = now.format("%H:%M").to_string();
     let tz = iana_time_zone::get_timezone().unwrap_or_else(|_| now.offset().to_string());
 
-    let mut out = String::from(
-        "User environment (facts you may reference if relevant):\n",
-    );
+    let mut out = String::from("User environment (facts you may reference if relevant):\n");
     out.push_str(&format!("- current date: {date}\n"));
     out.push_str(&format!("- current time: {time} ({tz})\n"));
     out.push_str(&format!("- OS: {}\n", snap.os_long));
@@ -156,8 +156,6 @@ pub fn render_context_message() -> String {
     if !snap.hostname.is_empty() {
         out.push_str(&format!("- hostname: {}\n", snap.hostname));
     }
-    out.push_str(
-        "Use these only when the user asks; do not proactively reveal them.",
-    );
+    out.push_str("Use these only when the user asks; do not proactively reveal them.");
     out
 }

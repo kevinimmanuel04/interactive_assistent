@@ -288,8 +288,8 @@ fn sanitize_for_tts(text: &str) -> String {
             '.' | ',' | '!' | '?' | ':' | ';' | '\'' | '"' | '-' | '\n' | ' ' => true,
             // Remove markdown noise / code symbols that Piper pronounces as
             // static ("asterisk", "hash", "underscore", backtick clicks).
-            '*' | '#' | '`' | '_' | '~' | '[' | ']' | '(' | ')' | '{' | '}' | '<' | '>'
-            | '|' | '\\' | '/' | '=' | '+' => false,
+            '*' | '#' | '`' | '_' | '~' | '[' | ']' | '(' | ')' | '{' | '}' | '<' | '>' | '|'
+            | '\\' | '/' | '=' | '+' => false,
             c if c.is_alphanumeric() => true,
             _ => false,
         };

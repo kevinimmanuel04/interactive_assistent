@@ -134,11 +134,7 @@ async fn synthesize(cfg: &PiperConfig, text: &str) -> Result<Vec<u8>, TtsError> 
     let bytes = text.as_bytes();
     let dump_path = std::env::temp_dir().join("komorebi-tts-last-input.txt");
     let _ = std::fs::write(&dump_path, bytes);
-    let head: Vec<String> = bytes
-        .iter()
-        .take(32)
-        .map(|b| format!("{b:02X}"))
-        .collect();
+    let head: Vec<String> = bytes.iter().take(32).map(|b| format!("{b:02X}")).collect();
     let tail: Vec<String> = bytes
         .iter()
         .rev()
@@ -192,8 +188,7 @@ async fn synthesize(cfg: &PiperConfig, text: &str) -> Result<Vec<u8>, TtsError> 
         // through the usual DLL search path.
         #[cfg(windows)]
         {
-            let sys = std::env::var("SystemRoot")
-                .unwrap_or_else(|_| "C:\\Windows".to_string());
+            let sys = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
             let new_path = format!("{};{sys}\\System32;{sys}", parent.display());
             cmd.env("PATH", new_path);
         }

@@ -51,34 +51,78 @@ impl AppKind {
         let n = name.to_ascii_lowercase();
         // Games: known launchers + common engine executables + *.exe heuristics.
         const GAMES: &[&str] = &[
-            "steam", "steamwebhelper", "epicgameslauncher", "gog", "battle.net",
-            "league of legends", "valorant", "csgo", "cs2", "dota2", "dota 2",
-            "minecraft", "javaw", "overwatch", "fortnite", "r5apex", "genshinimpact",
-            "factorio", "rimworld", "eldenring", "cyberpunk2077", "witcher3",
-            "starrail", "wuwa", "mihoyo",
+            "steam",
+            "steamwebhelper",
+            "epicgameslauncher",
+            "gog",
+            "battle.net",
+            "league of legends",
+            "valorant",
+            "csgo",
+            "cs2",
+            "dota2",
+            "dota 2",
+            "minecraft",
+            "javaw",
+            "overwatch",
+            "fortnite",
+            "r5apex",
+            "genshinimpact",
+            "factorio",
+            "rimworld",
+            "eldenring",
+            "cyberpunk2077",
+            "witcher3",
+            "starrail",
+            "wuwa",
+            "mihoyo",
         ];
         const IDES: &[&str] = &[
-            "code", "code-insiders", "cursor", "idea64", "pycharm64", "clion64",
-            "webstorm64", "goland64", "rider64", "rustrover64", "devenv",
-            "sublime_text", "notepad++", "vim", "nvim", "emacs", "zed",
+            "code",
+            "code-insiders",
+            "cursor",
+            "idea64",
+            "pycharm64",
+            "clion64",
+            "webstorm64",
+            "goland64",
+            "rider64",
+            "rustrover64",
+            "devenv",
+            "sublime_text",
+            "notepad++",
+            "vim",
+            "nvim",
+            "emacs",
+            "zed",
         ];
         const BROWSERS: &[&str] = &[
-            "chrome", "firefox", "msedge", "brave", "opera", "vivaldi", "arc",
-            "safari", "chromium", "zen",
+            "chrome", "firefox", "msedge", "brave", "opera", "vivaldi", "arc", "safari",
+            "chromium", "zen",
         ];
         const OFFICE: &[&str] = &[
-            "winword", "excel", "powerpnt", "onenote", "outlook", "notion",
-            "obsidian", "anytype",
+            "winword", "excel", "powerpnt", "onenote", "outlook", "notion", "obsidian", "anytype",
         ];
         const CHAT: &[&str] = &[
             "discord", "slack", "telegram", "whatsapp", "signal", "zoom", "teams",
         ];
         const MEDIA: &[&str] = &[
-            "vlc", "mpc-hc", "mpv", "spotify", "wmplayer", "potplayermini",
+            "vlc",
+            "mpc-hc",
+            "mpv",
+            "spotify",
+            "wmplayer",
+            "potplayermini",
         ];
         const TERMINAL: &[&str] = &[
-            "wezterm", "alacritty", "kitty", "windowsterminal", "powershell",
-            "pwsh", "cmd", "bash",
+            "wezterm",
+            "alacritty",
+            "kitty",
+            "windowsterminal",
+            "powershell",
+            "pwsh",
+            "cmd",
+            "bash",
         ];
         let strip = n.trim_end_matches(".exe");
         if GAMES.iter().any(|g| strip.contains(g)) {

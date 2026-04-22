@@ -216,7 +216,9 @@ pub fn start_recording(
     recorder: State<'_, komorebi_voice::stt::Recorder>,
 ) -> Result<(), String> {
     let device = settings::get_audio_input(&app);
-    recorder.start_with_device(device).map_err(|e| e.to_string())
+    recorder
+        .start_with_device(device)
+        .map_err(|e| e.to_string())
 }
 
 /// Stops capture and runs Whisper transcription (blocking on a worker thread).
@@ -415,10 +417,7 @@ pub async fn rag_reindex(
 }
 
 #[tauri::command]
-pub async fn speak_text(
-    app: AppHandle<Wry>,
-    text: String,
-) -> Result<(), String> {
+pub async fn speak_text(app: AppHandle<Wry>, text: String) -> Result<(), String> {
     if text.trim().is_empty() {
         return Ok(());
     }
@@ -474,10 +473,7 @@ pub async fn synthesize_via_provider(
 /// random line (seeded by the current timestamp) localized roughly by the
 /// reference-voice language, and emits it through the active TTS provider.
 #[tauri::command]
-pub async fn speak_reaction(
-    app: AppHandle<Wry>,
-    zone: String,
-) -> Result<(), String> {
+pub async fn speak_reaction(app: AppHandle<Wry>, zone: String) -> Result<(), String> {
     let lang = settings::public_snapshot(&app).sovits_text_lang;
     let provider = settings::get_tts_provider(&app);
     let text = pick_reaction(&zone, &lang, &provider);
@@ -501,10 +497,25 @@ fn pick_reaction(zone: &str, lang: &str, _provider: &str) -> String {
         _ => "en",
     };
     let pool: &[&str] = match (zone, lang_key) {
-        ("head", "ru") => &["Эй, щекотно!", "Ты меня гладишь?", "Хе-хе, приятно.", "Не трогай волосы!"],
-        ("head", "ja") => &["ふふっ、なでなで？", "きゃっ、くすぐったい！", "もっと撫でて〜", "えへへ♪"],
+        ("head", "ru") => &[
+            "Эй, щекотно!",
+            "Ты меня гладишь?",
+            "Хе-хе, приятно.",
+            "Не трогай волосы!",
+        ],
+        ("head", "ja") => &[
+            "ふふっ、なでなで？",
+            "きゃっ、くすぐったい！",
+            "もっと撫でて〜",
+            "えへへ♪",
+        ],
         ("head", "zh") => &["嘿嘿，好痒~", "摸摸头~", "再来一下嘛", "嗯~舒服"],
-        ("head", _) => &["Hey, that tickles!", "Are you petting me?", "Hehe, that's nice.", "Careful with the hair!"],
+        ("head", _) => &[
+            "Hey, that tickles!",
+            "Are you petting me?",
+            "Hehe, that's nice.",
+            "Careful with the hair!",
+        ],
         ("body", "ru") => &["Ой!", "Эй, полегче!", "Ты чего?", "Хи-хи."],
         ("body", "ja") => &["きゃっ！", "もう〜", "どうしたの？", "ふふっ"],
         ("body", "zh") => &["哎呀！", "干嘛啦~", "讨厌~", "嘻嘻"],

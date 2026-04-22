@@ -52,10 +52,12 @@ pub async fn run_tool(app: AppHandle<Wry>, call: ToolCall) -> ToolResult {
     }
     match call.tool.as_str() {
         "active_window" => ToolResult::ok(desktop_cmds::desktop_active_window()),
-        "context_snapshot" => match serde_json::to_value(desktop_cmds::desktop_context_snapshot()) {
-            Ok(v) => ToolResult::ok(v),
-            Err(e) => ToolResult::err(e.to_string()),
-        },
+        "context_snapshot" => {
+            match serde_json::to_value(desktop_cmds::desktop_context_snapshot()) {
+                Ok(v) => ToolResult::ok(v),
+                Err(e) => ToolResult::err(e.to_string()),
+            }
+        }
         "list_screens" => match desktop_cmds::desktop_list_screens() {
             Ok(v) => ToolResult::ok(v),
             Err(e) => ToolResult::err(e),
@@ -71,15 +73,13 @@ pub async fn run_tool(app: AppHandle<Wry>, call: ToolCall) -> ToolResult {
                 Err(e) => ToolResult::err(e),
             }
         }
-        "click" => {
-            match serde_json::from_value::<desktop_cmds::ClickArgs>(call.args) {
-                Ok(a) => match desktop_cmds::desktop_click(a) {
-                    Ok(_) => ToolResult::ok(serde_json::Value::Bool(true)),
-                    Err(e) => ToolResult::err(e),
-                },
-                Err(e) => ToolResult::err(e.to_string()),
-            }
-        }
+        "click" => match serde_json::from_value::<desktop_cmds::ClickArgs>(call.args) {
+            Ok(a) => match desktop_cmds::desktop_click(a) {
+                Ok(_) => ToolResult::ok(serde_json::Value::Bool(true)),
+                Err(e) => ToolResult::err(e),
+            },
+            Err(e) => ToolResult::err(e.to_string()),
+        },
         "type" => {
             let text = call
                 .args
@@ -112,15 +112,13 @@ pub async fn run_tool(app: AppHandle<Wry>, call: ToolCall) -> ToolResult {
                 Err(e) => ToolResult::err(e),
             }
         }
-        "write_file" => {
-            match serde_json::from_value::<desktop_cmds::WriteFileArgs>(call.args) {
-                Ok(a) => match desktop_cmds::desktop_write_file(app, a) {
-                    Ok(p) => ToolResult::ok(serde_json::Value::String(p)),
-                    Err(e) => ToolResult::err(e),
-                },
-                Err(e) => ToolResult::err(e.to_string()),
-            }
-        }
+        "write_file" => match serde_json::from_value::<desktop_cmds::WriteFileArgs>(call.args) {
+            Ok(a) => match desktop_cmds::desktop_write_file(app, a) {
+                Ok(p) => ToolResult::ok(serde_json::Value::String(p)),
+                Err(e) => ToolResult::err(e),
+            },
+            Err(e) => ToolResult::err(e.to_string()),
+        },
         "read_file" => {
             let rel = call
                 .args

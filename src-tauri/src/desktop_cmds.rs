@@ -52,9 +52,7 @@ pub fn desktop_list_screens() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
-pub async fn desktop_screenshot(
-    monitor: Option<usize>,
-) -> Result<tauri::ipc::Response, String> {
+pub async fn desktop_screenshot(monitor: Option<usize>) -> Result<tauri::ipc::Response, String> {
     let idx = monitor.unwrap_or(0);
     let bytes = tokio::task::spawn_blocking(move || capture::capture_screen(idx))
         .await
@@ -73,9 +71,7 @@ pub struct RegionArgs {
 }
 
 #[tauri::command]
-pub async fn desktop_screenshot_region(
-    args: RegionArgs,
-) -> Result<tauri::ipc::Response, String> {
+pub async fn desktop_screenshot_region(args: RegionArgs) -> Result<tauri::ipc::Response, String> {
     let bytes = tokio::task::spawn_blocking(move || {
         capture::capture_region(
             args.monitor.unwrap_or(0),

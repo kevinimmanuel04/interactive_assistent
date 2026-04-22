@@ -20,7 +20,12 @@ pub enum MouseBtn {
     Middle,
 }
 
-pub fn click(x: Option<i32>, y: Option<i32>, btn: MouseBtn, double: bool) -> Result<(), DesktopError> {
+pub fn click(
+    x: Option<i32>,
+    y: Option<i32>,
+    btn: MouseBtn,
+    double: bool,
+) -> Result<(), DesktopError> {
     let mut eng = new_enigo()?;
     if let (Some(x), Some(y)) = (x, y) {
         eng.move_mouse(x, y, Coordinate::Abs)

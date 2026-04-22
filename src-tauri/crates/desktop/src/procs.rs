@@ -45,7 +45,11 @@ pub fn top_processes(limit: usize) -> Result<Vec<ProcInfo>, DesktopError> {
             }
         })
         .collect();
-    procs.sort_by(|a, b| b.cpu.partial_cmp(&a.cpu).unwrap_or(std::cmp::Ordering::Equal));
+    procs.sort_by(|a, b| {
+        b.cpu
+            .partial_cmp(&a.cpu)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     procs.truncate(limit);
     Ok(procs)
 }
