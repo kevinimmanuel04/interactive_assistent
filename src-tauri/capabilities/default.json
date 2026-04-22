@@ -11,12 +11,13 @@
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:event:default",
-    "log:default",
     "store:default",
     "global-shortcut:allow-is-registered",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "updater:default",
-    "process:default"
+    "process:default",
+    "opener:default",
+    "opener:allow-open-url"
   ]
 }

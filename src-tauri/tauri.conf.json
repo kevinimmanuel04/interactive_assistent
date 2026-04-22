@@ -14,9 +14,11 @@
       {
         "label": "main",
         "title": "Komorebi",
-        "width": 400,
-        "height": 600,
-        "resizable": false,
+        "width": 480,
+        "height": 760,
+        "minWidth": 360,
+        "minHeight": 520,
+        "resizable": true,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
@@ -33,6 +35,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "binaries/piper/**/*"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -42,5 +47,13 @@
     "category": "Utility",
     "shortDescription": "Anime-avatar virtual assistant",
     "longDescription": "Komorebi is a cross-platform virtual assistant with an animated anime avatar and hybrid local/cloud AI."
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "",
+      "endpoints": [
+        "https://github.com/kiskaserver/interactive_assistent/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

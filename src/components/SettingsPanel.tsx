@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
+import ExternalLink from "./ExternalLink";
 import {
   FolderStats,
   getSettings,
@@ -82,24 +83,35 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
           onKeyDown={(e) => e.key === "Escape" && onClose()}
           style={{
             position: "absolute",
-            top: 60,
+            top: 48,
             left: 12,
             right: 12,
-            padding: 14,
-            borderRadius: 12,
-            background: "rgba(18, 18, 26, 0.9)",
+            bottom: 12,
+            padding: 0,
+            borderRadius: 14,
+            background: "rgba(18, 18, 26, 0.92)",
             color: "#fff",
             fontSize: 13,
-            backdropFilter: "blur(12px)",
-            WebkitBackdropFilter: "blur(12px)",
-            boxShadow: "0 8px 28px rgba(0,0,0,0.45)",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
+            boxShadow: "0 8px 28px rgba(0,0,0,0.5)",
+            border: "1px solid rgba(255,255,255,0.08)",
             display: "flex",
             flexDirection: "column",
-            gap: 12,
+            overflow: "hidden",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <strong>Settings</strong>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 14px",
+              borderBottom: "1px solid rgba(255,255,255,0.06)",
+              flexShrink: 0,
+            }}
+          >
+            <strong style={{ fontSize: 14 }}>Settings</strong>
             <button
               onClick={onClose}
               style={{
@@ -107,13 +119,30 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
                 border: "none",
                 color: "#aaa",
                 cursor: "pointer",
-                fontSize: 16,
+                fontSize: 18,
+                lineHeight: 1,
+                padding: 0,
+                width: 24,
+                height: 24,
+                borderRadius: 6,
               }}
               aria-label="Close"
             >
               ×
             </button>
           </div>
+
+          <div
+            style={{
+              overflowY: "auto",
+              padding: 14,
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+              flex: 1,
+              minHeight: 0,
+            }}
+          >
 
           <div>
             <div style={{ opacity: 0.7, marginBottom: 6 }}>Routing mode</div>
@@ -257,6 +286,7 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
               onChanged();
             }}
           />
+          </div>
         </motion.div>
       )}
     </AnimatePresence>
@@ -297,7 +327,7 @@ function Live2DSection({
       </div>
       <input
         type="text"
-        placeholder="/live2d/haru/haru.model3.json"
+        placeholder="https://.../model.model3.json or /live2d/.../model.model3.json"
         value={url}
         disabled={busy}
         onChange={(e) => setUrl(e.target.value)}
@@ -307,9 +337,13 @@ function Live2DSection({
         style={inputStyle}
       />
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
-        Drop a Cubism 3/4 model folder into <code>public/live2d/</code> and{" "}
-        <code>live2dcubismcore.min.js</code> from the Live2D SDK into{" "}
-        <code>public/</code>. See <code>public/live2d/README.md</code>.
+        Supports Cubism 2 (<code>.model.json</code>) and 3/4 (
+        <code>.model3.json</code>). The runtime is auto-fetched from CDN on
+        first load. Try:{" "}
+        <ExternalLink href="https://guansss.github.io/pixi-live2d-display/">
+          pixi-live2d-display demo
+        </ExternalLink>
+        .
       </div>
     </div>
   );
@@ -332,8 +366,9 @@ function TtsSection({
   }, [settings?.piper_binary_path, settings?.piper_voice_path]);
 
   const enabled = settings?.tts_enabled ?? false;
-  const ready =
-    !!settings?.piper_binary_path && !!settings?.piper_voice_path;
+  // Binary path is optional: the app ships a bundled Piper. Only the voice
+  // model is required to enable TTS.
+  const ready = !!settings?.piper_voice_path;
 
   const save = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -380,7 +415,7 @@ function TtsSection({
       </div>
       <input
         type="text"
-        placeholder="Path to piper.exe"
+        placeholder="Path to piper binary (optional — bundled by default)"
         value={binary}
         onChange={(e) => setBinary(e.target.value)}
         onBlur={() =>
@@ -401,8 +436,13 @@ function TtsSection({
         style={{ ...inputStyle, marginTop: 6 }}
       />
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
-        Download voices from the Models panel (⬇). Piper binary:{" "}
-        <span style={{ color: "#b39ddb" }}>github.com/rhasspy/piper</span>
+        Download voices from the Models panel (⬇). A Piper binary is bundled
+        with the app; leave the first field empty to use it. Override with a
+        custom build from{" "}
+        <ExternalLink href="https://github.com/OHF-Voice/piper1-gpl/releases">
+          OHF-Voice/piper1-gpl
+        </ExternalLink>
+        .
       </div>
     </div>
   );

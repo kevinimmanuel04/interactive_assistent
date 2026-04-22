@@ -76,6 +76,9 @@ jobs:
       - name: Install frontend deps
         run: pnpm install --frozen-lockfile
 
+      - name: Fetch bundled Piper binary
+        run: pnpm fetch:piper
+
       - name: Build Tauri bundle
         env:
           # Optional: set these repo secrets to produce signed updater

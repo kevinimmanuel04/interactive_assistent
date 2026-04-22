@@ -4,32 +4,73 @@ import { Emotion } from "../emotion";
 import { lipSync } from "../lipsync";
 
 /**
- * Loads `live2dcubismcore.min.js` once from `/live2dcubismcore.min.js`
- * (served out of `public/`). Resolves with `true` on success, `false` on
- * 404 or load error. Further calls return the cached result.
+ * Loads the right Live2D runtime for the given model URL:
+ *   * `.model.json`   → Cubism 2 (`live2d.min.js`)
+ *   * `.model3.json`  → Cubism 3/4 (`live2dcubismcore.min.js`)
+ *
+ * First tries the file served out of `public/`, then falls back to the
+ * canonical CDN so out-of-the-box first-run with a remote model just works.
+ * Resolves with `true` on success.
  */
-let cubismCorePromise: Promise<boolean> | null = null;
-function ensureCubismCore(): Promise<boolean> {
-  if (cubismCorePromise) return cubismCorePromise;
-  cubismCorePromise = new Promise((resolve) => {
-    if (
-      (window as unknown as { Live2DCubismCore?: unknown }).Live2DCubismCore
-    ) {
-      resolve(true);
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "/live2dcubismcore.min.js";
-    script.async = true;
-    script.onload = () =>
-      resolve(
-        !!(window as unknown as { Live2DCubismCore?: unknown })
-          .Live2DCubismCore
-      );
-    script.onerror = () => resolve(false);
-    document.head.appendChild(script);
+type Runtime = "cubism2" | "cubism4";
+
+function detectRuntime(modelUrl: string): Runtime {
+  // Strip query / hash before extension check
+  const clean = modelUrl.split(/[?#]/)[0].toLowerCase();
+  return clean.endsWith(".model3.json") ? "cubism4" : "cubism2";
+}
+
+const runtimePromises: Partial<Record<Runtime, Promise<boolean>>> = {};
+
+function loadScript(src: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.async = true;
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
   });
-  return cubismCorePromise;
+}
+
+function ensureRuntime(runtime: Runtime): Promise<boolean> {
+  const cached = runtimePromises[runtime];
+  if (cached) return cached;
+
+  const p = (async () => {
+    const w = window as unknown as {
+      Live2DCubismCore?: unknown;
+      Live2D?: unknown;
+    };
+    if (runtime === "cubism4" && w.Live2DCubismCore) return true;
+    if (runtime === "cubism2" && w.Live2D) return true;
+
+    const sources =
+      runtime === "cubism4"
+        ? [
+            "/live2dcubismcore.min.js",
+            "https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js",
+          ]
+        : [
+            "/live2d.min.js",
+            "https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js",
+          ];
+
+    for (const src of sources) {
+      const ok = await loadScript(src);
+      if (!ok) continue;
+      const loaded =
+        runtime === "cubism4"
+          ? !!(window as unknown as { Live2DCubismCore?: unknown })
+              .Live2DCubismCore
+          : !!(window as unknown as { Live2D?: unknown }).Live2D;
+      if (loaded) return true;
+    }
+    return false;
+  })();
+
+  runtimePromises[runtime] = p;
+  return p;
 }
 
 /**
@@ -57,17 +98,26 @@ export default function Live2DCanvas({
     let cleanup: (() => void) | null = null;
 
     (async () => {
-      const coreReady = await ensureCubismCore();
+      const runtime = detectRuntime(modelUrl);
+      const coreReady = await ensureRuntime(runtime);
       if (!coreReady) {
+        console.warn(
+          `[Live2D] ${runtime} runtime failed to load (local /public and CDN both unreachable)`
+        );
         if (!disposed) setFailed(true);
         return;
       }
 
       try {
         const PIXI = await import("pixi.js");
-        const { Live2DModel } = await import(
-          "pixi-live2d-display-lipsyncpatch"
-        );
+        // The default entry of pixi-live2d-display-lipsyncpatch is Cubism 4
+        // only. Load the matching sub-bundle so each runtime actually finds
+        // its core lib.
+        const mod =
+          runtime === "cubism4"
+            ? await import("pixi-live2d-display-lipsyncpatch/cubism4")
+            : await import("pixi-live2d-display-lipsyncpatch/cubism2");
+        const { Live2DModel } = mod;
 
         Live2DModel.registerTicker(PIXI.Ticker);
 
@@ -91,10 +141,26 @@ export default function Live2DCanvas({
           return;
         }
 
-        const scale = Math.min(width / model.width, height / model.height) * 0.95;
+        // Anchor to model centre so scaling + positioning is predictable
+        // across both Cubism 2 and Cubism 4 models (their internal origins
+        // differ — Cubism 2 uses top-left, Cubism 4 often uses centre).
+        let anchored = false;
+        try {
+          (model as unknown as { anchor: { set: (x: number, y: number) => void } })
+            .anchor.set(0.5, 0.5);
+          anchored = true;
+        } catch {
+          /* some builds expose anchor on the internal sprite only */
+        }
+        const scale = Math.min(width / model.width, height / model.height) * 0.9;
         model.scale.set(scale);
-        model.x = width / 2 - (model.width * scale) / 2;
-        model.y = height - model.height * scale;
+        if (anchored) {
+          model.x = width / 2;
+          model.y = height / 2;
+        } else {
+          model.x = width / 2 - (model.width * scale) / 2;
+          model.y = height / 2 - (model.height * scale) / 2;
+        }
 
         app.stage.addChild(model as unknown as (typeof PIXI)["DisplayObject"]["prototype"]);
 

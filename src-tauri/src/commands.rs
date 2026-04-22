@@ -245,6 +245,18 @@ pub fn emit_tts_wav(app: &AppHandle<Wry>, wav: &[u8]) {
     }
 }
 
+/// Resolves the bundled Piper binary shipped as a Tauri resource.
+/// Returns `None` if the resource dir does not contain our sidecar — this is
+/// expected during `cargo test` or when the dev build skipped `fetch-piper`.
+fn bundled_piper(app: &AppHandle<Wry>) -> Option<std::path::PathBuf> {
+    let name = if cfg!(windows) { "piper.exe" } else { "piper" };
+    let path = app
+        .path()
+        .resolve(format!("binaries/piper/{name}"), tauri::path::BaseDirectory::Resource)
+        .ok()?;
+    path.exists().then_some(path)
+}
+
 /// Re-reads persisted TTS settings and applies them to the shared handle.
 /// Called on startup and whenever any TTS-related setting changes.
 pub async fn reload_tts(app: &AppHandle<Wry>) {
@@ -253,12 +265,19 @@ pub async fn reload_tts(app: &AppHandle<Wry>) {
         return;
     };
     let enabled = settings::get_tts_enabled(app);
-    let bin = settings::get_piper_binary(app);
+    let bin_setting = settings::get_piper_binary(app);
     let voice = settings::get_piper_voice(app);
+
+    // Resolution order for the Piper binary:
+    //   1. User-provided override (non-empty `piper_binary_path`).
+    //   2. Bundled sidecar (`binaries/piper/piper[.exe]`).
+    let bin = bin_setting
+        .filter(|s| !s.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| bundled_piper(app));
+
     let cfg = match (enabled, bin, voice) {
-        (true, Some(b), Some(v)) if !b.is_empty() && !v.is_empty() => {
-            Some(PiperConfig::from_voice(b, v))
-        }
+        (true, Some(b), Some(v)) if !v.is_empty() => Some(PiperConfig::from_voice(b, v)),
         _ => None,
     };
     tts.inner().configure(cfg).await;

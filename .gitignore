@@ -18,6 +18,9 @@ models/
 *.onnx
 *.bin
 
+# Bundled Piper TTS binary (fetched by scripts/fetch-piper.mjs per target)
+src-tauri/binaries/
+
 # Env / secrets
 .env
 .env.local

@@ -20,20 +20,23 @@ export default function ChatBubble({ text, route, thinking }: Props) {
           transition={{ duration: 0.18, ease: "easeOut" }}
           style={{
             position: "absolute",
-            top: 16,
-            left: "50%",
-            transform: "translateX(-50%)",
-            maxWidth: 360,
+            top: 44,
+            left: 12,
+            right: 12,
+            maxWidth: "calc(100% - 24px)",
             padding: "10px 14px",
             borderRadius: 14,
-            background: "rgba(20, 20, 28, 0.78)",
+            background: "rgba(20, 20, 28, 0.82)",
             color: "#fff",
             fontSize: 14,
             lineHeight: 1.4,
             backdropFilter: "blur(10px)",
             WebkitBackdropFilter: "blur(10px)",
-            boxShadow: "0 6px 24px rgba(0,0,0,0.3)",
+            boxShadow: "0 6px 24px rgba(0,0,0,0.35)",
+            border: "1px solid rgba(255,255,255,0.08)",
             whiteSpace: "pre-wrap",
+            maxHeight: "40vh",
+            overflowY: "auto",
           }}
         >
           {route && (
