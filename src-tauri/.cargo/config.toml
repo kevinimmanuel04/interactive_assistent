@@ -1,0 +1,7 @@
+# llama-cpp-sys-2 and whisper-rs-sys both vendor identical copies of ggml,
+# which collide at link time on MSVC. Both copies are the same upstream
+# source, so /FORCE:MULTIPLE is safe — the linker keeps the first copy and
+# ignores the duplicates. Needed only when both `local-llm` and `stt`
+# features are enabled simultaneously.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "link-arg=/FORCE:MULTIPLE"]

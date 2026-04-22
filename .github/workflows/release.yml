@@ -1,5 +1,123 @@
 ﻿name: Release build
 
+# Builds a downloadable Komorebi installer for Windows.
+#
+# Triggers:
+#   * push of a tag like v0.1.0  -> draft GitHub release + latest.json
+#   * manual workflow_dispatch   -> per-run artifacts
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  CARGO_INCREMENTAL: "0"
+  CARGO_NET_RETRY: "10"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: release-windows
+          cache-all-crates: true
+
+      - name: Install LLVM
+        run: |
+          choco install llvm --yes --no-progress
+          "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Install frontend deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Fetch bundled Piper binary
+        run: pnpm fetch:piper
+
+      - name: Build Tauri bundle
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --target x86_64-pc-windows-msvc -- --features full
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: komorebi-windows
+          path: src-tauri/target/*/release/bundle/nsis/*
+          if-no-files-found: warn
+
+      - name: Attach to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: src-tauri/target/*/release/bundle/nsis/*
+
+  updater-manifest:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download platform bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: bundles
+
+      - name: Build latest.json
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          win=$(find bundles/komorebi-windows -name '*-setup.nsis.zip' | head -n1 || true)
+          version="${TAG#v}"
+          base="https://github.com/${REPO}/releases/download/${TAG}"
+          sig() { [ -n "${1:-}" ] && [ -f "${1}.sig" ] && cat "${1}.sig" || echo ""; }
+          url() { [ -n "${1:-}" ] && echo "${base}/$(basename "$1")" || echo ""; }
+
+          cat > latest.json <<EOF
+          {
+            "version": "${version}",
+            "notes": "See release notes on GitHub.",
+            "pub_date": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "platforms": {
+              "windows-x86_64": { "signature": "$(sig "$win")", "url": "$(url "$win")" }
+            }
+          }
+          EOF
+          cat latest.json
+
+      - name: Attach latest.json to release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: latest.json
+name: Release build
+
 # Builds a downloadable Komorebi installer for every supported OS.
 #
 # Triggers:
