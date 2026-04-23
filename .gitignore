@@ -21,6 +21,8 @@ models/
 
 # Bundled Piper TTS binary (fetched by scripts/fetch-piper.mjs per target)
 src-tauri/binaries/
+!src-tauri/binaries/piper/
+!src-tauri/binaries/piper/.keep
 
 # Env / secrets
 .env
