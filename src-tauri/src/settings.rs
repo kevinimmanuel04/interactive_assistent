@@ -419,7 +419,7 @@ pub fn set_tts_noise_w<R: Runtime>(app: &AppHandle<R>, v: Option<f64>) -> Result
 }
 
 pub fn set_tts_volume<R: Runtime>(app: &AppHandle<R>, v: f64) -> Result<()> {
-    let clamped = v.max(0.0).min(2.0);
+    let clamped = v.clamp(0.0, 2.0);
     write_optional_f64(app, KEY_TTS_VOLUME, Some(clamped))
 }
 
@@ -461,7 +461,7 @@ pub fn set_sovits_text_lang<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<(
     write_optional_string(app, KEY_SOVITS_TEXT_LANG, v)
 }
 pub fn set_sovits_speed<R: Runtime>(app: &AppHandle<R>, v: f64) -> Result<()> {
-    let clamped = v.max(0.25).min(3.0);
+    let clamped = v.clamp(0.25, 3.0);
     write_optional_f64(app, KEY_SOVITS_SPEED, Some(clamped))
 }
 
