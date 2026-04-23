@@ -1,0 +1,2 @@
+Placeholder so tauri.conf `resources: binaries/piper/**/*` glob always matches.
+Real Piper binaries are fetched by `pnpm fetch:piper` at build time.
