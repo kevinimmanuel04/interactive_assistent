@@ -55,6 +55,16 @@ jobs:
       - name: Fetch bundled Piper binary
         run: pnpm fetch:piper
 
+      - name: Verify Piper binary
+        shell: pwsh
+        run: |
+          $dir = "src-tauri/binaries/piper"
+          if (-not (Test-Path $dir)) { throw "Missing $dir after fetch:piper" }
+          $items = Get-ChildItem $dir -Recurse
+          if ($items.Count -eq 0) { throw "Empty $dir after fetch:piper" }
+          Write-Host "Piper contents ($($items.Count) entries):"
+          $items | Select-Object -First 20 | ForEach-Object { Write-Host "  $($_.FullName)" }
+
       - name: Build Tauri bundle
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}

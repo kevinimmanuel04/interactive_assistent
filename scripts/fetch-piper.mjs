@@ -18,7 +18,7 @@
  * Idempotent: skips download if `src-tauri/binaries/piper/VERSION` matches.
  */
 import { createHash } from "node:crypto";
-import { createWriteStream, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -61,15 +61,9 @@ async function download(url, dest) {
   console.log(`[piper] GET ${url}`);
   const res = await fetch(url, { redirect: "follow" });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  await new Promise((ok, err) => {
-    const w = createWriteStream(dest);
-    w.on("error", err);
-    w.on("finish", ok);
-    // @ts-ignore — Node fetch returns a WebStream; pipe via Readable.fromWeb
-    import("node:stream").then(({ Readable }) =>
-      Readable.fromWeb(res.body).pipe(w)
-    );
-  });
+  const buf = Buffer.from(await res.arrayBuffer());
+  writeFileSync(dest, buf);
+  console.log(`[piper] downloaded ${buf.length} bytes -> ${dest}`);
 }
 
 function run(cmd, args, opts = {}) {
@@ -135,8 +129,14 @@ async function main() {
   if (asset.kind === "zip") await extractZip(archive, outDir);
   else await extractTar(archive, outDir);
 
+  const entries = readdirSync(outDir);
+  if (entries.length === 0) {
+    throw new Error(`extraction produced no files in ${outDir}`);
+  }
+  console.log(`[piper] extracted ${entries.length} entries: ${entries.join(", ")}`);
+
   writeFileSync(versionFile, `${want}\n`);
-  console.log(`[piper] extracted to ${outDir}`);
+  console.log(`[piper] ready at ${outDir}`);
 }
 
 main().catch((e) => {
