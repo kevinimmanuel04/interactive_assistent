@@ -30,6 +30,8 @@ const ALLOWED_EXTS: &[&str] = &[
     "txt", "md", "markdown", "rst", "org", "json", "yaml", "yml", "toml", "csv", "tsv", "log",
     "ini", "cfg", "py", "rs", "ts", "tsx", "js", "jsx", "go", "java", "kt", "swift", "c", "h",
     "cpp", "hpp", "cs", "rb", "php", "sh", "ps1", "sql", "html", "css", "scss",
+    // v1.1: PDF support via `pdf-extract`.
+    "pdf",
 ];
 
 #[derive(thiserror::Error, Debug)]
@@ -184,9 +186,9 @@ impl RagIndex {
                 }
             }
 
-            let text = match std::fs::read_to_string(p) {
-                Ok(t) => t,
-                Err(_) => {
+            let text = match read_indexable(p) {
+                Some(t) => t,
+                None => {
                     report.files_skipped += 1;
                     continue;
                 }
@@ -326,6 +328,24 @@ struct Chunk {
     text: String,
     start: usize,
     end: usize,
+}
+
+/// Read a file as plain text, with format-specific extractors. Returns
+/// `None` if the file is unreadable, binary, or extraction failed.
+fn read_indexable(path: &Path) -> Option<String> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase());
+    match ext.as_deref() {
+        Some("pdf") => {
+            // pdf-extract is pure Rust; failures here are common (encrypted /
+            // image-only PDFs) so we just skip on error rather than logging
+            // noise.
+            pdf_extract::extract_text(path).ok().filter(|s| !s.trim().is_empty())
+        }
+        _ => std::fs::read_to_string(path).ok(),
+    }
 }
 
 fn chunk_text(input: &str) -> Vec<Chunk> {

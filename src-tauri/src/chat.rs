@@ -9,7 +9,7 @@
 
 use crate::settings;
 use futures::StreamExt;
-use komorebi_cloud::{CloudIntentClassifier, OpenRouterClient, StreamEvent};
+use komorebi_cloud::{CloudIntentClassifier, CloudSkillClassifier, OpenRouterClient, StreamEvent};
 use komorebi_router::{classify, classify_async, ChatMessage, Role, Route};
 use komorebi_skills::SkillRegistry;
 use serde::Serialize;
@@ -72,7 +72,19 @@ fn system_prompt() -> ChatMessage {
     ChatMessage::system(
         "You are Komorebi, a cheerful anime-styled virtual assistant. \
          Reply concisely (1-4 sentences) unless asked for detail. \
-         Match the user's language.",
+         Match the user's language. \
+         \
+         Emotion protocol: prepend exactly one of these tags to your reply \
+         when the mood of the answer is non-neutral, then continue with the \
+         actual text. The tag will be stripped before display and is used \
+         to drive your avatar's facial expression. \
+         Tags: <mood:happy> <mood:sad> <mood:angry> <mood:surprised> <mood:thinking>. \
+         Use <mood:thinking> while you reason about a hard request, \
+         <mood:happy> for good news/jokes, <mood:sad> when apologizing, \
+         <mood:angry> for refusals/errors, <mood:surprised> for unexpected \
+         findings. Omit the tag entirely for plain neutral answers. \
+         Never explain the tag, never speak it aloud — just emit it once \
+         at the very start of the reply.",
     )
 }
 
@@ -141,6 +153,62 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
     let route = if settings::get_smart_routing(&app) {
         if let Some(key) = settings::get_openrouter_key(&app) {
             let model = settings::get_classifier_model(&app);
+            // Smart-skill pre-pass: ask a small LLM whether this query is a
+            // skill invocation regardless of phrasing. If yes, short-circuit
+            // straight into the named skill.
+            let catalog = SkillRegistry::catalog();
+            if let Ok(picker) =
+                CloudSkillClassifier::new(key.clone(), model.clone(), &catalog)
+            {
+                match picker.pick(&prompt).await {
+                    Ok(Some(intent)) => {
+                        tracing::info!(skill = %intent.skill, "llm picked skill");
+                        let cmd = if intent.command.trim().is_empty() {
+                            prompt.clone()
+                        } else {
+                            intent.command
+                        };
+                        emit(
+                            &app,
+                            ChatEventOut::Started {
+                                id: id.clone(),
+                                route: "skill".into(),
+                            },
+                        );
+                        let reply = match service
+                            .skills
+                            .dispatch_named(&intent.skill, &cmd)
+                            .await
+                        {
+                            Ok(r) => r.text,
+                            Err(komorebi_skills::SkillError::NotApplicable) => {
+                                "Skill couldn't run that. Try rephrasing.".into()
+                            }
+                            Err(komorebi_skills::SkillError::Exec(m)) => {
+                                format!("Skill failed: {m}")
+                            }
+                        };
+                        emit(
+                            &app,
+                            ChatEventOut::Token {
+                                id: id.clone(),
+                                text: reply.clone(),
+                            },
+                        );
+                        emit(
+                            &app,
+                            ChatEventOut::Done {
+                                id,
+                                full_text: reply.clone(),
+                            },
+                        );
+                        maybe_speak(&app, reply).await;
+                        return Ok(());
+                    }
+                    Ok(None) => {}
+                    Err(e) => tracing::debug!(?e, "skill classifier failed"),
+                }
+            }
             match CloudIntentClassifier::new(key, model) {
                 Ok(c) => classify_async(&prompt, mode, Some(&c)).await,
                 Err(e) => {
@@ -265,10 +333,13 @@ async fn maybe_speak(app: &AppHandle<Wry>, text: String) {
 /// clicks, buzzes, or garbled phonemes. Keeps letters, digits, basic
 /// punctuation, and common Unicode letters (Cyrillic, etc.).
 fn sanitize_for_tts(text: &str) -> String {
+    // First: drop any <mood:X> tags so they aren't pronounced as
+    // "less-than mood colon happy greater-than".
+    let stripped = strip_mood_tags(text);
     // Remove fenced code blocks entirely.
-    let mut out = String::with_capacity(text.len());
+    let mut out = String::with_capacity(stripped.len());
     let mut in_fence = false;
-    for line in text.lines() {
+    for line in stripped.lines() {
         if line.trim_start().starts_with("```") {
             in_fence = !in_fence;
             continue;
@@ -311,6 +382,39 @@ fn sanitize_for_tts(text: &str) -> String {
         }
     }
     buf.trim().to_string()
+}
+
+/// Remove `<mood:NAME>` markers (case-insensitive). Cheap O(n) scan, no regex.
+fn strip_mood_tags(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let bytes = text.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'<' && bytes.get(i + 1..i + 6).map(|s| s.eq_ignore_ascii_case(b"mood:")).unwrap_or(false) {
+            // Find closing '>'.
+            if let Some(rel) = bytes[i + 6..].iter().position(|&c| c == b'>') {
+                i += 6 + rel + 1;
+                continue;
+            }
+        }
+        // Push next UTF-8 char as a whole.
+        let ch_len = utf8_char_len(bytes[i]);
+        let end = (i + ch_len).min(bytes.len());
+        if let Ok(s) = std::str::from_utf8(&bytes[i..end]) {
+            out.push_str(s);
+        }
+        i = end;
+    }
+    out
+}
+
+#[inline]
+fn utf8_char_len(b: u8) -> usize {
+    if b < 0x80 { 1 }
+    else if b < 0xC0 { 1 } // continuation byte (shouldn't happen at boundary)
+    else if b < 0xE0 { 2 }
+    else if b < 0xF0 { 3 }
+    else { 4 }
 }
 
 async fn stream_cloud(

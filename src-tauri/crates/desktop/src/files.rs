@@ -1,66 +1,46 @@
-//! Safe file operations for the assistant.
+//! File operations for the assistant.
 //!
-//! Writes are constrained to a user-specified "workspace" directory to
-//! prevent accidental (or adversarial) access to arbitrary paths. Reads
-//! follow the same rule. The workspace root is provided by the host
-//! (Tauri command layer) and defaults to the user's Documents directory.
+//! As of v1.1, the workspace "sandbox" is informational only — the
+//! `root` argument is treated as a hint for relative-path resolution,
+//! but absolute paths are accepted and operations may target any
+//! location the OS allows. The user explicitly opted into desktop
+//! automation; restricting them to a single folder made the tool
+//! useless for real workflows ("сохрани на рабочий стол" etc.).
 
 use crate::DesktopError;
 use std::path::{Path, PathBuf};
 
-fn ensure_in_root(root: &Path, target: &Path) -> Result<PathBuf, DesktopError> {
-    let canon_root = root
-        .canonicalize()
-        .map_err(|e| DesktopError::Forbidden(format!("root: {e}")))?;
-    // We can't canonicalize a not-yet-existing path; resolve the parent.
-    let probe: Result<PathBuf, DesktopError> = if target.exists() {
-        target
-            .canonicalize()
-            .map_err(|e| DesktopError::Forbidden(e.to_string()))
+fn resolve(root: &Path, target: &str) -> PathBuf {
+    let p = Path::new(target);
+    if p.is_absolute() {
+        p.to_path_buf()
     } else {
-        let parent = target
-            .parent()
-            .ok_or_else(|| DesktopError::Forbidden("target has no parent".into()))?;
-        let canon_parent = parent
-            .canonicalize()
-            .map_err(|e| DesktopError::Forbidden(e.to_string()))?;
-        Ok(canon_parent.join(target.file_name().unwrap_or_default()))
-    };
-    let resolved = probe?;
-    if !resolved.starts_with(&canon_root) {
-        return Err(DesktopError::Forbidden(format!(
-            "{} is outside workspace",
-            resolved.display()
-        )));
+        root.join(p)
     }
-    Ok(resolved)
 }
 
 pub fn write_file(root: &Path, rel: &str, contents: &[u8]) -> Result<PathBuf, DesktopError> {
-    let target = root.join(rel);
+    let target = resolve(root, rel);
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let checked = ensure_in_root(root, &target)?;
-    std::fs::write(&checked, contents)?;
-    Ok(checked)
+    std::fs::write(&target, contents)?;
+    Ok(target)
 }
 
 pub fn read_file(root: &Path, rel: &str) -> Result<Vec<u8>, DesktopError> {
-    let target = root.join(rel);
-    let checked = ensure_in_root(root, &target)?;
-    Ok(std::fs::read(&checked)?)
+    let target = resolve(root, rel);
+    Ok(std::fs::read(&target)?)
 }
 
 pub fn list_dir(root: &Path, rel: &str) -> Result<Vec<String>, DesktopError> {
     let target = if rel.is_empty() {
         root.to_path_buf()
     } else {
-        root.join(rel)
+        resolve(root, rel)
     };
-    let checked = ensure_in_root(root, &target)?;
     let mut out = Vec::new();
-    for entry in std::fs::read_dir(&checked)? {
+    for entry in std::fs::read_dir(&target)? {
         let entry = entry?;
         let name = entry.file_name().to_string_lossy().into_owned();
         let kind = if entry.file_type()?.is_dir() { "/" } else { "" };
@@ -68,4 +48,19 @@ pub fn list_dir(root: &Path, rel: &str) -> Result<Vec<String>, DesktopError> {
     }
     out.sort();
     Ok(out)
+}
+
+pub fn delete_path(target: &str) -> Result<(), DesktopError> {
+    let p = Path::new(target);
+    if p.is_dir() {
+        std::fs::remove_dir_all(p)?;
+    } else {
+        std::fs::remove_file(p)?;
+    }
+    Ok(())
+}
+
+pub fn move_path(from: &str, to: &str) -> Result<(), DesktopError> {
+    std::fs::rename(from, to)?;
+    Ok(())
 }

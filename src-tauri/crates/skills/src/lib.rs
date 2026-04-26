@@ -8,6 +8,7 @@
 use async_trait::async_trait;
 
 pub mod clipboard;
+pub mod media;
 pub mod open;
 pub mod registry;
 pub mod screenshot;

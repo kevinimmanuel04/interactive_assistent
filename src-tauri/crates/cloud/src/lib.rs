@@ -126,6 +126,126 @@ impl OpenRouterClient {
         let event_stream = sse_to_events(byte_stream);
         Ok(Box::pin(event_stream))
     }
+
+    /// Non-streaming completion. Used for proactive-agent decisions and
+    /// other one-shot prompts where SSE is overkill.
+    pub async fn complete(
+        &self,
+        model: &str,
+        messages: &[ChatMessage],
+        max_tokens: u32,
+    ) -> Result<String, CloudError> {
+        let body = RequestBody {
+            model,
+            messages,
+            stream: false,
+            temperature: Some(0.4),
+            max_tokens: Some(max_tokens),
+        };
+        let resp = self
+            .http
+            .post(OPENROUTER_URL)
+            .bearer_auth(&self.api_key)
+            .header("HTTP-Referer", &self.app_referer)
+            .header("X-Title", &self.app_title)
+            .json(&body)
+            .send()
+            .await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(CloudError::Api {
+                status: status.as_u16(),
+                body,
+            });
+        }
+        #[derive(serde::Deserialize)]
+        struct Resp {
+            choices: Vec<RespChoice>,
+        }
+        #[derive(serde::Deserialize)]
+        struct RespChoice {
+            message: RespMessage,
+        }
+        #[derive(serde::Deserialize)]
+        struct RespMessage {
+            #[serde(default)]
+            content: String,
+        }
+        let parsed: Resp = resp.json().await.map_err(CloudError::Http)?;
+        Ok(parsed
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content)
+            .unwrap_or_default())
+    }
+
+    /// Vision completion: pass a system + user-text + PNG image. The image
+    /// is encoded as a base64 data URI inside an `image_url` content part,
+    /// which is the format every vision-capable OpenRouter model accepts.
+    pub async fn complete_vision(
+        &self,
+        model: &str,
+        system: &str,
+        user_text: &str,
+        png_bytes: &[u8],
+        max_tokens: u32,
+    ) -> Result<String, CloudError> {
+        use base64::Engine as _;
+        let b64 = base64::engine::general_purpose::STANDARD.encode(png_bytes);
+        let data_uri = format!("data:image/png;base64,{b64}");
+        let body = serde_json::json!({
+            "model": model,
+            "stream": false,
+            "temperature": 0.5,
+            "max_tokens": max_tokens,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": [
+                    {"type": "text", "text": user_text},
+                    {"type": "image_url", "image_url": {"url": data_uri}}
+                ]}
+            ]
+        });
+        let resp = self
+            .http
+            .post(OPENROUTER_URL)
+            .bearer_auth(&self.api_key)
+            .header("HTTP-Referer", &self.app_referer)
+            .header("X-Title", &self.app_title)
+            .json(&body)
+            .send()
+            .await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(CloudError::Api {
+                status: status.as_u16(),
+                body,
+            });
+        }
+        #[derive(serde::Deserialize)]
+        struct VResp {
+            choices: Vec<VRespChoice>,
+        }
+        #[derive(serde::Deserialize)]
+        struct VRespChoice {
+            message: VRespMessage,
+        }
+        #[derive(serde::Deserialize)]
+        struct VRespMessage {
+            #[serde(default)]
+            content: String,
+        }
+        let parsed: VResp = resp.json().await.map_err(CloudError::Http)?;
+        Ok(parsed
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content)
+            .unwrap_or_default())
+    }
 }
 
 // --- Intent classification -------------------------------------------------
@@ -256,6 +376,153 @@ impl komorebi_router::IntentClassifier for CloudIntentClassifier {
             }
         }
     }
+}
+
+// --- Skill classification --------------------------------------------------
+
+/// LLM-driven skill picker. Replaces brittle keyword regexes — given any
+/// natural-language phrasing, asks a small fast model which of our
+/// built-in skills (if any) the user wants to invoke.
+///
+/// Returned name must match one of the skill names registered in
+/// `komorebi_skills::SkillRegistry`. If the model says "none" or
+/// returns garbage, we fall back to the keyword router.
+pub struct CloudSkillClassifier {
+    http: reqwest::Client,
+    api_key: String,
+    model: String,
+    timeout: std::time::Duration,
+    skills_doc: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct SkillIntent {
+    pub skill: String,
+    /// Free-form rephrased command for the skill to parse, e.g.
+    /// "set volume to 50" → `volume` skill consumes "set volume to 50".
+    pub command: String,
+}
+
+impl CloudSkillClassifier {
+    /// `skills` is a list of `(name, one-line description)` pairs the
+    /// classifier can choose from. The classifier is told it can also
+    /// answer "none" if the query is regular conversation.
+    pub fn new(
+        api_key: impl Into<String>,
+        model: impl Into<String>,
+        skills: &[(&str, &str)],
+    ) -> Result<Self, CloudError> {
+        let api_key = api_key.into();
+        if api_key.trim().is_empty() {
+            return Err(CloudError::MissingApiKey);
+        }
+        let http = reqwest::Client::builder()
+            .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
+            .build()?;
+        let mut doc = String::from("Available skills:\n");
+        for (name, desc) in skills {
+            doc.push_str(&format!("- {name}: {desc}\n"));
+        }
+        Ok(Self {
+            http,
+            api_key,
+            model: model.into(),
+            timeout: std::time::Duration::from_secs(3),
+            skills_doc: doc,
+        })
+    }
+
+    pub async fn pick(&self, query: &str) -> Result<Option<SkillIntent>, CloudError> {
+        let system = ChatMessage::system(format!(
+            "You are an intent classifier for a desktop assistant. Pick the \
+single skill that best matches the user's request, or answer \"none\".\n\n\
+{}\n\
+Respond with strict JSON: {{\"skill\":\"NAME_OR_none\",\"command\":\"REPHRASED_INSTRUCTION\"}}.\n\
+The command field, if skill != none, should be a short imperative the skill \
+can parse (e.g. \"set volume to 50\", \"take a screenshot\", \"open https://github.com\"). \
+For \"none\", set command to an empty string.\n\
+Output ONLY the JSON, no markdown, no commentary.",
+            self.skills_doc
+        ));
+        let user = ChatMessage::user(query.to_string());
+        let body = RequestBody {
+            model: &self.model,
+            messages: &[system, user],
+            stream: false,
+            temperature: Some(0.0),
+            max_tokens: Some(64),
+        };
+        let fut = self
+            .http
+            .post(OPENROUTER_URL)
+            .bearer_auth(&self.api_key)
+            .header("HTTP-Referer", "https://komorebi.app")
+            .header("X-Title", "Komorebi")
+            .json(&body)
+            .send();
+        let resp = tokio::time::timeout(self.timeout, fut)
+            .await
+            .map_err(|_| CloudError::Stream("skill-classifier timeout".into()))??;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(CloudError::Api {
+                status: status.as_u16(),
+                body,
+            });
+        }
+        #[derive(serde::Deserialize)]
+        struct Resp {
+            choices: Vec<RespChoice>,
+        }
+        #[derive(serde::Deserialize)]
+        struct RespChoice {
+            message: RespMessage,
+        }
+        #[derive(serde::Deserialize)]
+        struct RespMessage {
+            #[serde(default)]
+            content: String,
+        }
+        let parsed: Resp = resp.json().await.map_err(CloudError::Http)?;
+        let raw = parsed
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content)
+            .unwrap_or_default();
+        Ok(parse_skill_reply(&raw))
+    }
+}
+
+fn parse_skill_reply(raw: &str) -> Option<SkillIntent> {
+    // Models occasionally wrap JSON in ``` fences. Strip them.
+    let trimmed = raw.trim();
+    let inner = trimmed
+        .strip_prefix("```json")
+        .or_else(|| trimmed.strip_prefix("```"))
+        .map(|s| s.trim_end_matches("```").trim())
+        .unwrap_or(trimmed);
+    #[derive(serde::Deserialize)]
+    struct ReplyJson {
+        skill: String,
+        #[serde(default)]
+        command: String,
+    }
+    let v: ReplyJson = serde_json::from_str(inner).ok()?;
+    let skill = v.skill.trim().to_lowercase();
+    if skill.is_empty() || skill == "none" || skill == "null" {
+        return None;
+    }
+    Some(SkillIntent {
+        skill,
+        command: if v.command.trim().is_empty() {
+            // Some models echo the original; fine — let the skill parse it.
+            String::new()
+        } else {
+            v.command
+        },
+    })
 }
 
 fn sse_to_events<S>(bytes: S) -> impl Stream<Item = Result<StreamEvent, CloudError>> + Send

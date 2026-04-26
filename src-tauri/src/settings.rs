@@ -43,6 +43,18 @@ const KEY_SOVITS_SPEED: &str = "sovits_speed";
 const KEY_AGENT_WORKSPACE: &str = "agent_workspace";
 const KEY_PROACTIVE_ENABLED: &str = "proactive_enabled";
 const KEY_DESKTOP_AUTOMATION: &str = "desktop_automation_enabled";
+const KEY_OPENROUTER_TTS_ENABLED: &str = "openrouter_tts_enabled";
+const KEY_OPENROUTER_TTS_MODEL: &str = "openrouter_tts_model";
+const KEY_OPENROUTER_TTS_VOICE: &str = "openrouter_tts_voice";
+const KEY_OPENROUTER_STT_ENABLED: &str = "openrouter_stt_enabled";
+const KEY_OPENROUTER_STT_MODEL: &str = "openrouter_stt_model";
+const KEY_GAME_COACH_ENABLED: &str = "game_coach_enabled";
+const KEY_GAME_COACH_MODEL: &str = "game_coach_model";
+
+pub const DEFAULT_OPENROUTER_TTS_MODEL: &str = "openai/gpt-4o-audio-preview";
+pub const DEFAULT_OPENROUTER_TTS_VOICE: &str = "alloy";
+pub const DEFAULT_OPENROUTER_STT_MODEL: &str = "openai/gpt-4o-audio-preview";
+pub const DEFAULT_GAME_COACH_MODEL: &str = "openai/gpt-4o-mini";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicSettings {
@@ -79,6 +91,13 @@ pub struct PublicSettings {
     pub agent_workspace: Option<String>,
     pub proactive_enabled: bool,
     pub desktop_automation_enabled: bool,
+    pub openrouter_tts_enabled: bool,
+    pub openrouter_tts_model: String,
+    pub openrouter_tts_voice: String,
+    pub openrouter_stt_enabled: bool,
+    pub openrouter_stt_model: String,
+    pub game_coach_enabled: bool,
+    pub game_coach_model: String,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -195,6 +214,13 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         agent_workspace: read_string(app, KEY_AGENT_WORKSPACE),
         proactive_enabled: get_bool(app, KEY_PROACTIVE_ENABLED, false),
         desktop_automation_enabled: get_bool(app, KEY_DESKTOP_AUTOMATION, false),
+        openrouter_tts_enabled: get_openrouter_tts_enabled(app),
+        openrouter_tts_model: get_openrouter_tts_model(app),
+        openrouter_tts_voice: get_openrouter_tts_voice(app),
+        openrouter_stt_enabled: get_openrouter_stt_enabled(app),
+        openrouter_stt_model: get_openrouter_stt_model(app),
+        game_coach_enabled: get_game_coach_enabled(app),
+        game_coach_model: get_game_coach_model(app),
     }
 }
 
@@ -391,7 +417,7 @@ pub fn get_tts_provider(app: &AppHandle<Wry>) -> String {
 pub fn set_tts_provider<R: Runtime>(app: &AppHandle<R>, provider: &str) -> Result<()> {
     // Sanity: only allow known providers.
     let p = match provider {
-        "piper" | "sovits" => provider,
+        "piper" | "sovits" | "openrouter" => provider,
         _ => "piper",
     };
     write_optional_string(app, KEY_TTS_PROVIDER, p)
@@ -500,4 +526,70 @@ pub fn set_desktop_automation_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) 
     store.set(KEY_DESKTOP_AUTOMATION, serde_json::Value::Bool(on));
     store.save()?;
     Ok(())
+}
+
+// --- OpenRouter TTS / STT -------------------------------------------------
+
+pub fn get_openrouter_tts_enabled(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_OPENROUTER_TTS_ENABLED, false)
+}
+pub fn set_openrouter_tts_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_OPENROUTER_TTS_ENABLED, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_openrouter_tts_model(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_OPENROUTER_TTS_MODEL)
+        .unwrap_or_else(|| DEFAULT_OPENROUTER_TTS_MODEL.to_string())
+}
+pub fn set_openrouter_tts_model<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_OPENROUTER_TTS_MODEL, v)
+}
+
+pub fn get_openrouter_tts_voice(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_OPENROUTER_TTS_VOICE)
+        .unwrap_or_else(|| DEFAULT_OPENROUTER_TTS_VOICE.to_string())
+}
+pub fn set_openrouter_tts_voice<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_OPENROUTER_TTS_VOICE, v)
+}
+
+pub fn get_openrouter_stt_enabled(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_OPENROUTER_STT_ENABLED, false)
+}
+pub fn set_openrouter_stt_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_OPENROUTER_STT_ENABLED, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_openrouter_stt_model(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_OPENROUTER_STT_MODEL)
+        .unwrap_or_else(|| DEFAULT_OPENROUTER_STT_MODEL.to_string())
+}
+pub fn set_openrouter_stt_model<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_OPENROUTER_STT_MODEL, v)
+}
+
+// --- Game Coach -----------------------------------------------------------
+
+pub fn get_game_coach_enabled(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_GAME_COACH_ENABLED, false)
+}
+pub fn set_game_coach_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_GAME_COACH_ENABLED, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_game_coach_model(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_GAME_COACH_MODEL)
+        .unwrap_or_else(|| DEFAULT_GAME_COACH_MODEL.to_string())
+}
+pub fn set_game_coach_model<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_GAME_COACH_MODEL, v)
 }

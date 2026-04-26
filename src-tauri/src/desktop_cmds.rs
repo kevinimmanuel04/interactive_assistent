@@ -2,7 +2,7 @@
 //! the LLM tool-use layer.
 
 use crate::settings;
-use komorebi_desktop::{capture, files, input, procs};
+use komorebi_desktop::{capture, files, input, procs, vdesktop};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Wry};
@@ -198,4 +198,31 @@ pub fn desktop_read_file(app: AppHandle<Wry>, rel_path: String) -> Result<String
 pub fn desktop_list_dir(app: AppHandle<Wry>, rel_path: String) -> Result<Vec<String>, String> {
     let root = workspace_root(&app)?;
     files::list_dir(&root, &rel_path).map_err(|e| e.to_string())
+}
+
+// ---- Virtual desktops (Windows) ----
+
+#[tauri::command]
+pub fn desktop_vd_switch_left() -> Result<(), String> {
+    vdesktop::perform(vdesktop::VirtualDesktopAction::SwitchLeft).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn desktop_vd_switch_right() -> Result<(), String> {
+    vdesktop::perform(vdesktop::VirtualDesktopAction::SwitchRight).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn desktop_vd_create() -> Result<(), String> {
+    vdesktop::perform(vdesktop::VirtualDesktopAction::Create).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn desktop_vd_close() -> Result<(), String> {
+    vdesktop::perform(vdesktop::VirtualDesktopAction::CloseCurrent).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn desktop_vd_task_view() -> Result<(), String> {
+    vdesktop::perform(vdesktop::VirtualDesktopAction::TaskView).map_err(|e| e.to_string())
 }

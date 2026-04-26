@@ -7,6 +7,7 @@ import SettingsPanel from "./components/SettingsPanel";
 import { listen } from "@tauri-apps/api/event";
 import { exit as tauriExit } from "@tauri-apps/plugin-process";
 import { avatarState } from "./avatarState";
+import { stripMoodTags } from "./emotion";
 import { lipSync } from "./lipsync";
 import { ListenController } from "./listen";
 import { checkForUpdatesQuietly } from "./updater";
@@ -100,6 +101,33 @@ export default function App() {
     };
   }, []);
 
+  // Proactive suggestions and game-coach tips both surface as transient
+  // bubbles. Skip them if a real reply is currently streaming so we don't
+  // stomp on the active conversation.
+  useEffect(() => {
+    const showTransient = (text: string) => {
+      if (activeIdRef.current) return;
+      setBubbleText(text);
+      if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current);
+      bubbleTimer.current = window.setTimeout(() => {
+        setBubbleText(null);
+        bubbleTimer.current = null;
+      }, 8000);
+    };
+    const p1 = listen<{ hint: string }>("proactive:suggest", (evt) => {
+      const hint = evt.payload?.hint?.trim();
+      if (hint) showTransient(hint);
+    });
+    const p2 = listen<{ game: string; hint: string }>("coach:tip", (evt) => {
+      const hint = evt.payload?.hint?.trim();
+      if (hint) showTransient(hint);
+    });
+    return () => {
+      p1.then((fn) => fn());
+      p2.then((fn) => fn());
+    };
+  }, []);
+
   // Auto-listen: when enabled, keep the continuous-listen switch on so the
   // assistant can hear the next prompt without a mic click. The existing
   // ListenController already handles VAD + re-arming between utterances.
@@ -188,9 +216,11 @@ export default function App() {
         case "token":
           setThinking(false);
           setBubbleText((t) => {
-            const next = (t ?? "") + e.text;
-            avatarState.onToken(next);
-            return next;
+            // Keep raw text (with mood tags) for emotion detection,
+            // but display the user-visible version with tags stripped.
+            const raw = (t ?? "") + e.text;
+            avatarState.onToken(raw);
+            return stripMoodTags(raw);
           });
           break;
         case "done":

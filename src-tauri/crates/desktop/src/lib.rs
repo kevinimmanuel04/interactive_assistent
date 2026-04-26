@@ -16,6 +16,7 @@ pub mod capture;
 pub mod files;
 pub mod input;
 pub mod procs;
+pub mod vdesktop;
 
 #[derive(thiserror::Error, Debug)]
 pub enum DesktopError {

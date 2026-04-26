@@ -201,6 +201,16 @@ pub fn set_desktop_automation_enabled(app: AppHandle<Wry>, enabled: bool) -> Res
 }
 
 #[tauri::command]
+pub fn set_game_coach_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
+    settings::set_game_coach_enabled(&app, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_game_coach_model(app: AppHandle<Wry>, model: String) -> Result<(), String> {
+    settings::set_game_coach_model(&app, &model).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn set_live2d_model(app: AppHandle<Wry>, url: String) -> Result<(), String> {
     settings::set_live2d_model_url(&app, &url).map_err(|e| e.to_string())
 }
@@ -228,6 +238,20 @@ pub async fn stop_recording(
     recorder: State<'_, komorebi_voice::stt::Recorder>,
 ) -> Result<String, String> {
     let samples = recorder.stop().map_err(|e| e.to_string())?;
+
+    // Prefer OpenRouter STT when enabled and an API key is configured.
+    if settings::get_openrouter_stt_enabled(&app) {
+        if let Some(key) = settings::get_openrouter_key(&app) {
+            let cfg = komorebi_voice::openrouter::OpenRouterSttConfig {
+                api_key: key,
+                model: settings::get_openrouter_stt_model(&app),
+            };
+            return komorebi_voice::openrouter::transcribe(&cfg, &samples, 16_000)
+                .await
+                .map_err(|e| e.to_string());
+        }
+    }
+
     let model_path = settings::get_whisper_model_path(&app)
         .ok_or_else(|| "no Whisper model configured".to_string())?;
     let path = std::path::PathBuf::from(model_path);
@@ -273,6 +297,31 @@ pub fn set_rag_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String>
 #[tauri::command]
 pub fn set_openrouter_model(app: AppHandle<Wry>, model: String) -> Result<(), String> {
     settings::set_openrouter_model(&app, &model).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_openrouter_tts_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
+    settings::set_openrouter_tts_enabled(&app, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_openrouter_tts_model(app: AppHandle<Wry>, model: String) -> Result<(), String> {
+    settings::set_openrouter_tts_model(&app, &model).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_openrouter_tts_voice(app: AppHandle<Wry>, voice: String) -> Result<(), String> {
+    settings::set_openrouter_tts_voice(&app, &voice).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_openrouter_stt_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
+    settings::set_openrouter_stt_enabled(&app, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_openrouter_stt_model(app: AppHandle<Wry>, model: String) -> Result<(), String> {
+    settings::set_openrouter_stt_model(&app, &model).map_err(|e| e.to_string())
 }
 
 /// List the available audio input & output devices so the UI can render a
@@ -441,6 +490,25 @@ pub async fn synthesize_via_provider(
 ) -> Result<Option<Vec<u8>>, String> {
     let provider = settings::get_tts_provider(app);
     match provider.as_str() {
+        "openrouter" => {
+            if !settings::get_openrouter_tts_enabled(app) {
+                return Ok(None);
+            }
+            let Some(key) = settings::get_openrouter_key(app) else {
+                return Ok(None);
+            };
+            let cfg = komorebi_voice::openrouter::OpenRouterTtsConfig {
+                api_key: key,
+                model: settings::get_openrouter_tts_model(app),
+                voice: settings::get_openrouter_tts_voice(app),
+            };
+            let tts = komorebi_voice::openrouter::OpenRouterTts::new();
+            tts.configure(Some(cfg)).await;
+            tts.synthesize(text)
+                .await
+                .map(Some)
+                .map_err(|e| e.to_string())
+        }
         "sovits" => {
             let Some(sovits) = app.try_state::<komorebi_voice::sovits::SoVitsTts>() else {
                 return Ok(None);

@@ -32,6 +32,13 @@ import {
   setTtsProsody,
   setTtsVolume,
   setSovitsConfig,
+  setOpenRouterTtsEnabled,
+  setOpenRouterTtsModel,
+  setOpenRouterTtsVoice,
+  setOpenRouterSttEnabled,
+  setOpenRouterSttModel,
+  setGameCoachEnabled,
+  setGameCoachModel,
   setWakeWord,
   setWhisperModel,
   systemInfo,
@@ -292,6 +299,15 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
             }}
           />
 
+          <GameCoachSection
+            settings={settings}
+            onChanged={async () => {
+              const next = await getSettings();
+              setSettings(next);
+              onChanged();
+            }}
+          />
+
           <RagSection
             settings={settings}
             onChanged={async () => {
@@ -480,6 +496,7 @@ function TtsSection({
       <ProsodySection settings={settings} onChanged={onChanged} />
       <ProviderSection settings={settings} onChanged={onChanged} />
       <SoVitsSection settings={settings} onChanged={onChanged} />
+      <OpenRouterVoiceSection settings={settings} onChanged={onChanged} />
     </div>
   );
 }
@@ -626,30 +643,37 @@ function ProviderSection({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
-  const provider = (settings?.tts_provider ?? "piper") as "piper" | "sovits";
+  const provider = (settings?.tts_provider ?? "piper") as "piper" | "sovits" | "openrouter";
+  const hasKey = settings?.has_openrouter_key ?? false;
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ opacity: 0.7, fontSize: 11, marginBottom: 4 }}>TTS provider</div>
-      <div style={{ display: "flex", gap: 6 }}>
-        {(["piper", "sovits"] as const).map((p) => (
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {([
+          ["piper", "Piper (local, light)", true],
+          ["sovits", "GPT-SoVITS (external)", true],
+          ["openrouter", "OpenRouter (cloud)", hasKey],
+        ] as const).map(([p, label, enabled]) => (
           <button
             key={p}
+            disabled={!enabled}
+            title={!enabled ? "Set the OpenRouter API key first" : ""}
             onClick={async () => {
               await setTtsProvider(p);
               await onChanged();
             }}
             style={{
-              flex: 1,
+              flex: "1 1 30%",
               padding: "6px 8px",
               borderRadius: 6,
               border: provider === p ? "1px solid #8ab4f8" : "1px solid rgba(255,255,255,0.15)",
               background: provider === p ? "rgba(138,180,248,0.12)" : "transparent",
-              color: "#fff",
-              cursor: "pointer",
+              color: enabled ? "#fff" : "rgba(255,255,255,0.4)",
+              cursor: enabled ? "pointer" : "not-allowed",
               fontSize: 12,
             }}
           >
-            {p === "piper" ? "Piper (local, light)" : "GPT-SoVITS (external)"}
+            {label}
           </button>
         ))}
       </div>
@@ -792,6 +816,133 @@ function SoVitsSection({
   );
 }
 
+// -------- OpenRouter cloud TTS form ---------------------------------------
+
+function OpenRouterVoiceSection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const expanded = (settings?.tts_provider ?? "piper") === "openrouter";
+  const hasKey = settings?.has_openrouter_key ?? false;
+  const [enabled, setEnabled] = useState(settings?.openrouter_tts_enabled ?? false);
+  const [model, setModel] = useState(settings?.openrouter_tts_model ?? "openai/gpt-4o-audio-preview");
+  const [voice, setVoice] = useState(settings?.openrouter_tts_voice ?? "alloy");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setEnabled(settings?.openrouter_tts_enabled ?? false);
+    setModel(settings?.openrouter_tts_model ?? "openai/gpt-4o-audio-preview");
+    setVoice(settings?.openrouter_tts_voice ?? "alloy");
+  }, [
+    settings?.openrouter_tts_enabled,
+    settings?.openrouter_tts_model,
+    settings?.openrouter_tts_voice,
+  ]);
+
+  if (!expanded) return null;
+
+  const commitEnabled = async (v: boolean) => {
+    setBusy(true);
+    try {
+      await setOpenRouterTtsEnabled(v);
+      setEnabled(v);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const commitModel = async () => {
+    setBusy(true);
+    try {
+      await setOpenRouterTtsModel(model);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const commitVoice = async (v: string) => {
+    setBusy(true);
+    try {
+      await setOpenRouterTtsVoice(v);
+      setVoice(v);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 10, padding: 8, background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
+      {!hasKey && (
+        <div style={{ color: "#ffb74d", fontSize: 11, marginBottom: 6 }}>
+          Set your OpenRouter API key above to enable cloud TTS.
+        </div>
+      )}
+      <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={busy || !hasKey}
+          onChange={(e) => commitEnabled(e.target.checked)}
+        />
+        Enable OpenRouter TTS
+      </label>
+      <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
+        TTS model
+      </div>
+      <input
+        type="text"
+        list="openrouter-tts-models"
+        placeholder="openai/gpt-4o-audio-preview"
+        value={model}
+        disabled={busy || !hasKey}
+        onChange={(e) => setModel(e.target.value)}
+        onBlur={commitModel}
+        style={inputStyle}
+      />
+      <datalist id="openrouter-tts-models">
+        <option value="openai/gpt-4o-audio-preview" />
+        <option value="openai/gpt-4o-mini-audio-preview" />
+      </datalist>
+      <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
+        Voice
+      </div>
+      <select
+        value={voice}
+        disabled={busy || !hasKey}
+        onChange={(e) => commitVoice(e.target.value)}
+        style={inputStyle}
+      >
+        {[
+          "alloy",
+          "ash",
+          "ballad",
+          "coral",
+          "echo",
+          "fable",
+          "nova",
+          "onyx",
+          "sage",
+          "shimmer",
+          "verse",
+        ].map((v) => (
+          <option key={v} value={v}>
+            {v}
+          </option>
+        ))}
+      </select>
+      <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6, lineHeight: 1.4 }}>
+        Routes synthesis through OpenRouter using an audio-output-capable
+        model. Piper still works as a local fallback when this provider is
+        switched off.
+      </div>
+    </div>
+  );
+}
+
 const inputStyle: React.CSSProperties = {
   width: "100%",
   padding: "6px 8px",
@@ -829,6 +980,18 @@ function SttSection({
   };
 
   const available = settings?.stt_available ?? false;
+  const hasKey = settings?.has_openrouter_key ?? false;
+  const orEnabled = settings?.openrouter_stt_enabled ?? false;
+  const orModel = settings?.openrouter_stt_model ?? "openai/gpt-4o-audio-preview";
+
+  const toggleOr = async (v: boolean) => {
+    await setOpenRouterSttEnabled(v);
+    await onChanged();
+  };
+  const commitOrModel = async (v: string) => {
+    await setOpenRouterSttModel(v);
+    await onChanged();
+  };
 
   return (
     <div>
@@ -857,6 +1020,110 @@ function SttSection({
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
         Download a Whisper ggml model via the wizard, then click "Use as STT
         model". A 🎙 button will appear in the input field.
+      </div>
+
+      <div style={{ marginTop: 10, padding: 8, background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
+        {!hasKey && (
+          <div style={{ color: "#ffb74d", fontSize: 11, marginBottom: 6 }}>
+            Set your OpenRouter API key above to enable cloud STT.
+          </div>
+        )}
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+          <input
+            type="checkbox"
+            checked={orEnabled}
+            disabled={!hasKey}
+            onChange={(e) => toggleOr(e.target.checked)}
+          />
+          Use OpenRouter STT (cloud) when enabled — falls back to Whisper if off
+        </label>
+        <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
+          STT model
+        </div>
+        <input
+          type="text"
+          list="openrouter-stt-models"
+          defaultValue={orModel}
+          disabled={!hasKey}
+          onBlur={(e) => {
+            if (e.target.value !== orModel) commitOrModel(e.target.value);
+          }}
+          style={inputStyle}
+        />
+        <datalist id="openrouter-stt-models">
+          <option value="openai/gpt-4o-audio-preview" />
+          <option value="openai/gpt-4o-mini-audio-preview" />
+          <option value="google/gemini-2.5-flash" />
+          <option value="google/gemini-2.0-flash-001" />
+        </datalist>
+      </div>
+    </div>
+  );
+}
+
+function GameCoachSection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const hasKey = settings?.has_openrouter_key ?? false;
+  const enabled = settings?.game_coach_enabled ?? false;
+  const model = settings?.game_coach_model ?? "openai/gpt-4o-mini";
+
+  const toggle = async (v: boolean) => {
+    await setGameCoachEnabled(v);
+    await onChanged();
+  };
+  const commitModel = async (v: string) => {
+    await setGameCoachModel(v);
+    await onChanged();
+  };
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <div style={{ opacity: 0.7, marginBottom: 6 }}>
+        Game Coach (vision)
+      </div>
+      <div style={{ padding: 8, background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
+        {!hasKey && (
+          <div style={{ color: "#ffb74d", fontSize: 11, marginBottom: 6 }}>
+            Set your OpenRouter API key to use the vision-based coach.
+          </div>
+        )}
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={!hasKey}
+            onChange={(e) => toggle(e.target.checked)}
+          />
+          Watch the screen during games and whisper short tips
+        </label>
+        <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
+          Vision model
+        </div>
+        <input
+          type="text"
+          list="game-coach-models"
+          defaultValue={model}
+          disabled={!hasKey}
+          onBlur={(e) => {
+            if (e.target.value !== model) commitModel(e.target.value);
+          }}
+          style={inputStyle}
+        />
+        <datalist id="game-coach-models">
+          <option value="openai/gpt-4o-mini" />
+          <option value="openai/gpt-4o" />
+          <option value="google/gemini-2.5-flash" />
+          <option value="anthropic/claude-3.5-sonnet" />
+        </datalist>
+        <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
+          A screenshot is captured every ~30s only when a game window is focused.
+          The image is downscaled to 960px before being sent.
+        </div>
       </div>
     </div>
   );

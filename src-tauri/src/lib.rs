@@ -1,6 +1,7 @@
 //! Komorebi desktop entrypoint.
 
 mod chat;
+mod coach;
 mod commands;
 mod desktop_cmds;
 mod models;
@@ -107,6 +108,13 @@ pub fn run() {
             commands::speak_reaction,
             commands::set_proactive_enabled,
             commands::set_desktop_automation_enabled,
+            commands::set_openrouter_tts_enabled,
+            commands::set_openrouter_tts_model,
+            commands::set_openrouter_tts_voice,
+            commands::set_openrouter_stt_enabled,
+            commands::set_openrouter_stt_model,
+            commands::set_game_coach_enabled,
+            commands::set_game_coach_model,
             desktop_cmds::desktop_workspace_root,
             desktop_cmds::desktop_set_workspace,
             desktop_cmds::desktop_list_screens,
@@ -123,6 +131,11 @@ pub fn run() {
             desktop_cmds::desktop_write_file,
             desktop_cmds::desktop_read_file,
             desktop_cmds::desktop_list_dir,
+            desktop_cmds::desktop_vd_switch_left,
+            desktop_cmds::desktop_vd_switch_right,
+            desktop_cmds::desktop_vd_create,
+            desktop_cmds::desktop_vd_close,
+            desktop_cmds::desktop_vd_task_view,
             tools::run_tool,
         ])
         .setup(move |app| {
@@ -185,6 +198,7 @@ pub fn run() {
             // Proactive agent — polls active window/processes and nudges
             // the user when appropriate (only if enabled in settings).
             crate::proactive::spawn(app.handle().clone());
+            crate::coach::spawn(app.handle().clone());
 
             tracing::info!("Komorebi started");
             Ok(())

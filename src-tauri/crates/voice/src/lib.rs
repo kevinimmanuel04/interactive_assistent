@@ -1,6 +1,7 @@
 //! Voice subsystem: TTS (Piper) and STT (Whisper) in Phase 2;
 //! VAD/wake word arrive in Phase 2D.
 
+pub mod openrouter;
 pub mod sovits;
 pub mod stt;
 pub mod tts;

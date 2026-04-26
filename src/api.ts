@@ -40,6 +40,13 @@ export interface PublicSettings {
   sovits_prompt_lang: string;
   sovits_text_lang: string;
   sovits_speed: number;
+  openrouter_tts_enabled?: boolean;
+  openrouter_tts_model?: string;
+  openrouter_tts_voice?: string;
+  openrouter_stt_enabled?: boolean;
+  openrouter_stt_model?: string;
+  game_coach_enabled?: boolean;
+  game_coach_model?: string;
 }
 
 export interface FolderStats {
@@ -150,8 +157,36 @@ export async function speakText(text: string): Promise<void> {
   await invoke("speak_text", { text });
 }
 
-export async function setTtsProvider(provider: "piper" | "sovits"): Promise<void> {
+export async function setTtsProvider(provider: "piper" | "sovits" | "openrouter"): Promise<void> {
   await invoke("set_tts_provider", { provider });
+}
+
+export async function setOpenRouterTtsEnabled(enabled: boolean): Promise<void> {
+  await invoke("set_openrouter_tts_enabled", { enabled });
+}
+
+export async function setOpenRouterTtsModel(model: string): Promise<void> {
+  await invoke("set_openrouter_tts_model", { model });
+}
+
+export async function setOpenRouterTtsVoice(voice: string): Promise<void> {
+  await invoke("set_openrouter_tts_voice", { voice });
+}
+
+export async function setOpenRouterSttEnabled(enabled: boolean): Promise<void> {
+  await invoke("set_openrouter_stt_enabled", { enabled });
+}
+
+export async function setOpenRouterSttModel(model: string): Promise<void> {
+  await invoke("set_openrouter_stt_model", { model });
+}
+
+export async function setGameCoachEnabled(enabled: boolean): Promise<void> {
+  await invoke("set_game_coach_enabled", { enabled });
+}
+
+export async function setGameCoachModel(model: string): Promise<void> {
+  await invoke("set_game_coach_model", { model });
 }
 
 export async function setTtsProsody(

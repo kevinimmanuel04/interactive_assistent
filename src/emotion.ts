@@ -1,16 +1,14 @@
 /**
- * Lightweight, streaming-friendly emotion detector.
+ * Streaming emotion detector with a hybrid strategy:
  *
- * Takes the assistant's text (so far) and emits one of a small set of
- * emotions based on keyword cues and punctuation. Deliberately simple —
- * Phase 3D keeps emotion inference on-device and model-free so it stays
- * responsive and works offline. A model-based upgrade is planned for
- * Phase 4 alongside TTS prosody control.
+ *  1. **Inline LLM tags** — if the model emits `<mood:happy>` style
+ *     markers (we ask it to in the system prompt), we honor them as
+ *     ground truth. This is the v1.1+ protocol.
+ *  2. **Keyword/emoji heuristic** — fallback for models that ignore the
+ *     instruction or for older replies. Works offline, no model call.
  *
- * The detector is *monotonic within an utterance* in the sense that it
- * returns the strongest emotion seen in the whole input, so a reply that
- * starts neutral and ends with "haha 😂" flips to Happy once the cue
- * arrives.
+ * `stripMoodTags(text)` removes the LLM markers from text before display
+ * so the user never sees `<mood:happy>` in the chat bubble.
  */
 
 export type Emotion =
@@ -75,12 +73,42 @@ const RULES: readonly Rule[] = [
 ];
 
 /**
+ * Matches `<mood:NAME>` markers (case-insensitive). The model is
+ * instructed to emit at most one per reply, but we tolerate any.
+ */
+const MOOD_TAG = /<mood:(neutral|happy|sad|angry|surprised|thinking)>/gi;
+
+/**
+ * Strip mood tags from a text fragment so they don't appear in chat or
+ * get pronounced by TTS. Use on every token chunk.
+ */
+export function stripMoodTags(text: string): string {
+  return text.replace(MOOD_TAG, "");
+}
+
+/**
+ * Extract the last mood tag in a text fragment, if any. Returns
+ * `undefined` when no tag is present.
+ */
+export function extractMoodTag(text: string): Emotion | undefined {
+  const matches = [...text.matchAll(MOOD_TAG)];
+  if (matches.length === 0) return undefined;
+  const last = matches[matches.length - 1][1].toLowerCase() as Emotion;
+  return last;
+}
+
+/**
  * Classify a piece of text (partial or complete). Returns `"neutral"`
  * when no cue matches. Case-insensitive. Safe to call on every token
  * during streaming — `O(text.length * cueCount)` and cue count is small.
+ *
+ * If the text contains a `<mood:X>` tag, that tag wins (ground truth
+ * from the LLM). Otherwise falls back to the keyword/emoji heuristic.
  */
 export function detectEmotion(text: string): Emotion {
   if (!text) return "neutral";
+  const tagged = extractMoodTag(text);
+  if (tagged) return tagged;
   const lower = text.toLowerCase();
   const scores: Record<Emotion, number> = {
     neutral: 0,
