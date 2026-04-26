@@ -58,7 +58,11 @@ impl SkillRegistry {
         let Some(skill) = self.skills.iter().find(|s| s.name() == name) else {
             return Err(SkillError::NotApplicable);
         };
-        tracing::info!(skill = name, mode = "llm-intent", "dispatching skill by name");
+        tracing::info!(
+            skill = name,
+            mode = "llm-intent",
+            "dispatching skill by name"
+        );
         skill
             .execute(SkillContext {
                 query: query.to_string(),

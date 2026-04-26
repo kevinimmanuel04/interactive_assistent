@@ -587,8 +587,7 @@ pub fn set_game_coach_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Resul
 }
 
 pub fn get_game_coach_model(app: &AppHandle<Wry>) -> String {
-    read_string(app, KEY_GAME_COACH_MODEL)
-        .unwrap_or_else(|| DEFAULT_GAME_COACH_MODEL.to_string())
+    read_string(app, KEY_GAME_COACH_MODEL).unwrap_or_else(|| DEFAULT_GAME_COACH_MODEL.to_string())
 }
 pub fn set_game_coach_model<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
     write_optional_string(app, KEY_GAME_COACH_MODEL, v)

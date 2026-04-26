@@ -157,9 +157,7 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
             // skill invocation regardless of phrasing. If yes, short-circuit
             // straight into the named skill.
             let catalog = SkillRegistry::catalog();
-            if let Ok(picker) =
-                CloudSkillClassifier::new(key.clone(), model.clone(), &catalog)
-            {
+            if let Ok(picker) = CloudSkillClassifier::new(key.clone(), model.clone(), &catalog) {
                 match picker.pick(&prompt).await {
                     Ok(Some(intent)) => {
                         tracing::info!(skill = %intent.skill, "llm picked skill");
@@ -175,11 +173,7 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
                                 route: "skill".into(),
                             },
                         );
-                        let reply = match service
-                            .skills
-                            .dispatch_named(&intent.skill, &cmd)
-                            .await
-                        {
+                        let reply = match service.skills.dispatch_named(&intent.skill, &cmd).await {
                             Ok(r) => r.text,
                             Err(komorebi_skills::SkillError::NotApplicable) => {
                                 "Skill couldn't run that. Try rephrasing.".into()
@@ -390,7 +384,12 @@ fn strip_mood_tags(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'<' && bytes.get(i + 1..i + 6).map(|s| s.eq_ignore_ascii_case(b"mood:")).unwrap_or(false) {
+        if bytes[i] == b'<'
+            && bytes
+                .get(i + 1..i + 6)
+                .map(|s| s.eq_ignore_ascii_case(b"mood:"))
+                .unwrap_or(false)
+        {
             // Find closing '>'.
             if let Some(rel) = bytes[i + 6..].iter().position(|&c| c == b'>') {
                 i += 6 + rel + 1;
@@ -410,11 +409,19 @@ fn strip_mood_tags(text: &str) -> String {
 
 #[inline]
 fn utf8_char_len(b: u8) -> usize {
-    if b < 0x80 { 1 }
-    else if b < 0xC0 { 1 } // continuation byte (shouldn't happen at boundary)
-    else if b < 0xE0 { 2 }
-    else if b < 0xF0 { 3 }
-    else { 4 }
+    if b < 0x80 {
+        1
+    } else if b < 0xC0 {
+        1
+    }
+    // continuation byte (shouldn't happen at boundary)
+    else if b < 0xE0 {
+        2
+    } else if b < 0xF0 {
+        3
+    } else {
+        4
+    }
 }
 
 async fn stream_cloud(

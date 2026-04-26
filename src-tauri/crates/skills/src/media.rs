@@ -233,9 +233,11 @@ fn apply(action: MediaAction) -> Result<String, SkillError> {
     let status = std::process::Command::new("playerctl")
         .arg(arg)
         .status()
-        .map_err(|e| SkillError::Exec(format!(
-            "playerctl missing? install it via your package manager: {e}"
-        )))?;
+        .map_err(|e| {
+            SkillError::Exec(format!(
+                "playerctl missing? install it via your package manager: {e}"
+            ))
+        })?;
     if !status.success() {
         return Err(SkillError::Exec("playerctl failed".into()));
     }

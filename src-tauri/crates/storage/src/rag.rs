@@ -342,7 +342,9 @@ fn read_indexable(path: &Path) -> Option<String> {
             // pdf-extract is pure Rust; failures here are common (encrypted /
             // image-only PDFs) so we just skip on error rather than logging
             // noise.
-            pdf_extract::extract_text(path).ok().filter(|s| !s.trim().is_empty())
+            pdf_extract::extract_text(path)
+                .ok()
+                .filter(|s| !s.trim().is_empty())
         }
         _ => std::fs::read_to_string(path).ok(),
     }
