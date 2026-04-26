@@ -126,7 +126,7 @@ fn generate_blocking(
         .map_err(|e| LlmError::Other(format!("tokenize: {e}")))?;
 
     let n_ctx_i = ctx.n_ctx() as i32;
-    let max_new = (n_ctx_i - tokens.len() as i32).max(16).min(1024);
+    let max_new = (n_ctx_i - tokens.len() as i32).clamp(16, 1024);
     let n_len = tokens.len() as i32 + max_new;
 
     let mut batch = LlamaBatch::new(n_ctx_i as usize, 1);
