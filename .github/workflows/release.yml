@@ -103,11 +103,17 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          win=$(find bundles/komorebi-windows -name '*-setup.nsis.zip' | head -n1 || true)
+          win=$(find bundles/komorebi-windows -name '*-setup.exe' | head -n1 || true)
           version="${TAG#v}"
           base="https://github.com/${REPO}/releases/download/${TAG}"
           sig() { [ -n "${1:-}" ] && [ -f "${1}.sig" ] && cat "${1}.sig" || echo ""; }
           url() { [ -n "${1:-}" ] && echo "${base}/$(basename "$1")" || echo ""; }
+
+          if [ -z "$win" ] || [ ! -f "${win}.sig" ]; then
+            echo "::error::Missing NSIS installer or .sig (win='$win'). Updater manifest would be empty."
+            ls -R bundles/komorebi-windows || true
+            exit 1
+          fi
 
           cat > latest.json <<EOF
           {
