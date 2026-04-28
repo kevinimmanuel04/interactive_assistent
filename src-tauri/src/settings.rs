@@ -685,8 +685,7 @@ pub fn set_deepgram_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<
 }
 
 pub fn get_deepgram_model(app: &AppHandle<Wry>) -> String {
-    read_string(app, KEY_DEEPGRAM_MODEL)
-        .unwrap_or_else(|| DEFAULT_DEEPGRAM_MODEL.to_string())
+    read_string(app, KEY_DEEPGRAM_MODEL).unwrap_or_else(|| DEFAULT_DEEPGRAM_MODEL.to_string())
 }
 pub fn set_deepgram_model<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
     write_optional_string(app, KEY_DEEPGRAM_MODEL, v)

@@ -243,8 +243,7 @@ async fn synthesize(
     let pcm = match base64::engine::general_purpose::STANDARD.decode(joined.as_bytes()) {
         Ok(bytes) => bytes,
         Err(_) => {
-            let mut buf =
-                Vec::with_capacity(audio_chunks.iter().map(|s| s.len() * 3 / 4).sum());
+            let mut buf = Vec::with_capacity(audio_chunks.iter().map(|s| s.len() * 3 / 4).sum());
             for chunk in &audio_chunks {
                 let bytes = base64::engine::general_purpose::STANDARD
                     .decode(chunk.as_bytes())
