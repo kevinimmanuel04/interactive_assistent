@@ -19,7 +19,7 @@ anyhow.workspace = true
 rodio = { version = "0.19", default-features = false, features = ["wav"] }
 cpal = "0.15"
 parking_lot = "0.12"
-reqwest = { workspace = true, default-features = false, features = ["rustls-tls", "json"] }
+reqwest = { workspace = true, default-features = false, features = ["rustls-tls", "json", "multipart"] }
 base64 = "0.22"
 
 # Optional: pulled in only when the `stt` feature is enabled.

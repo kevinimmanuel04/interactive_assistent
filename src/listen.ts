@@ -22,6 +22,7 @@ import { vadMonitor } from "./vad";
 
 interface ControllerOpts {
   getWakeWord: () => string | null;
+  getInputDevice?: () => string | null;
   onSpeechStart?: () => void;
   onSpeechEnd?: () => void;
   onTranscript?: (text: string) => void;
@@ -44,7 +45,7 @@ export class ListenController {
 
   async enable(): Promise<void> {
     if (this.unsubscribe) return;
-    await vadMonitor.start();
+    await vadMonitor.start(this.opts.getInputDevice?.() ?? null);
     this.unsubscribe = vadMonitor.on((evt) => {
       if (evt === "speech-start") this.onStart();
       else this.onEnd();

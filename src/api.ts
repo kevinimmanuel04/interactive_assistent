@@ -47,6 +47,14 @@ export interface PublicSettings {
   openrouter_stt_model?: string;
   game_coach_enabled?: boolean;
   game_coach_model?: string;
+  faster_whisper_enabled?: boolean;
+  faster_whisper_url?: string;
+  faster_whisper_model?: string;
+  faster_whisper_language?: string | null;
+  has_deepgram_key?: boolean;
+  deepgram_enabled?: boolean;
+  deepgram_model?: string;
+  deepgram_language?: string | null;
 }
 
 export interface FolderStats {
@@ -189,6 +197,45 @@ export async function setGameCoachModel(model: string): Promise<void> {
   await invoke("set_game_coach_model", { model });
 }
 
+// --- Faster-Whisper -------------------------------------------------------
+
+export async function setFasterWhisperEnabled(enabled: boolean): Promise<void> {
+  await invoke("set_faster_whisper_enabled", { enabled });
+}
+export async function setFasterWhisperUrl(url: string): Promise<void> {
+  await invoke("set_faster_whisper_url", { url });
+}
+export async function setFasterWhisperModel(model: string): Promise<void> {
+  await invoke("set_faster_whisper_model", { model });
+}
+export async function setFasterWhisperLanguage(language: string): Promise<void> {
+  await invoke("set_faster_whisper_language", { language });
+}
+export async function validateFasterWhisper(url: string): Promise<void> {
+  await invoke("validate_faster_whisper", { url });
+}
+
+// --- Deepgram -------------------------------------------------------------
+
+export async function setDeepgramKey(key: string): Promise<void> {
+  await invoke("set_deepgram_key", { key });
+}
+export async function clearDeepgramKey(): Promise<void> {
+  await invoke("clear_deepgram_key");
+}
+export async function validateDeepgramKey(key: string): Promise<void> {
+  await invoke("validate_deepgram_key", { key });
+}
+export async function setDeepgramEnabled(enabled: boolean): Promise<void> {
+  await invoke("set_deepgram_enabled", { enabled });
+}
+export async function setDeepgramModel(model: string): Promise<void> {
+  await invoke("set_deepgram_model", { model });
+}
+export async function setDeepgramLanguage(language: string): Promise<void> {
+  await invoke("set_deepgram_language", { language });
+}
+
 export async function setTtsProsody(
   lengthScale: number | null,
   noiseScale: number | null,
@@ -319,6 +366,11 @@ export interface OpenRouterModel {
   name?: string;
   context_length?: number;
   pricing?: { prompt?: string; completion?: string };
+  architecture?: {
+    modality?: string;
+    input_modalities?: string[];
+    output_modalities?: string[];
+  };
 }
 
 export async function listOpenRouterModels(): Promise<OpenRouterModel[]> {

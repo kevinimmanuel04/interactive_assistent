@@ -1,4 +1,4 @@
-# Komorebi
+﻿# Komorebi
 
 > An anime-avatar virtual assistant that lives on your desktop — local by default, cloud when you need it, with eyes, ears, and hands.
 
@@ -35,8 +35,8 @@ Think of it as a cute, always-on pair-programmer / study buddy / game-coach that
 
 - **Anime avatar, not a chat box.** A Live2D model (Cubism 2 + Cubism 4 both supported) with blinking, eye-tracking, tap-to-react motions, emotion-driven expressions, and proper lip-sync tied to the active voice.
 - **Dual LLM routing.** Local models via `llama.cpp` (GGUF) for privacy/offline, OpenRouter for frontier quality, plus a small classifier that auto-picks the best backend per message.
-- **Two TTS engines.** [Piper](https://github.com/rhasspy/piper) (fast, local, MIT) and [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) (high-quality voice cloning over HTTP). Prosody (pitch, speed, noise) and volume are fully tunable from the UI.
-- **Voice in, voice out.** Wake-word + push-to-talk via Whisper.cpp; continuous-listening mode; per-device audio I/O selection.
+- **Two TTS engines, plus cloud.** [Piper](https://github.com/rhasspy/piper) (fast, local, MIT) and [GPT-SoVITS](https://github.com/RVC-Boss/GPT-SoVITS) (HTTP voice cloning) for offline use, **OpenRouter audio models** (`openai/gpt-4o-audio-preview`, `openai/gpt-audio`, …) for cloud TTS with selectable voices. Prosody (pitch, speed, noise) and volume are fully tunable from the UI.
+- **Four STT backends.** Bundled **Whisper.cpp** (offline, free), self-hosted **Faster-Whisper** server (~4× faster, free, fully offline), **OpenRouter** audio models (cloud, generic), and **Deepgram Nova-3** (cloud, ~$0.004/min — cheapest realtime tier). Picks one transparently per the order Deepgram → Faster-Whisper → OpenRouter → local Whisper.
 - **RAG over your folders.** Drop in directories; Komorebi indexes them locally (SQLite + embeddings) and cites them when answering.
 - **Desktop automation.** Screenshots, cursor control, keyboard input, process / active-window awareness, and sandboxed file read/write — exposed both as Tauri commands and as LLM-callable tools.
 - **Proactive agent.** Opt-in background loop that notices when you've been idle, when you've opened a game, when you've been stuck in an IDE — and offers help instead of waiting to be asked.
@@ -108,13 +108,26 @@ src-tauri/
 
 ### Voice
 
-| Engine      | Kind        | Strengths                                      |
-|-------------|-------------|------------------------------------------------|
-| Piper       | Local TTS   | Instant, offline, tiny footprint               |
-| GPT-SoVITS  | HTTP TTS    | Voice-cloning quality, any supported language  |
-| Whisper.cpp | Local STT   | Offline transcription, wake-word, auto-listen  |
+TTS engines:
 
-All prosody knobs (length scale, noise, noise-w) and a master volume slider are live-applied to both engines.
+| Engine             | Kind        | Strengths                                                |
+|--------------------|-------------|----------------------------------------------------------|
+| Piper              | Local TTS   | Instant, offline, tiny footprint                         |
+| GPT-SoVITS         | HTTP TTS    | Voice cloning, any supported language                    |
+| OpenRouter audio   | Cloud TTS   | `openai/gpt-4o-audio-preview` etc., 11 selectable voices |
+
+STT engines (selection priority highest → lowest, first enabled wins):
+
+| Engine             | Kind                | Strengths                                                  |
+|--------------------|---------------------|------------------------------------------------------------|
+| Deepgram Nova-3    | Cloud STT           | Best accuracy, ~$0.004/min, near-realtime, 30+ languages   |
+| Faster-Whisper     | Self-hosted local   | ~4× faster than bundled Whisper, free, fully offline      |
+| OpenRouter STT     | Cloud STT           | Any audio-input LLM (`gpt-4o-audio`, `gemini-2.5-flash`, …) |
+| Whisper.cpp        | Bundled local STT   | Offline transcription, wake-word, auto-listen              |
+
+Features shared across STT: wake-word + push-to-talk, continuous-listen with VAD, per-device audio I/O selection. The Settings panel filters OpenRouter model dropdowns to only show audio-capable models, lets you paste & validate a Deepgram key, and can ping the Faster-Whisper server to confirm reachability.
+
+All prosody knobs (length scale, noise, noise-w) and a master volume slider are live-applied to both local engines.
 
 ### Live2D avatar
 
@@ -172,9 +185,29 @@ Cooldown is 10 minutes between nudges. Hints are emitted as `proactive:suggest` 
    - **Linux** — `Komorebi_1.0.0_amd64.AppImage` or `.deb`.
 3. Launch. On first run, open Settings to:
    - point Komorebi at a GGUF model (optional, for local LLM),
-   - paste an OpenRouter API key (optional, for cloud),
-   - pick a Whisper model (optional, for voice input),
-   - pick a Piper voice **or** configure a SoVITS endpoint.
+   - paste an OpenRouter API key (optional, for cloud LLM, cloud TTS, and OpenRouter STT),
+   - pick a TTS provider — Piper voice, SoVITS endpoint, or OpenRouter audio model + voice,
+   - pick an STT provider — bundled Whisper, self-hosted Faster-Whisper, OpenRouter, or Deepgram.
+
+### Optional STT providers
+
+**Faster-Whisper** (free, fully offline once running):
+
+```bash
+# CPU
+docker run -d -p 8000:8000 ghcr.io/speaches-ai/speaches:latest-cpu
+# CUDA
+docker run -d --gpus all -p 8000:8000 ghcr.io/speaches-ai/speaches:latest-cuda
+```
+
+In Settings → STT → "Use Faster-Whisper": enter the URL (`http://localhost:8000` by default), pick a model (`Systran/faster-whisper-base` is a good start; switch to `large-v3` for highest accuracy), and click **Test connection**.
+
+**Deepgram** (cloud, $200 of free credits at sign-up):
+
+1. Create a key at <https://console.deepgram.com>.
+2. Settings → STT → Deepgram block: paste the key → **Save & test** (the app validates against `/v1/projects` before persisting).
+3. Toggle the checkbox on. Pick `nova-3` (default) or `nova-2`, plus a language (`multi`, `en`, `ru`, …).
+4. Use **Remove** to clear a saved key.
 
 Updates are delivered via Tauri's updater (`latest.json` attached to every signed release).
 
@@ -234,11 +267,15 @@ Settings persist in `tauri-plugin-store`. Most are editable from the Settings pa
 | `local_model_path`           | GGUF path for llama.cpp                         |
 | `llm_gpu_layers`             | Layers offloaded to GPU                         |
 | `mode`                       | `local` / `cloud` / `smart`                     |
-| `tts_provider`               | `piper` or `sovits`                             |
+| `tts_provider`               | `piper`, `sovits`, or `openrouter`              |
 | `tts_length`, `tts_noise`, `tts_noise_w`, `tts_volume` | Piper prosody + master vol     |
 | `sovits_endpoint`, `sovits_ref_audio`, `sovits_prompt_text`, `sovits_prompt_lang`, `sovits_text_lang`, `sovits_speed` | SoVITS config |
 | `piper_binary`, `piper_voice`| Paths                                           |
-| `whisper_model_path`         | Whisper GGML model                              |
+| `openrouter_tts_enabled`, `openrouter_tts_model`, `openrouter_tts_voice` | Cloud TTS via OpenRouter (PCM16 streaming, WAV-wrapped) |
+| `whisper_model_path`         | Bundled Whisper GGML model                      |
+| `openrouter_stt_enabled`, `openrouter_stt_model` | OpenRouter cloud STT (audio-input LLMs) |
+| `faster_whisper_enabled`, `faster_whisper_url`, `faster_whisper_model`, `faster_whisper_language` | Self-hosted [speaches / faster-whisper-server](https://github.com/speaches-ai/speaches) |
+| `deepgram_api_key`, `deepgram_enabled`, `deepgram_model`, `deepgram_language` | Deepgram cloud STT (`nova-3` default) |
 | `wake_word`                  | Optional wake phrase                            |
 | `listen_enabled`, `auto_listen` | STT behavior                                 |
 | `live2d_model_url`           | Live2D `model3.json` / `model.json`             |
@@ -312,96 +349,3 @@ By contributing you agree to license your changes under Apache-2.0 OR MIT.
 Dual-licensed under **Apache-2.0 OR MIT**, at your option. Third-party models and voices ship under their own licenses — see each asset's upstream project.
 
 Komorebi uses: Tauri 2, React, Vite, pixi.js, pixi-live2d-display-lipsyncpatch, llama.cpp, Whisper.cpp, Piper, GPT-SoVITS, xcap, enigo, sysinfo, rusqlite. Huge thanks to all of them.
-# Komorebi
-
-Кроссплатформенный (Windows-first, macOS далее) виртуальный ассистент с анимированным аниме-аватаром и гибридным Local/Cloud AI.
-
-## Стек
-
-- **Core:** Tauri 2 (Rust) + React + Vite + TypeScript
-- **Avatar:** Live2D через PIXI.js (Phase 2)
-- **Local LLM:** llama.cpp через FFI (`llama-cpp-2`) — Llama 3.2 / Phi-3.5 (GGUF)
-- **Cloud:** OpenRouter (Claude, GPT-4o)
-- **Voice:** Whisper.cpp (STT) + Piper (TTS) + openWakeWord
-- **Платформы MVP:** Windows 10/11
-
-## Структура
-
-```
-src/                          # React UI
-src-tauri/                    # Rust backend (Tauri)
-  src/                        # main.rs, lib.rs
-  crates/
-    llm/                      # llama.cpp FFI
-    cloud/                    # OpenRouter client
-    router/                   # Local vs Cloud vs Skill
-    voice/                    # STT/TTS/VAD/WakeWord
-    skills/                   # System integrations
-    storage/                  # SQLite, keyring, config
-  capabilities/               # Tauri permissions
-  tauri.conf.json
-models/                       # Downloaded on first run (gitignored)
-```
-
-## Разработка
-
-```powershell
-pnpm install
-pnpm tauri dev
-```
-
-Требуется:
-- Rust stable
-- Node 20+, pnpm 9+
-- Windows: Visual Studio Build Tools (C++) + WebView2 Runtime
-
-### Локальный LLM (опционально)
-
-Реальная интеграция llama.cpp живёт за Cargo feature `local-llm`. Сборка с ней требует C++-тулчейна и CMake:
-
-- **Windows:** Visual Studio Build Tools 2022 с "Desktop development with C++" + CMake
-- **Linux:** `cmake`, `clang`, `libclang-dev`
-- **macOS:** Xcode Command Line Tools + `brew install cmake`
-
-Запуск:
-```powershell
-pnpm tauri dev -- --features local-llm
-# или для чистой проверки:
-cd src-tauri; cargo check -p komorebi-llm --features local-llm
-```
-
-Без этого флага приложение использует заглушку для локального движка и маршрутизирует запросы на OpenRouter.
-
-### Whisper STT (опционально)
-
-Push-to-talk через мик-кнопку в инпуте и транскрипцию Whisper.cpp живут за
-Cargo feature `stt`. Требуется тот же C++-тулчейн + CMake, что и для
-`local-llm`; на Linux дополнительно нужен `libasound2-dev` (ALSA).
-
-```powershell
-pnpm tauri dev -- --features stt
-# или вместе с локальным LLM:
-pnpm tauri dev -- --features "local-llm stt"
-# быстрая проверка:
-cd src-tauri; cargo check -p komorebi-voice --features stt
-```
-
-Без флага аудио-захват (cpal) всё равно собирается, но `transcribe` вернёт
-`NotAvailable`, и 🎙-кнопка просто не появится в UI.
-
-Модели Whisper (`ggml-tiny.en.bin`, `ggml-base.en.bin`) скачиваются через
-визард моделей. После скачивания нажмите «Use as STT model».
-
-## Роадмап
-
-- **Phase 0** — Скелет проекта, overlay-окно, hotkey Alt+Space. ✓
-- **Phase 1 (MVP)** — Локальный LLM (FFI), OpenRouter, Piper TTS, авто-скачивание моделей. ✓
-- **Phase 2** — Live2D, Whisper STT, VAD, lip-sync, wake word. ✓
-- **Phase 3** — System skills (громкость, скриншот, плеер, буфер), RAG по локальным файлам, emotion detection.
-- **Phase 4** — NSIS installer, auto-updater, code signing, macOS `.dmg`.
-
-Полный план и решения — в `TZ.md`.
-
-## Лицензия
-
-Apache-2.0 OR MIT (код). Live2D Cubism SDK — см. EULA Live2D Inc.

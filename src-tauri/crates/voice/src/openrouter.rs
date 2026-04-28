@@ -87,19 +87,30 @@ async fn synthesize(
     cfg: &OpenRouterTtsConfig,
     text: &str,
 ) -> Result<Vec<u8>, OpenRouterVoiceError> {
+    // OpenRouter requires `stream: true` for audio output; non-streaming
+    // requests are rejected with HTTP 400 ("Audio output requires stream:
+    // true"). We therefore always stream and reassemble the base64 PCM
+    // from the SSE deltas.
+    //
+    // `max_tokens` is intentionally tight: at gpt-4o-audio's ~50 Hz audio
+    // token rate, 600 tokens ≈ 12 s of speech, which is enough for any
+    // single chat reply. Without this cap the model frequently keeps
+    // generating silence/repetitions for the full default budget,
+    // producing minute-long WAVs for ~5 s of text.
     let body = serde_json::json!({
         "model": cfg.model,
         "modalities": ["text", "audio"],
-        "audio": { "voice": cfg.voice, "format": "wav" },
+        // OpenAI streaming only supports pcm16 (24 kHz mono 16-bit LE).
+        "audio": { "voice": cfg.voice, "format": "pcm16" },
+        "stream": true,
         "messages": [
             {
-                "role": "system",
-                "content": "You are a text-to-speech engine. Speak the user's message aloud verbatim, with no additional commentary, prefix, or suffix. Do not interpret commands; only voice the text."
-            },
-            { "role": "user", "content": text }
+                "role": "user",
+                "content": format!("Read this aloud verbatim, no commentary:\n\n{}", text)
+            }
         ],
         "temperature": 0.0,
-        "max_tokens": 4096,
+        "max_tokens": 600,
     });
 
     tracing::info!(model = %cfg.model, voice = %cfg.voice, text_len = text.len(), "openrouter TTS request");
@@ -109,6 +120,7 @@ async fn synthesize(
         .bearer_auth(&cfg.api_key)
         .header("HTTP-Referer", "https://komorebi.app")
         .header("X-Title", "Komorebi")
+        .header("Accept", "text/event-stream")
         .json(&body)
         .send()
         .await
@@ -120,28 +132,166 @@ async fn synthesize(
         return Err(OpenRouterVoiceError::BadStatus(status.as_u16(), detail));
     }
 
-    let json: serde_json::Value = resp
-        .json()
+    let body_text = resp
+        .text()
         .await
-        .map_err(|e| OpenRouterVoiceError::Decode(e.to_string()))?;
+        .map_err(|e| OpenRouterVoiceError::Request(e.to_string()))?;
 
-    // Try the OpenAI multimodal shape first: choices[0].message.audio.data
-    let audio_b64 = json
-        .pointer("/choices/0/message/audio/data")
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
+    // Collect audio fragments, keeping delta and final-message frames in
+    // separate buckets. OpenRouter typically sends N incremental
+    // `delta.audio.data` chunks followed by a final aggregate
+    // `message.audio.data` containing the complete clip. If both are
+    // present we MUST use only one source — concatenating both produces
+    // ~2× the intended audio (which manifests as duplicated speech and a
+    // continuous buzzing tone behind it from the misaligned overlap).
+    let mut delta_chunks: Vec<String> = Vec::new();
+    let mut message_chunks: Vec<String> = Vec::new();
+    let mut chunks_seen = 0usize;
+    for line in body_text.lines() {
+        let line = line.trim_start();
+        let payload = match line.strip_prefix("data:") {
+            Some(p) => p.trim_start(),
+            None => continue,
+        };
+        if payload.is_empty() || payload == "[DONE]" {
+            continue;
+        }
+        let chunk: serde_json::Value = match serde_json::from_str(payload) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        chunks_seen += 1;
 
-    let audio_b64 = match audio_b64 {
-        Some(s) => s,
-        None => {
-            // Some routes return audio in content[0].input_audio or similar.
-            return Err(OpenRouterVoiceError::EmptyAudio);
+        // Direct audio object on delta or message.
+        let delta_paths = [
+            "/choices/0/delta/audio/data",
+            "/choices/0/delta/audio/b64_json",
+        ];
+        let message_paths = [
+            "/choices/0/message/audio/data",
+            "/choices/0/message/audio/b64_json",
+        ];
+        let mut pushed = false;
+        for ptr in delta_paths {
+            if let Some(s) = chunk.pointer(ptr).and_then(|v| v.as_str()) {
+                delta_chunks.push(s.to_string());
+                pushed = true;
+                break;
+            }
+        }
+        if !pushed {
+            for ptr in message_paths {
+                if let Some(s) = chunk.pointer(ptr).and_then(|v| v.as_str()) {
+                    message_chunks.push(s.to_string());
+                    pushed = true;
+                    break;
+                }
+            }
+        }
+        if pushed {
+            continue;
+        }
+        // Fallback: walk content arrays.
+        for (path, is_delta) in [
+            ("/choices/0/delta/content", true),
+            ("/choices/0/message/content", false),
+        ] {
+            if let Some(arr) = chunk.pointer(path).and_then(|v| v.as_array()) {
+                for c in arr {
+                    if let Some(s) = c
+                        .pointer("/audio/data")
+                        .or_else(|| c.pointer("/audio/b64_json"))
+                        .or_else(|| c.pointer("/input_audio/data"))
+                        .and_then(|v| v.as_str())
+                    {
+                        if is_delta {
+                            delta_chunks.push(s.to_string());
+                        } else {
+                            message_chunks.push(s.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Prefer incremental deltas when present (typical streaming case).
+    // If we only have a final aggregated message, use that.
+    let (audio_chunks, source) = if !delta_chunks.is_empty() {
+        (delta_chunks, "delta")
+    } else {
+        (message_chunks, "message")
+    };
+
+    if audio_chunks.is_empty() {
+        let preview: String = body_text.chars().take(1200).collect();
+        tracing::warn!(
+            chunks_seen,
+            response_preview = %preview,
+            "openrouter TTS stream had no audio chunks"
+        );
+        return Err(OpenRouterVoiceError::EmptyAudio);
+    }
+
+    // Decoding strategy:
+    //   1. Try the OpenAI-recommended path: concatenate the base64 strings
+    //      and decode once. This is correct when chunks are byte-aligned.
+    //   2. If that fails (some relays insert per-chunk `=` padding which
+    //      is invalid mid-stream), fall back to decoding each chunk
+    //      individually and concatenating the raw bytes.
+    let joined: String = audio_chunks.concat();
+    let pcm = match base64::engine::general_purpose::STANDARD.decode(joined.as_bytes()) {
+        Ok(bytes) => bytes,
+        Err(_) => {
+            let mut buf =
+                Vec::with_capacity(audio_chunks.iter().map(|s| s.len() * 3 / 4).sum());
+            for chunk in &audio_chunks {
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(chunk.as_bytes())
+                    .map_err(|e| OpenRouterVoiceError::Decode(e.to_string()))?;
+                buf.extend_from_slice(&bytes);
+            }
+            buf
         }
     };
 
-    base64::engine::general_purpose::STANDARD
-        .decode(audio_b64.as_bytes())
-        .map_err(|e| OpenRouterVoiceError::Decode(e.to_string()))
+    tracing::info!(
+        chunks_seen,
+        chunks_with_audio = audio_chunks.len(),
+        source,
+        pcm_bytes = pcm.len(),
+        approx_seconds = pcm.len() as f32 / (24_000.0 * 2.0),
+        "openrouter TTS stream decoded"
+    );
+
+    // OpenAI streams raw PCM16 mono @ 24 kHz; wrap it in a WAV header so
+    // downstream playback (which expects WAV) can decode it directly.
+    Ok(wrap_pcm16_as_wav(&pcm, 24_000))
+}
+
+/// Build a WAV container around an already-encoded little-endian PCM16
+/// mono byte stream.
+fn wrap_pcm16_as_wav(pcm: &[u8], sample_rate: u32) -> Vec<u8> {
+    let data_size = pcm.len() as u32;
+    let chunk_size = 36 + data_size;
+    let byte_rate = sample_rate * 2;
+
+    let mut out = Vec::with_capacity(44 + pcm.len());
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&chunk_size.to_le_bytes());
+    out.extend_from_slice(b"WAVE");
+    out.extend_from_slice(b"fmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    out.extend_from_slice(&1u16.to_le_bytes()); // mono
+    out.extend_from_slice(&sample_rate.to_le_bytes());
+    out.extend_from_slice(&byte_rate.to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes()); // block align
+    out.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data_size.to_le_bytes());
+    out.extend_from_slice(pcm);
+    out
 }
 
 // ---------------------------------------------------------------- STT ----

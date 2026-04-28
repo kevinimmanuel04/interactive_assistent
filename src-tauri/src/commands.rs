@@ -239,7 +239,33 @@ pub async fn stop_recording(
 ) -> Result<String, String> {
     let samples = recorder.stop().map_err(|e| e.to_string())?;
 
-    // Prefer OpenRouter STT when enabled and an API key is configured.
+    // Provider selection priority (first enabled wins):
+    //   1. Deepgram (cloud, cheapest realtime)
+    //   2. Faster-Whisper (local self-hosted server, ~4× faster than whisper-rs)
+    //   3. OpenRouter STT (cloud, generic LLM-based)
+    //   4. Local whisper-rs (bundled fallback)
+    if settings::get_deepgram_enabled(&app) {
+        if let Some(key) = settings::get_deepgram_key(&app) {
+            let cfg = komorebi_voice::deepgram::DeepgramConfig {
+                api_key: key,
+                model: settings::get_deepgram_model(&app),
+                language: settings::get_deepgram_language(&app),
+            };
+            return komorebi_voice::deepgram::transcribe(&cfg, &samples, 16_000)
+                .await
+                .map_err(|e| e.to_string());
+        }
+    }
+    if settings::get_faster_whisper_enabled(&app) {
+        let cfg = komorebi_voice::faster_whisper::FasterWhisperConfig {
+            base_url: settings::get_faster_whisper_url(&app),
+            model: settings::get_faster_whisper_model(&app),
+            language: settings::get_faster_whisper_language(&app),
+        };
+        return komorebi_voice::faster_whisper::transcribe(&cfg, &samples, 16_000)
+            .await
+            .map_err(|e| e.to_string());
+    }
     if settings::get_openrouter_stt_enabled(&app) {
         if let Some(key) = settings::get_openrouter_key(&app) {
             let cfg = komorebi_voice::openrouter::OpenRouterSttConfig {
@@ -322,6 +348,72 @@ pub fn set_openrouter_stt_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<
 #[tauri::command]
 pub fn set_openrouter_stt_model(app: AppHandle<Wry>, model: String) -> Result<(), String> {
     settings::set_openrouter_stt_model(&app, &model).map_err(|e| e.to_string())
+}
+
+// --- Faster-Whisper (self-hosted local server) ---------------------------
+
+#[tauri::command]
+pub fn set_faster_whisper_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
+    settings::set_faster_whisper_enabled(&app, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_faster_whisper_url(app: AppHandle<Wry>, url: String) -> Result<(), String> {
+    settings::set_faster_whisper_url(&app, &url).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_faster_whisper_model(app: AppHandle<Wry>, model: String) -> Result<(), String> {
+    settings::set_faster_whisper_model(&app, &model).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_faster_whisper_language(app: AppHandle<Wry>, language: String) -> Result<(), String> {
+    settings::set_faster_whisper_language(&app, &language).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn validate_faster_whisper(url: String) -> Result<(), String> {
+    komorebi_voice::faster_whisper::validate(&url)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+// --- Deepgram ------------------------------------------------------------
+
+#[tauri::command]
+pub fn set_deepgram_key(app: AppHandle<Wry>, key: String) -> Result<(), String> {
+    settings::set_deepgram_key(&app, &key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn clear_deepgram_key(app: AppHandle<Wry>) -> Result<(), String> {
+    settings::set_deepgram_key(&app, "").map_err(|e| e.to_string())
+}
+
+/// Verify a candidate Deepgram API key without persisting it. The
+/// frontend uses this for the "Test key" button in Settings before
+/// committing the value to the store.
+#[tauri::command]
+pub async fn validate_deepgram_key(key: String) -> Result<(), String> {
+    komorebi_voice::deepgram::validate_key(&key)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_deepgram_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
+    settings::set_deepgram_enabled(&app, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_deepgram_model(app: AppHandle<Wry>, model: String) -> Result<(), String> {
+    settings::set_deepgram_model(&app, &model).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_deepgram_language(app: AppHandle<Wry>, language: String) -> Result<(), String> {
+    settings::set_deepgram_language(&app, &language).map_err(|e| e.to_string())
 }
 
 /// List the available audio input & output devices so the UI can render a
@@ -410,6 +502,7 @@ pub async fn list_openrouter_models(app: AppHandle<Wry>) -> Result<serde_json::V
                 "name": m.get("name"),
                 "context_length": m.get("context_length"),
                 "pricing": m.get("pricing"),
+                "architecture": m.get("architecture"),
             })
         })
         .collect();

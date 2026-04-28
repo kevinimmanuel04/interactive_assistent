@@ -12,6 +12,7 @@ interface Props {
 export default function InputField({ open, onClose, onSubmit, sttEnabled = false }: Props) {
   const [value, setValue] = useState("");
   const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const ref = useRef<HTMLInputElement>(null);
@@ -32,9 +33,10 @@ export default function InputField({ open, onClose, onSubmit, sttEnabled = false
     setMicError(null);
     if (recording) {
       setBusy(true);
+      setRecording(false);
+      setTranscribing(true);
       try {
         const text = await stopRecording();
-        setRecording(false);
         const trimmed = text.trim();
         if (trimmed) {
           // Auto-submit: user expectation is that speaking then tapping
@@ -43,12 +45,13 @@ export default function InputField({ open, onClose, onSubmit, sttEnabled = false
           setValue("");
           onSubmit(trimmed);
         } else {
+          setMicError("No speech detected");
           queueMicrotask(() => ref.current?.focus());
         }
       } catch (err) {
-        setRecording(false);
         setMicError(String(err));
       } finally {
+        setTranscribing(false);
         setBusy(false);
       }
     } else {
@@ -130,7 +133,13 @@ export default function InputField({ open, onClose, onSubmit, sttEnabled = false
                   onClose();
                 }
               }}
-              placeholder={recording ? "Listening…" : "Ask anything…"}
+              placeholder={
+                transcribing
+                  ? "Transcribing…"
+                  : recording
+                  ? "Listening…"
+                  : "Ask anything…"
+              }
               style={{
                 flex: 1,
                 background: "transparent",

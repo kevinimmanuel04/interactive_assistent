@@ -37,6 +37,17 @@ import {
   setOpenRouterTtsVoice,
   setOpenRouterSttEnabled,
   setOpenRouterSttModel,
+  setFasterWhisperEnabled,
+  setFasterWhisperUrl,
+  setFasterWhisperModel,
+  setFasterWhisperLanguage,
+  validateFasterWhisper,
+  setDeepgramKey,
+  clearDeepgramKey,
+  validateDeepgramKey,
+  setDeepgramEnabled,
+  setDeepgramModel,
+  setDeepgramLanguage,
   setGameCoachEnabled,
   setGameCoachModel,
   setWakeWord,
@@ -818,6 +829,51 @@ function SoVitsSection({
 
 // -------- OpenRouter cloud TTS form ---------------------------------------
 
+// Cached + filtered OpenRouter model list. `kind` selects models that
+// support the relevant audio modality:
+//   - "tts": output_modalities contains "audio"
+//   - "stt": input_modalities  contains "audio"
+function useFilteredOpenRouterModels(
+  enabled: boolean,
+  kind: "tts" | "stt"
+): OpenRouterModel[] {
+  const [models, setModels] = useState<OpenRouterModel[]>([]);
+  useEffect(() => {
+    if (!enabled) {
+      setModels([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const list = await listOpenRouterModels();
+        if (cancelled) return;
+        const filtered = list.filter((m) => {
+          const arch = m.architecture;
+          if (!arch) return false;
+          const mods =
+            kind === "tts" ? arch.output_modalities : arch.input_modalities;
+          return Array.isArray(mods) && mods.includes("audio");
+        });
+        // Sort: id alphabetical, but pin OpenAI audio models on top.
+        filtered.sort((a, b) => {
+          const ao = a.id.startsWith("openai/") ? 0 : 1;
+          const bo = b.id.startsWith("openai/") ? 0 : 1;
+          if (ao !== bo) return ao - bo;
+          return a.id.localeCompare(b.id);
+        });
+        setModels(filtered);
+      } catch {
+        // Silently keep empty list — fallback hardcoded options will show.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [enabled, kind]);
+  return models;
+}
+
 function OpenRouterVoiceSection({
   settings,
   onChanged,
@@ -831,6 +887,7 @@ function OpenRouterVoiceSection({
   const [model, setModel] = useState(settings?.openrouter_tts_model ?? "openai/gpt-4o-audio-preview");
   const [voice, setVoice] = useState(settings?.openrouter_tts_voice ?? "alloy");
   const [busy, setBusy] = useState(false);
+  const ttsModels = useFilteredOpenRouterModels(hasKey && expanded, "tts");
 
   useEffect(() => {
     setEnabled(settings?.openrouter_tts_enabled ?? false);
@@ -904,8 +961,19 @@ function OpenRouterVoiceSection({
         style={inputStyle}
       />
       <datalist id="openrouter-tts-models">
-        <option value="openai/gpt-4o-audio-preview" />
-        <option value="openai/gpt-4o-mini-audio-preview" />
+        {ttsModels.length === 0 ? (
+          <>
+            <option value="openai/gpt-4o-audio-preview" />
+            <option value="openai/gpt-audio" />
+            <option value="openai/gpt-audio-mini" />
+          </>
+        ) : (
+          ttsModels.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name ?? m.id}
+            </option>
+          ))
+        )}
       </datalist>
       <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
         Voice
@@ -983,6 +1051,7 @@ function SttSection({
   const hasKey = settings?.has_openrouter_key ?? false;
   const orEnabled = settings?.openrouter_stt_enabled ?? false;
   const orModel = settings?.openrouter_stt_model ?? "openai/gpt-4o-audio-preview";
+  const sttModels = useFilteredOpenRouterModels(hasKey, "stt");
 
   const toggleOr = async (v: boolean) => {
     await setOpenRouterSttEnabled(v);
@@ -1051,12 +1120,26 @@ function SttSection({
           style={inputStyle}
         />
         <datalist id="openrouter-stt-models">
-          <option value="openai/gpt-4o-audio-preview" />
-          <option value="openai/gpt-4o-mini-audio-preview" />
-          <option value="google/gemini-2.5-flash" />
-          <option value="google/gemini-2.0-flash-001" />
+          {sttModels.length === 0 ? (
+            <>
+              <option value="openai/gpt-4o-audio-preview" />
+              <option value="openai/gpt-audio" />
+              <option value="openai/gpt-audio-mini" />
+              <option value="google/gemini-2.5-flash" />
+              <option value="google/gemini-2.0-flash-001" />
+            </>
+          ) : (
+            sttModels.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name ?? m.id}
+              </option>
+            ))
+          )}
         </datalist>
       </div>
+
+      <FasterWhisperBlock settings={settings} onChanged={onChanged} />
+      <DeepgramBlock settings={settings} onChanged={onChanged} />
     </div>
   );
 }
@@ -1785,6 +1868,403 @@ function OpenRouterModelSection({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ----------------------------- Faster-Whisper -----------------------------
+
+function FasterWhisperBlock({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [enabled, setEnabled] = useState(settings?.faster_whisper_enabled ?? false);
+  const [url, setUrl] = useState(settings?.faster_whisper_url ?? "http://localhost:8000");
+  const [model, setModel] = useState(
+    settings?.faster_whisper_model ?? "Systran/faster-whisper-base"
+  );
+  const [language, setLanguage] = useState(settings?.faster_whisper_language ?? "");
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setEnabled(settings?.faster_whisper_enabled ?? false);
+    setUrl(settings?.faster_whisper_url ?? "http://localhost:8000");
+    setModel(settings?.faster_whisper_model ?? "Systran/faster-whisper-base");
+    setLanguage(settings?.faster_whisper_language ?? "");
+  }, [
+    settings?.faster_whisper_enabled,
+    settings?.faster_whisper_url,
+    settings?.faster_whisper_model,
+    settings?.faster_whisper_language,
+  ]);
+
+  const toggle = async (v: boolean) => {
+    setBusy(true);
+    try {
+      await setFasterWhisperEnabled(v);
+      setEnabled(v);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const commitUrl = async () => {
+    await setFasterWhisperUrl(url);
+    await onChanged();
+  };
+  const commitModel = async () => {
+    await setFasterWhisperModel(model);
+    await onChanged();
+  };
+  const commitLang = async () => {
+    await setFasterWhisperLanguage(language);
+    await onChanged();
+  };
+  const test = async () => {
+    setStatus("Checking…");
+    setBusy(true);
+    try {
+      await validateFasterWhisper(url);
+      setStatus("✅ Reachable");
+    } catch (err) {
+      setStatus(`❌ ${String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        padding: 8,
+        background: "rgba(255,255,255,0.03)",
+        borderRadius: 6,
+      }}
+    >
+      <label
+        style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+      >
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={busy}
+          onChange={(e) => toggle(e.target.checked)}
+        />
+        Use Faster-Whisper (local server, ~4× faster than bundled Whisper)
+      </label>
+      <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>
+        Run{" "}
+        <ExternalLink href="https://github.com/speaches-ai/speaches">
+          speaches
+        </ExternalLink>{" "}
+        / faster-whisper-server locally (Docker or pip), then point Komorebi at
+        its URL. Free, fully offline once a model is pulled.
+      </div>
+      <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
+        Server URL
+      </div>
+      <input
+        type="text"
+        placeholder="http://localhost:8000"
+        value={url}
+        disabled={busy}
+        onChange={(e) => setUrl(e.target.value)}
+        onBlur={() => url !== (settings?.faster_whisper_url ?? "") && commitUrl()}
+        style={inputStyle}
+      />
+      <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
+        Model
+      </div>
+      <input
+        type="text"
+        list="faster-whisper-models"
+        placeholder="Systran/faster-whisper-base"
+        value={model}
+        disabled={busy}
+        onChange={(e) => setModel(e.target.value)}
+        onBlur={() => model !== (settings?.faster_whisper_model ?? "") && commitModel()}
+        style={inputStyle}
+      />
+      <datalist id="faster-whisper-models">
+        <option value="Systran/faster-whisper-tiny" />
+        <option value="Systran/faster-whisper-base" />
+        <option value="Systran/faster-whisper-small" />
+        <option value="Systran/faster-whisper-medium" />
+        <option value="Systran/faster-whisper-large-v3" />
+        <option value="Systran/faster-distil-whisper-large-v3" />
+      </datalist>
+      <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
+        Language (blank = autodetect)
+      </div>
+      <input
+        type="text"
+        list="faster-whisper-langs"
+        placeholder="auto"
+        value={language}
+        disabled={busy}
+        onChange={(e) => setLanguage(e.target.value)}
+        onBlur={() =>
+          language !== (settings?.faster_whisper_language ?? "") && commitLang()
+        }
+        style={inputStyle}
+      />
+      <datalist id="faster-whisper-langs">
+        <option value="en" />
+        <option value="ru" />
+        <option value="auto" />
+      </datalist>
+      <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
+        <button
+          type="button"
+          onClick={test}
+          disabled={busy}
+          style={{
+            ...inputStyle,
+            cursor: busy ? "wait" : "pointer",
+            width: "auto",
+            padding: "4px 10px",
+          }}
+        >
+          Test connection
+        </button>
+        {status && (
+          <span style={{ fontSize: 11, opacity: 0.85 }}>{status}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------- Deepgram -----------------------------------
+
+function DeepgramBlock({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const hasKey = settings?.has_deepgram_key ?? false;
+  const [enabled, setEnabled] = useState(settings?.deepgram_enabled ?? false);
+  const [keyInput, setKeyInput] = useState("");
+  const [model, setModel] = useState(settings?.deepgram_model ?? "nova-3");
+  const [language, setLanguage] = useState(settings?.deepgram_language ?? "multi");
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setEnabled(settings?.deepgram_enabled ?? false);
+    setModel(settings?.deepgram_model ?? "nova-3");
+    setLanguage(settings?.deepgram_language ?? "multi");
+  }, [
+    settings?.deepgram_enabled,
+    settings?.deepgram_model,
+    settings?.deepgram_language,
+  ]);
+
+  const toggle = async (v: boolean) => {
+    setBusy(true);
+    try {
+      await setDeepgramEnabled(v);
+      setEnabled(v);
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveKey = async () => {
+    const trimmed = keyInput.trim();
+    if (!trimmed) return;
+    setStatus("Validating…");
+    setBusy(true);
+    try {
+      await validateDeepgramKey(trimmed);
+      await setDeepgramKey(trimmed);
+      setKeyInput("");
+      setStatus("✅ Saved & verified");
+      await onChanged();
+    } catch (err) {
+      setStatus(`❌ ${String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeKey = async () => {
+    setBusy(true);
+    try {
+      await clearDeepgramKey();
+      setStatus("Key cleared");
+      await onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const commitModel = async (next: string) => {
+    setModel(next);
+    await setDeepgramModel(next);
+    await onChanged();
+  };
+  const commitLang = async (next: string) => {
+    setLanguage(next);
+    await setDeepgramLanguage(next);
+    await onChanged();
+  };
+
+  const DEEPGRAM_MODELS: Array<{ value: string; label: string }> = [
+    { value: "nova-3", label: "nova-3 — latest, best accuracy (recommended)" },
+    { value: "nova-3-medical", label: "nova-3-medical — medical domain" },
+    { value: "nova-2", label: "nova-2 — previous gen, multilingual" },
+    { value: "nova-2-meeting", label: "nova-2-meeting — meetings / conferences" },
+    { value: "nova-2-phonecall", label: "nova-2-phonecall — phone audio" },
+    { value: "nova-2-finance", label: "nova-2-finance — finance domain" },
+    { value: "nova-2-medical", label: "nova-2-medical — medical domain" },
+    { value: "nova", label: "nova — original Nova" },
+    { value: "enhanced", label: "enhanced — legacy enhanced model" },
+    { value: "base", label: "base — legacy base model" },
+  ];
+
+  const DEEPGRAM_LANGUAGES: Array<{ value: string; label: string }> = [
+    { value: "multi", label: "multi — auto-detect (Nova-3 only)" },
+    { value: "en", label: "English (en)" },
+    { value: "en-US", label: "English – US (en-US)" },
+    { value: "en-GB", label: "English – UK (en-GB)" },
+    { value: "ru", label: "Russian (ru)" },
+    { value: "es", label: "Spanish (es)" },
+    { value: "de", label: "German (de)" },
+    { value: "fr", label: "French (fr)" },
+    { value: "it", label: "Italian (it)" },
+    { value: "pt", label: "Portuguese (pt)" },
+    { value: "nl", label: "Dutch (nl)" },
+    { value: "pl", label: "Polish (pl)" },
+    { value: "tr", label: "Turkish (tr)" },
+    { value: "uk", label: "Ukrainian (uk)" },
+    { value: "ja", label: "Japanese (ja)" },
+    { value: "ko", label: "Korean (ko)" },
+    { value: "zh", label: "Chinese (zh)" },
+    { value: "zh-CN", label: "Chinese – Simplified (zh-CN)" },
+    { value: "hi", label: "Hindi (hi)" },
+    { value: "ar", label: "Arabic (ar)" },
+  ];
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        padding: 8,
+        background: "rgba(255,255,255,0.03)",
+        borderRadius: 6,
+      }}
+    >
+      <label
+        style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+      >
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={busy || !hasKey}
+          onChange={(e) => toggle(e.target.checked)}
+        />
+        Use Deepgram STT (cloud, ~$0.004/min — cheapest realtime tier)
+      </label>
+      <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>
+        Get a key at{" "}
+        <ExternalLink href="https://console.deepgram.com/signup">
+          console.deepgram.com
+        </ExternalLink>{" "}
+        ($200 free credits on signup).
+      </div>
+
+      <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
+        API key {hasKey && <span style={{ color: "#a5d6a7" }}>• saved</span>}
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          type="password"
+          placeholder={hasKey ? "(stored — paste new key to replace)" : "Deepgram API key"}
+          value={keyInput}
+          disabled={busy}
+          onChange={(e) => setKeyInput(e.target.value)}
+          style={{ ...inputStyle, flex: 1 }}
+        />
+        <button
+          type="button"
+          onClick={saveKey}
+          disabled={busy || !keyInput.trim()}
+          style={{
+            ...inputStyle,
+            cursor: busy ? "wait" : "pointer",
+            width: "auto",
+            padding: "4px 10px",
+          }}
+        >
+          Save & test
+        </button>
+        {hasKey && (
+          <button
+            type="button"
+            onClick={removeKey}
+            disabled={busy}
+            style={{
+              ...inputStyle,
+              cursor: busy ? "wait" : "pointer",
+              width: "auto",
+              padding: "4px 10px",
+              background: "rgba(226,74,74,0.25)",
+            }}
+          >
+            Remove
+          </button>
+        )}
+      </div>
+      {status && (
+        <div style={{ fontSize: 11, marginTop: 6, opacity: 0.85 }}>{status}</div>
+      )}
+
+      <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
+        Model
+      </div>
+      <select
+        value={model}
+        disabled={busy || !hasKey}
+        onChange={(e) => commitModel(e.target.value)}
+        style={inputStyle}
+      >
+        {DEEPGRAM_MODELS.every((m) => m.value !== model) && (
+          <option value={model}>{model} (custom)</option>
+        )}
+        {DEEPGRAM_MODELS.map((m) => (
+          <option key={m.value} value={m.value}>
+            {m.label}
+          </option>
+        ))}
+      </select>
+
+      <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
+        Language
+      </div>
+      <select
+        value={language}
+        disabled={busy || !hasKey}
+        onChange={(e) => commitLang(e.target.value)}
+        style={inputStyle}
+      >
+        {DEEPGRAM_LANGUAGES.every((l) => l.value !== language) && (
+          <option value={language}>{language} (custom)</option>
+        )}
+        {DEEPGRAM_LANGUAGES.map((l) => (
+          <option key={l.value} value={l.value}>
+            {l.label}
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

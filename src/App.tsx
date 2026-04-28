@@ -144,13 +144,18 @@ export default function App() {
     if (!controllerRef.current) {
       controllerRef.current = new ListenController({
         getWakeWord: () => settingsRef.current?.wake_word ?? null,
+        getInputDevice: () =>
+          settingsRef.current?.audio_input_device ?? null,
         onSpeechStart: () => {
           setHeardHint(true);
           avatarState.setListening(true);
+          setBubbleText(null);
+          setUserEcho("🎙 Listening…");
         },
         onSpeechEnd: () => {
           setHeardHint(false);
           avatarState.setListening(false);
+          setUserEcho("⏳ Transcribing…");
         },
         onTranscript: (text) => {
           // Route the transcript through the normal chat pipeline so the
@@ -160,10 +165,17 @@ export default function App() {
         },
         onIgnored: (_text, reason) => {
           if (reason === "wake-word") {
-            // Silently drop — the user didn't address Komorebi.
+            // Wake-word required but absent — clear the hint silently.
+            setUserEcho(null);
+          } else {
+            // Empty transcription — let the user know nothing was heard.
+            setUserEcho(null);
           }
         },
-        onError: (err) => console.warn("[listen]", err),
+        onError: (err) => {
+          console.warn("[listen]", err);
+          setUserEcho(`⚠ ${String(err)}`);
+        },
       });
     }
     const wantEnabled = settings?.listen_enabled === true;
@@ -293,7 +305,10 @@ export default function App() {
         onClose={() => setInputOpen(false)}
         onSubmit={handleSubmit}
         sttEnabled={Boolean(
-          settings?.stt_available && settings?.whisper_model_path
+          (settings?.stt_available && settings?.whisper_model_path) ||
+            (settings?.openrouter_stt_enabled && settings?.has_openrouter_key) ||
+            settings?.faster_whisper_enabled ||
+            (settings?.deepgram_enabled && settings?.has_deepgram_key)
         )}
       />
       <SettingsPanel
@@ -312,7 +327,10 @@ export default function App() {
         hasKey={settings?.has_openrouter_key ?? false}
         listenEnabled={settings?.listen_enabled ?? false}
         listenReady={Boolean(
-          settings?.stt_available && settings?.whisper_model_path
+          (settings?.stt_available && settings?.whisper_model_path) ||
+            (settings?.openrouter_stt_enabled && settings?.has_openrouter_key) ||
+            settings?.faster_whisper_enabled ||
+            (settings?.deepgram_enabled && settings?.has_deepgram_key)
         )}
         listening={listening}
         heard={heardHint}
@@ -386,7 +404,7 @@ function TopBar(props: {
         style={{ ...iconBtn, background: listenColor }}
         title={
           !props.listenReady
-            ? "Set up Whisper first (wizard → Use as STT model)"
+            ? "Set up Whisper or enable OpenRouter STT first"
             : props.listening
             ? "Listening — click to stop"
             : "Continuous listen"

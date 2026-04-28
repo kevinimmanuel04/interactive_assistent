@@ -50,11 +50,22 @@ const KEY_OPENROUTER_STT_ENABLED: &str = "openrouter_stt_enabled";
 const KEY_OPENROUTER_STT_MODEL: &str = "openrouter_stt_model";
 const KEY_GAME_COACH_ENABLED: &str = "game_coach_enabled";
 const KEY_GAME_COACH_MODEL: &str = "game_coach_model";
+const KEY_FASTER_WHISPER_ENABLED: &str = "faster_whisper_enabled";
+const KEY_FASTER_WHISPER_URL: &str = "faster_whisper_url";
+const KEY_FASTER_WHISPER_MODEL: &str = "faster_whisper_model";
+const KEY_FASTER_WHISPER_LANGUAGE: &str = "faster_whisper_language";
+const KEY_DEEPGRAM_API: &str = "deepgram_api_key";
+const KEY_DEEPGRAM_ENABLED: &str = "deepgram_enabled";
+const KEY_DEEPGRAM_MODEL: &str = "deepgram_model";
+const KEY_DEEPGRAM_LANGUAGE: &str = "deepgram_language";
 
 pub const DEFAULT_OPENROUTER_TTS_MODEL: &str = "openai/gpt-4o-audio-preview";
 pub const DEFAULT_OPENROUTER_TTS_VOICE: &str = "alloy";
 pub const DEFAULT_OPENROUTER_STT_MODEL: &str = "openai/gpt-4o-audio-preview";
 pub const DEFAULT_GAME_COACH_MODEL: &str = "openai/gpt-4o-mini";
+pub const DEFAULT_FASTER_WHISPER_URL: &str = "http://localhost:8000";
+pub const DEFAULT_FASTER_WHISPER_MODEL: &str = "Systran/faster-whisper-base";
+pub const DEFAULT_DEEPGRAM_MODEL: &str = "nova-3";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicSettings {
@@ -98,6 +109,14 @@ pub struct PublicSettings {
     pub openrouter_stt_model: String,
     pub game_coach_enabled: bool,
     pub game_coach_model: String,
+    pub faster_whisper_enabled: bool,
+    pub faster_whisper_url: String,
+    pub faster_whisper_model: String,
+    pub faster_whisper_language: Option<String>,
+    pub has_deepgram_key: bool,
+    pub deepgram_enabled: bool,
+    pub deepgram_model: String,
+    pub deepgram_language: Option<String>,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -221,6 +240,14 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         openrouter_stt_model: get_openrouter_stt_model(app),
         game_coach_enabled: get_game_coach_enabled(app),
         game_coach_model: get_game_coach_model(app),
+        faster_whisper_enabled: get_faster_whisper_enabled(app),
+        faster_whisper_url: get_faster_whisper_url(app),
+        faster_whisper_model: get_faster_whisper_model(app),
+        faster_whisper_language: get_faster_whisper_language(app),
+        has_deepgram_key: get_deepgram_key(app).is_some(),
+        deepgram_enabled: get_deepgram_enabled(app),
+        deepgram_model: get_deepgram_model(app),
+        deepgram_language: get_deepgram_language(app),
     }
 }
 
@@ -591,4 +618,83 @@ pub fn get_game_coach_model(app: &AppHandle<Wry>) -> String {
 }
 pub fn set_game_coach_model<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
     write_optional_string(app, KEY_GAME_COACH_MODEL, v)
+}
+
+// --- Faster-Whisper -------------------------------------------------------
+
+pub fn get_faster_whisper_enabled(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_FASTER_WHISPER_ENABLED, false)
+}
+pub fn set_faster_whisper_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_FASTER_WHISPER_ENABLED, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_faster_whisper_url(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_FASTER_WHISPER_URL)
+        .unwrap_or_else(|| DEFAULT_FASTER_WHISPER_URL.to_string())
+}
+pub fn set_faster_whisper_url<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_FASTER_WHISPER_URL, v)
+}
+
+pub fn get_faster_whisper_model(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_FASTER_WHISPER_MODEL)
+        .unwrap_or_else(|| DEFAULT_FASTER_WHISPER_MODEL.to_string())
+}
+pub fn set_faster_whisper_model<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_FASTER_WHISPER_MODEL, v)
+}
+
+pub fn get_faster_whisper_language(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_FASTER_WHISPER_LANGUAGE)
+}
+pub fn set_faster_whisper_language<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_FASTER_WHISPER_LANGUAGE, v)
+}
+
+// --- Deepgram -------------------------------------------------------------
+
+pub fn get_deepgram_key(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_DEEPGRAM_API)
+}
+pub fn set_deepgram_key<R: Runtime>(app: &AppHandle<R>, key: &str) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    if key.trim().is_empty() {
+        store.delete(KEY_DEEPGRAM_API);
+    } else {
+        store.set(
+            KEY_DEEPGRAM_API,
+            serde_json::Value::String(key.trim().to_string()),
+        );
+    }
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_deepgram_enabled(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_DEEPGRAM_ENABLED, false)
+}
+pub fn set_deepgram_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_DEEPGRAM_ENABLED, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_deepgram_model(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_DEEPGRAM_MODEL)
+        .unwrap_or_else(|| DEFAULT_DEEPGRAM_MODEL.to_string())
+}
+pub fn set_deepgram_model<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_DEEPGRAM_MODEL, v)
+}
+
+pub fn get_deepgram_language(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_DEEPGRAM_LANGUAGE)
+}
+pub fn set_deepgram_language<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_DEEPGRAM_LANGUAGE, v)
 }
