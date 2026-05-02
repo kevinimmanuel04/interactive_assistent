@@ -23,7 +23,13 @@ pub struct ScreenshotSkill;
 
 fn triggers(query: &str) -> bool {
     let q = norm(query);
-    q.contains("скриншот") || q.contains("screenshot") || q.contains("снимок экрана")
+    // RU
+    q.contains("скриншот") || q.contains("скрин") || q.contains("снимок экрана") || q.contains("снимок рабочего стола")
+    // EN
+    || q.contains("screenshot") || q.contains("screen shot") || q.contains("screen capture")
+    || q.contains("capture screen") || q.contains("take screen") || q.contains("print screen") || q.contains("prtsc")
+    // UK
+    || q.contains("знімок екран") || q.contains("скріншот") || q.contains("скрін") || q.contains("зніми екран")
 }
 
 fn output_dir() -> PathBuf {

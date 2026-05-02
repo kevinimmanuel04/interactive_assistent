@@ -8,6 +8,7 @@
 //! also gives us one place to apply permission checks.
 
 use crate::{desktop_cmds, settings};
+use komorebi_cloud::OpenRouterClient;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Wry};
 
@@ -50,6 +51,25 @@ pub async fn run_tool(app: AppHandle<Wry>, call: ToolCall) -> ToolResult {
     if !enabled {
         return ToolResult::err("desktop automation disabled in settings");
     }
+    dispatch_inner(app, call, /*allow_mutating=*/ true).await
+}
+
+/// Tool-dispatch core. Pulled out so the chat pipeline can re-use the same
+/// switch table without going through the public command's automation
+/// gate. `allow_mutating=false` rejects state-changing tools (click,
+/// type, key, scroll, write_file).
+pub async fn dispatch_inner(
+    app: AppHandle<Wry>,
+    call: ToolCall,
+    allow_mutating: bool,
+) -> ToolResult {
+    macro_rules! mutating {
+        () => {
+            if !allow_mutating {
+                return ToolResult::err("mutating tools require desktop_automation_enabled");
+            }
+        };
+    }
     match call.tool.as_str() {
         "active_window" => ToolResult::ok(desktop_cmds::desktop_active_window()),
         "context_snapshot" => {
@@ -73,14 +93,17 @@ pub async fn run_tool(app: AppHandle<Wry>, call: ToolCall) -> ToolResult {
                 Err(e) => ToolResult::err(e),
             }
         }
-        "click" => match serde_json::from_value::<desktop_cmds::ClickArgs>(call.args) {
+        "click" => {
+            mutating!();
+            match serde_json::from_value::<desktop_cmds::ClickArgs>(call.args) {
             Ok(a) => match desktop_cmds::desktop_click(a) {
                 Ok(_) => ToolResult::ok(serde_json::Value::Bool(true)),
                 Err(e) => ToolResult::err(e),
             },
             Err(e) => ToolResult::err(e.to_string()),
-        },
+        }},
         "type" => {
+            mutating!();
             let text = call
                 .args
                 .get("text")
@@ -93,6 +116,7 @@ pub async fn run_tool(app: AppHandle<Wry>, call: ToolCall) -> ToolResult {
             }
         }
         "key" => {
+            mutating!();
             let chord = call
                 .args
                 .get("chord")
@@ -105,6 +129,7 @@ pub async fn run_tool(app: AppHandle<Wry>, call: ToolCall) -> ToolResult {
             }
         }
         "move_cursor" => {
+            mutating!();
             let x = call.args.get("x").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             let y = call.args.get("y").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
             match desktop_cmds::desktop_move_cursor(x, y) {
@@ -112,13 +137,15 @@ pub async fn run_tool(app: AppHandle<Wry>, call: ToolCall) -> ToolResult {
                 Err(e) => ToolResult::err(e),
             }
         }
-        "write_file" => match serde_json::from_value::<desktop_cmds::WriteFileArgs>(call.args) {
+        "write_file" => {
+            mutating!();
+            match serde_json::from_value::<desktop_cmds::WriteFileArgs>(call.args) {
             Ok(a) => match desktop_cmds::desktop_write_file(app, a) {
                 Ok(p) => ToolResult::ok(serde_json::Value::String(p)),
                 Err(e) => ToolResult::err(e),
             },
             Err(e) => ToolResult::err(e.to_string()),
-        },
+        }},
         "read_file" => {
             let rel = call
                 .args
@@ -141,6 +168,66 @@ pub async fn run_tool(app: AppHandle<Wry>, call: ToolCall) -> ToolResult {
             match desktop_cmds::desktop_list_dir(app, rel) {
                 Ok(v) => ToolResult::ok(serde_json::to_value(v).unwrap_or(serde_json::Value::Null)),
                 Err(e) => ToolResult::err(e),
+            }
+        }
+        "scroll" => {
+            mutating!();
+            let delta = call.args.get("delta").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+            let horizontal = call.args.get("horizontal").and_then(|v| v.as_bool());
+            match desktop_cmds::desktop_scroll(delta, horizontal) {
+                Ok(_) => ToolResult::ok(serde_json::Value::Bool(true)),
+                Err(e) => ToolResult::err(e),
+            }
+        }
+        // Vision tool: lets the LLM "look" at the user's screen and return
+        // a textual description. Args: { question: string, monitor?: usize }.
+        // Requires an OpenRouter key (uses the configured Game Coach
+        // vision model by default).
+        "screen_vision" => {
+            let question = call
+                .args
+                .get("question")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Describe what is currently on the screen.")
+                .to_string();
+            let monitor = call
+                .args
+                .get("monitor")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as usize)
+                .unwrap_or(0);
+            let key = match settings::get_openrouter_key(&app) {
+                Some(k) => k,
+                None => return ToolResult::err("OpenRouter API key required for vision"),
+            };
+            let model = settings::get_game_coach_model(&app);
+            let bytes = match tokio::task::spawn_blocking(move || {
+                komorebi_desktop::capture::capture_screen(monitor)
+            })
+            .await
+            {
+                Ok(Ok(b)) => b,
+                Ok(Err(e)) => return ToolResult::err(e.to_string()),
+                Err(e) => return ToolResult::err(e.to_string()),
+            };
+            let small = crate::chat::downscale_for_vision(&bytes, 1280).unwrap_or(bytes);
+            let client = match OpenRouterClient::new(key) {
+                Ok(c) => c,
+                Err(e) => return ToolResult::err(e.to_string()),
+            };
+            match client
+                .complete_vision(
+                    &model,
+                    "You are looking at a screenshot of the user's screen. \
+                     Answer briefly and factually in the user's language.",
+                    &question,
+                    &small,
+                    300,
+                )
+                .await
+            {
+                Ok(text) => ToolResult::ok(serde_json::Value::String(text)),
+                Err(e) => ToolResult::err(e.to_string()),
             }
         }
         other => ToolResult::err(format!("unknown tool: {other}")),

@@ -48,6 +48,8 @@ import {
   setDeepgramEnabled,
   setDeepgramModel,
   setDeepgramLanguage,
+  setAvatarZoom,
+  setAvatarOffset,
   setGameCoachEnabled,
   setGameCoachModel,
   setWakeWord,
@@ -283,6 +285,15 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
             }}
           />
 
+          <AvatarLayoutSection
+            settings={settings}
+            onChanged={async () => {
+              const next = await getSettings();
+              setSettings(next);
+              onChanged();
+            }}
+          />
+
           <SttSection
             settings={settings}
             onChanged={async () => {
@@ -403,6 +414,107 @@ function Live2DSection({
           pixi-live2d-display demo
         </ExternalLink>
         .
+      </div>
+    </div>
+  );
+}
+
+// Avatar zoom + offset live controls. The avatar is rendered via PIXI;
+// these sliders push directly into the running scene without recreating
+// the model, so dragging gives instant visual feedback.
+function AvatarLayoutSection({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [zoom, setZoom] = useState<number>(settings?.avatar_zoom ?? 1);
+  const [ox, setOx] = useState<number>(settings?.avatar_offset_x ?? 0);
+  const [oy, setOy] = useState<number>(settings?.avatar_offset_y ?? 0);
+
+  useEffect(() => {
+    setZoom(settings?.avatar_zoom ?? 1);
+    setOx(settings?.avatar_offset_x ?? 0);
+    setOy(settings?.avatar_offset_y ?? 0);
+  }, [settings?.avatar_zoom, settings?.avatar_offset_x, settings?.avatar_offset_y]);
+
+  // Persist on commit (pointer up). Live preview is driven by the local
+  // state which flows back through getSettings → AvatarStage prop.
+  const commitZoom = async (v: number) => {
+    await setAvatarZoom(v);
+    await onChanged();
+  };
+  const commitOffset = async (x: number, y: number) => {
+    await setAvatarOffset(x, y);
+    await onChanged();
+  };
+
+  return (
+    <div style={{ marginTop: 10, padding: 8, background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
+      <div style={{ opacity: 0.7, fontSize: 11, marginBottom: 4 }}>
+        Avatar size & position
+      </div>
+      <Slider
+        label={`Zoom ×${zoom.toFixed(2)} (model size, independent of window)`}
+        min={0.3}
+        max={2.5}
+        step={0.05}
+        value={zoom}
+        onChange={(v) => {
+          setZoom(v);
+          void commitZoom(v);
+        }}
+        onCommit={() => void commitZoom(zoom)}
+      />
+      <Slider
+        label={`Horizontal nudge ${ox >= 0 ? "+" : ""}${ox.toFixed(2)}`}
+        min={-1}
+        max={1}
+        step={0.02}
+        value={ox}
+        onChange={(v) => {
+          setOx(v);
+          void commitOffset(v, oy);
+        }}
+        onCommit={() => void commitOffset(ox, oy)}
+      />
+      <Slider
+        label={`Vertical nudge ${oy >= 0 ? "+" : ""}${oy.toFixed(2)} (positive = down)`}
+        min={-1}
+        max={1}
+        step={0.02}
+        value={oy}
+        onChange={(v) => {
+          setOy(v);
+          void commitOffset(ox, v);
+        }}
+        onCommit={() => void commitOffset(ox, oy)}
+      />
+      <button
+        onClick={() => {
+          setZoom(1);
+          setOx(0);
+          setOy(0);
+          void commitZoom(1);
+          void commitOffset(0, 0);
+        }}
+        style={{
+          marginTop: 6,
+          padding: "4px 10px",
+          fontSize: 11,
+          borderRadius: 4,
+          border: "1px solid rgba(255,255,255,0.15)",
+          background: "rgba(255,255,255,0.06)",
+          color: "#fff",
+          cursor: "pointer",
+        }}
+      >
+        Reset to fit
+      </button>
+      <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>
+        Resize the window from any edge — these values stay fixed, so the
+        model keeps its real-pixel size while the window shrinks.
       </div>
     </div>
   );
@@ -885,7 +997,7 @@ function OpenRouterVoiceSection({
   const hasKey = settings?.has_openrouter_key ?? false;
   const [enabled, setEnabled] = useState(settings?.openrouter_tts_enabled ?? false);
   const [model, setModel] = useState(settings?.openrouter_tts_model ?? "openai/gpt-4o-audio-preview");
-  const [voice, setVoice] = useState(settings?.openrouter_tts_voice ?? "alloy");
+  const [voice, setVoice] = useState(settings?.openrouter_tts_voice ?? "shimmer");
   const [busy, setBusy] = useState(false);
   const ttsModels = useFilteredOpenRouterModels(hasKey && expanded, "tts");
 

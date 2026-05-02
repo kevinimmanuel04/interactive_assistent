@@ -35,39 +35,71 @@ enum MediaAction {
 fn parse(query: &str) -> Option<MediaAction> {
     let q = norm(query);
     let is_media_kw = q.contains("media")
+        // RU
         || q.contains("музык")
         || q.contains("трек")
-        || q.contains("track")
-        || q.contains("song")
         || q.contains("песн")
-        || q.contains("play")
-        || q.contains("pause")
         || q.contains("пауз")
-        || q.contains("next")
-        || q.contains("prev")
         || q.contains("следующ")
         || q.contains("предыдущ")
-        || q.contains("стоп")
-        || q.contains("stop")
         || q.contains("включи")
-        || q.contains("выключи");
+        || q.contains("выключи")
+        || q.contains("стоп")
+        // EN
+        || q.contains("track")
+        || q.contains("song")
+        || q.contains("music")
+        || q.contains("play")
+        || q.contains("pause")
+        || q.contains("resume")
+        || q.contains("next")
+        || q.contains("prev")
+        || q.contains("skip")
+        || q.contains("stop")
+        // UK
+        || q.contains("музик")
+        || q.contains("пісн")
+        || q.contains("наступн")
+        || q.contains("попередн")
+        || q.contains("грай")
+        || q.contains("відтвор")
+        || q.contains("пауза")
+        || q.contains("зупини");
     if !is_media_kw {
         return None;
     }
-    if q.contains("next") || q.contains("следующ") || q.contains("вперёд") || q.contains("вперед")
+    if q.contains("next")
+        || q.contains("skip")
+        || q.contains("следующ")
+        || q.contains("наступн")
+        || q.contains("вперёд")
+        || q.contains("вперед")
+        || q.contains("вперед")
     {
         return Some(MediaAction::Next);
     }
-    if q.contains("prev") || q.contains("предыдущ") || q.contains("назад") {
+    if q.contains("prev")
+        || q.contains("предыдущ")
+        || q.contains("попередн")
+        || q.contains("назад")
+    {
         return Some(MediaAction::Prev);
     }
-    if q.contains("stop") || q.contains("стоп") {
+    if q.contains("stop") || q.contains("стоп") || q.contains("зупини") {
         return Some(MediaAction::Stop);
     }
     if q.contains("pause") || q.contains("пауз") {
         return Some(MediaAction::PlayPause);
     }
-    if q.contains("play") || q.contains("включи") || q.contains("продолж") {
+    if q.contains("play")
+        || q.contains("resume")
+        || q.contains("включи")
+        || q.contains("увімкни")
+        || q.contains("продолж")
+        || q.contains("продовж")
+        || q.contains("грай")
+        || q.contains("відтвор")
+    {
         return Some(MediaAction::PlayPause);
     }
     None

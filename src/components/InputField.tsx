@@ -1,21 +1,42 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { cancelRecording, startRecording, stopRecording } from "../api";
+import RegionPicker from "./RegionPicker";
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onSubmit: (text: string) => void;
+  /// Vision callbacks. Each takes the current question text (may be empty).
+  onVisionFull?: (prompt: string) => void;
+  onVisionRegion?: (
+    prompt: string,
+    region: { monitor: number; x: number; y: number; width: number; height: number },
+  ) => void;
+  onVisionImage?: (prompt: string, pngBase64: string) => void;
   sttEnabled?: boolean;
+  visionEnabled?: boolean;
 }
 
-export default function InputField({ open, onClose, onSubmit, sttEnabled = false }: Props) {
+export default function InputField({
+  open,
+  onClose,
+  onSubmit,
+  onVisionFull,
+  onVisionRegion,
+  onVisionImage,
+  sttEnabled = false,
+  visionEnabled = false,
+}: Props) {
   const [value, setValue] = useState("");
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
+  const [visionMenuOpen, setVisionMenuOpen] = useState(false);
+  const [regionPickerOpen, setRegionPickerOpen] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -150,6 +171,94 @@ export default function InputField({ open, onClose, onSubmit, sttEnabled = false
                 padding: "6px 6px",
               }}
             />
+            {visionEnabled && (
+              <div style={{ position: "relative" }}>
+                <button
+                  type="button"
+                  onClick={() => setVisionMenuOpen((v) => !v)}
+                  title="Show me — capture screen / region / image"
+                  style={{
+                    width: 30,
+                    height: 30,
+                    borderRadius: 15,
+                    border: "none",
+                    cursor: "pointer",
+                    background: visionMenuOpen
+                      ? "rgba(111,174,90,0.6)"
+                      : "rgba(255,255,255,0.08)",
+                    color: "#fff",
+                    fontSize: 14,
+                  }}
+                >
+                  👁
+                </button>
+                {visionMenuOpen && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: 36,
+                      right: 0,
+                      minWidth: 180,
+                      padding: 4,
+                      borderRadius: 8,
+                      background: "rgba(20,20,28,0.96)",
+                      boxShadow: "0 6px 24px rgba(0,0,0,0.5)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 2,
+                      zIndex: 20,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      style={menuBtn}
+                      onClick={() => {
+                        setVisionMenuOpen(false);
+                        onVisionFull?.(value.trim());
+                        setValue("");
+                      }}
+                    >
+                      🖥 Full screen
+                    </button>
+                    <button
+                      type="button"
+                      style={menuBtn}
+                      onClick={() => {
+                        setVisionMenuOpen(false);
+                        setRegionPickerOpen(true);
+                      }}
+                    >
+                      ▭ Select region…
+                    </button>
+                    <button
+                      type="button"
+                      style={menuBtn}
+                      onClick={() => {
+                        setVisionMenuOpen(false);
+                        fileRef.current?.click();
+                      }}
+                    >
+                      🖼 Attach image…
+                    </button>
+                  </div>
+                )}
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (!file) return;
+                    const buf = await file.arrayBuffer();
+                    const png = await convertToPngBase64(buf, file.type);
+                    onVisionImage?.(value.trim(), png);
+                    setValue("");
+                  }}
+                />
+              </div>
+            )}
           </div>
           {micError && (
             <div style={{ fontSize: 11, color: "#ff8888", padding: "0 6px" }}>
@@ -158,6 +267,59 @@ export default function InputField({ open, onClose, onSubmit, sttEnabled = false
           )}
         </motion.form>
       )}
+      <RegionPicker
+        open={regionPickerOpen}
+        onCancel={() => setRegionPickerOpen(false)}
+        onSelect={(region) => {
+          setRegionPickerOpen(false);
+          onVisionRegion?.(value.trim(), region);
+          setValue("");
+        }}
+      />
     </AnimatePresence>
   );
+}
+
+const menuBtn: React.CSSProperties = {
+  textAlign: "left",
+  padding: "8px 10px",
+  background: "transparent",
+  color: "#fff",
+  border: "none",
+  borderRadius: 6,
+  cursor: "pointer",
+  fontSize: 13,
+};
+
+/// Re-encode an arbitrary uploaded image (jpeg/webp/etc.) to PNG base64.
+/// Keeps the backend pipeline simple — vision_with_image expects PNG bytes.
+async function convertToPngBase64(
+  buf: ArrayBuffer,
+  mime: string,
+): Promise<string> {
+  const blob = new Blob([buf], { type: mime || "image/png" });
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error("image decode failed"));
+      i.src = url;
+    });
+    // Cap at 1600px wide to keep base64 payloads small.
+    const maxW = 1600;
+    const scale = img.width > maxW ? maxW / img.width : 1;
+    const w = Math.max(1, Math.round(img.width * scale));
+    const h = Math.max(1, Math.round(img.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d context");
+    ctx.drawImage(img, 0, 0, w, h);
+    const dataUrl = canvas.toDataURL("image/png");
+    return dataUrl.replace(/^data:image\/png;base64,/, "");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }

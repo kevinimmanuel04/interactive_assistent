@@ -83,7 +83,13 @@ const MOOD_TAG = /<mood:(neutral|happy|sad|angry|surprised|thinking)>/gi;
  * get pronounced by TTS. Use on every token chunk.
  */
 export function stripMoodTags(text: string): string {
-  return text.replace(MOOD_TAG, "");
+  return text
+    .replace(MOOD_TAG, "")
+    // Tool-call protocol markers: backend leaks <tool_call>{...}</tool_call>
+    // and <tool_status>NAME</tool_status> into the visible token stream
+    // because we don't pre-process the SSE feed. Strip them client-side.
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "")
+    .replace(/<tool_status>[\s\S]*?<\/tool_status>/gi, "");
 }
 
 /**

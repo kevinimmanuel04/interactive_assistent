@@ -6,6 +6,7 @@ mod commands;
 mod desktop_cmds;
 mod models;
 mod proactive;
+mod react;
 mod settings;
 mod sysctx;
 mod tools;
@@ -28,6 +29,7 @@ pub fn run() {
         .init();
 
     let toggle_input = Shortcut::new(Some(Modifiers::ALT), Code::Space);
+    let vision_region = Shortcut::new(Some(Modifiers::ALT), Code::KeyV);
 
     tauri::Builder::default()
         .on_window_event(|window, event| {
@@ -51,9 +53,16 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
-                    if shortcut == &toggle_input && event.state() == ShortcutState::Pressed {
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    if shortcut == &toggle_input {
                         if let Err(e) = app.emit("hotkey:toggle-input", ()) {
                             tracing::warn!(?e, "failed to emit toggle-input");
+                        }
+                    } else if shortcut == &vision_region {
+                        if let Err(e) = app.emit("hotkey:vision-region", ()) {
+                            tracing::warn!(?e, "failed to emit vision-region");
                         }
                     }
                 })
@@ -106,6 +115,7 @@ pub fn run() {
             commands::set_tts_volume,
             commands::set_sovits_config,
             commands::speak_reaction,
+            commands::react_event,
             commands::set_proactive_enabled,
             commands::set_desktop_automation_enabled,
             commands::set_openrouter_tts_enabled,
@@ -148,9 +158,19 @@ pub fn run() {
             desktop_cmds::desktop_vd_close,
             desktop_cmds::desktop_vd_task_view,
             tools::run_tool,
+            commands::vision_capture_full,
+            commands::vision_capture_region,
+            commands::vision_with_image,
+            commands::set_auto_screen_watch_enabled,
+            commands::set_chat_tool_calls_enabled,
+            commands::set_avatar_zoom,
+            commands::set_avatar_offset,
         ])
         .setup(move |app| {
             app.global_shortcut().register(toggle_input)?;
+            if let Err(e) = app.global_shortcut().register(vision_region) {
+                tracing::warn!(?e, "failed to register Alt+V hotkey");
+            }
 
             // System tray: left-click toggles the window, menu offers a
             // clean exit. Essential because the window is decorationless —

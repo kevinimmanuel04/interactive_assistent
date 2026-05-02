@@ -43,6 +43,8 @@ const KEY_SOVITS_SPEED: &str = "sovits_speed";
 const KEY_AGENT_WORKSPACE: &str = "agent_workspace";
 const KEY_PROACTIVE_ENABLED: &str = "proactive_enabled";
 const KEY_DESKTOP_AUTOMATION: &str = "desktop_automation_enabled";
+const KEY_AUTO_SCREEN_WATCH: &str = "auto_screen_watch_enabled";
+const KEY_CHAT_TOOL_CALLS: &str = "chat_tool_calls_enabled";
 const KEY_OPENROUTER_TTS_ENABLED: &str = "openrouter_tts_enabled";
 const KEY_OPENROUTER_TTS_MODEL: &str = "openrouter_tts_model";
 const KEY_OPENROUTER_TTS_VOICE: &str = "openrouter_tts_voice";
@@ -58,9 +60,12 @@ const KEY_DEEPGRAM_API: &str = "deepgram_api_key";
 const KEY_DEEPGRAM_ENABLED: &str = "deepgram_enabled";
 const KEY_DEEPGRAM_MODEL: &str = "deepgram_model";
 const KEY_DEEPGRAM_LANGUAGE: &str = "deepgram_language";
+const KEY_AVATAR_ZOOM: &str = "avatar_zoom";
+const KEY_AVATAR_OFFSET_X: &str = "avatar_offset_x";
+const KEY_AVATAR_OFFSET_Y: &str = "avatar_offset_y";
 
 pub const DEFAULT_OPENROUTER_TTS_MODEL: &str = "openai/gpt-4o-audio-preview";
-pub const DEFAULT_OPENROUTER_TTS_VOICE: &str = "alloy";
+pub const DEFAULT_OPENROUTER_TTS_VOICE: &str = "shimmer";
 pub const DEFAULT_OPENROUTER_STT_MODEL: &str = "openai/gpt-4o-audio-preview";
 pub const DEFAULT_GAME_COACH_MODEL: &str = "openai/gpt-4o-mini";
 pub const DEFAULT_FASTER_WHISPER_URL: &str = "http://localhost:8000";
@@ -102,6 +107,8 @@ pub struct PublicSettings {
     pub agent_workspace: Option<String>,
     pub proactive_enabled: bool,
     pub desktop_automation_enabled: bool,
+    pub auto_screen_watch_enabled: bool,
+    pub chat_tool_calls_enabled: bool,
     pub openrouter_tts_enabled: bool,
     pub openrouter_tts_model: String,
     pub openrouter_tts_voice: String,
@@ -117,6 +124,9 @@ pub struct PublicSettings {
     pub deepgram_enabled: bool,
     pub deepgram_model: String,
     pub deepgram_language: Option<String>,
+    pub avatar_zoom: f64,
+    pub avatar_offset_x: f64,
+    pub avatar_offset_y: f64,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -233,6 +243,8 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         agent_workspace: read_string(app, KEY_AGENT_WORKSPACE),
         proactive_enabled: get_bool(app, KEY_PROACTIVE_ENABLED, false),
         desktop_automation_enabled: get_bool(app, KEY_DESKTOP_AUTOMATION, false),
+        auto_screen_watch_enabled: get_bool(app, KEY_AUTO_SCREEN_WATCH, false),
+        chat_tool_calls_enabled: get_bool(app, KEY_CHAT_TOOL_CALLS, true),
         openrouter_tts_enabled: get_openrouter_tts_enabled(app),
         openrouter_tts_model: get_openrouter_tts_model(app),
         openrouter_tts_voice: get_openrouter_tts_voice(app),
@@ -248,6 +260,9 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         deepgram_enabled: get_deepgram_enabled(app),
         deepgram_model: get_deepgram_model(app),
         deepgram_language: get_deepgram_language(app),
+        avatar_zoom: get_f64(app, KEY_AVATAR_ZOOM).unwrap_or(1.0),
+        avatar_offset_x: get_f64(app, KEY_AVATAR_OFFSET_X).unwrap_or(0.0),
+        avatar_offset_y: get_f64(app, KEY_AVATAR_OFFSET_Y).unwrap_or(0.0),
     }
 }
 
@@ -553,6 +568,53 @@ pub fn set_desktop_automation_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) 
     store.set(KEY_DESKTOP_AUTOMATION, serde_json::Value::Bool(on));
     store.save()?;
     Ok(())
+}
+
+#[allow(dead_code)]
+pub fn get_auto_screen_watch_enabled(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_AUTO_SCREEN_WATCH, false)
+}
+pub fn set_auto_screen_watch_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_AUTO_SCREEN_WATCH, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_chat_tool_calls_enabled(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_CHAT_TOOL_CALLS, true)
+}
+pub fn set_chat_tool_calls_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_CHAT_TOOL_CALLS, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+// --- Avatar layout (zoom + nudges) ---------------------------------------
+//
+// `avatar_zoom` is a multiplier applied on top of the auto-fit scale that
+// makes the model fill its allotted box. 1.0 = current behaviour; 0.5 = half
+// size; 2.0 = double size (will overflow the canvas, which is the whole
+// point of letting the user keep the model big inside a smaller window).
+//
+// `avatar_offset_x` / `avatar_offset_y` are *fractions* of the avatar box
+// (-1.0..=1.0) rather than absolute pixels, so they survive window resizes
+// without re-anchoring weirdly. Positive Y nudges the model down.
+
+pub fn set_avatar_zoom<R: Runtime>(app: &AppHandle<R>, value: f64) -> Result<()> {
+    let clamped = value.clamp(0.2, 3.0);
+    write_optional_f64(app, KEY_AVATAR_ZOOM, Some(clamped))
+}
+
+pub fn set_avatar_offset_x<R: Runtime>(app: &AppHandle<R>, value: f64) -> Result<()> {
+    let clamped = value.clamp(-1.0, 1.0);
+    write_optional_f64(app, KEY_AVATAR_OFFSET_X, Some(clamped))
+}
+
+pub fn set_avatar_offset_y<R: Runtime>(app: &AppHandle<R>, value: f64) -> Result<()> {
+    let clamped = value.clamp(-1.0, 1.0);
+    write_optional_f64(app, KEY_AVATAR_OFFSET_Y, Some(clamped))
 }
 
 // --- OpenRouter TTS / STT -------------------------------------------------

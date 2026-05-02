@@ -67,8 +67,28 @@ class LipSyncBus {
     // Read bytes via Tauri IPC (raw u8 Response, no JSON/base64 overhead).
     let bytes: ArrayBuffer;
     try {
-      const resp = await invoke<ArrayBuffer>("read_tts_bytes", { path: payload });
-      bytes = resp;
+      const resp = await invoke<ArrayBuffer | Uint8Array>("read_tts_bytes", {
+        path: payload,
+      });
+      // Tauri 2 may return Uint8Array depending on platform; normalize.
+      if (resp instanceof ArrayBuffer) {
+        bytes = resp;
+      } else if (resp instanceof Uint8Array) {
+        bytes = resp.buffer.slice(
+          resp.byteOffset,
+          resp.byteOffset + resp.byteLength,
+        ) as ArrayBuffer;
+      } else {
+        // Some Tauri builds wrap raw bytes in an ArrayBufferView-like object.
+        const view = new Uint8Array(resp as ArrayBufferLike);
+        bytes = view.buffer.slice(
+          view.byteOffset,
+          view.byteOffset + view.byteLength,
+        ) as ArrayBuffer;
+      }
+      console.log(
+        `[tts] read ${bytes.byteLength} bytes from ${payload.split(/[\\/]/).pop()}`,
+      );
     } catch (err) {
       console.warn("[tts] read_tts_bytes failed:", err);
       return;
@@ -84,6 +104,15 @@ class LipSyncBus {
       const buffer = await probe.decodeAudioData(bytes.slice(0));
       this.envelope = computeEnvelope(buffer, ENV_HOP_MS);
       this.durationSec = buffer.duration;
+      let envMax = 0;
+      for (let i = 0; i < this.envelope.length; i++) {
+        if (this.envelope[i] > envMax) envMax = this.envelope[i];
+      }
+      console.log(
+        `[tts] envelope ready: ${this.envelope.length} hops, ` +
+          `duration=${this.durationSec.toFixed(2)}s, ` +
+          `peak rms=${envMax.toFixed(4)} (gain=${GAIN}, floor=${FLOOR})`,
+      );
     } catch (err) {
       console.warn("[tts] envelope decode failed:", err);
       this.envelope = null;
@@ -151,6 +180,13 @@ class LipSyncBus {
 
   private startLoop(): void {
     if (this.rafId !== null) return;
+    console.log(
+      `[tts] startLoop: ${this.listeners.size} subscriber(s), ` +
+        `env=${this.envelope ? `${this.envelope.length} hops` : "null"}, ` +
+        `durationSec=${this.durationSec.toFixed(2)}`,
+    );
+    let lastLogAt = 0;
+    let peakLevel = 0;
     const tick = () => {
       const el = this.el;
       const env = this.envelope;
@@ -163,6 +199,16 @@ class LipSyncBus {
       const k = level > this.smoothed ? SMOOTH_ATTACK : SMOOTH_RELEASE;
       this.smoothed += (level - this.smoothed) * k;
       this.emit(this.smoothed);
+      const now = performance.now();
+      if (this.smoothed > peakLevel) peakLevel = this.smoothed;
+      if (lastLogAt === 0) lastLogAt = now;
+      if (now - lastLogAt >= 1000) {
+        console.log(
+          `[tts] mouth t=${t.toFixed(2)}s peak_level=${peakLevel.toFixed(3)}`,
+        );
+        peakLevel = 0;
+        lastLogAt = now;
+      }
       this.rafId = window.requestAnimationFrame(tick);
     };
     this.rafId = window.requestAnimationFrame(tick);

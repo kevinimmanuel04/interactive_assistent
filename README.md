@@ -131,11 +131,12 @@ All prosody knobs (length scale, noise, noise-w) and a master volume slider are 
 
 ### Live2D avatar
 
-- Cubism **2** and Cubism **4** runtimes, both first-class.
+- Cubism **2**, **4**, and **5** runtimes, all first-class. `.model3.json` files exported from Cubism Editor 5 load through the same path as Cubism 4 (the SDK Core 5.x is backward compatible).
+- Komorebi ships with **`mao_pro`** as the default Cubism 5 model under `public/live2d/mao_pro/` — no manual download needed for first run.
 - Runtime-specific parameter maps (`PARAM_MOUTH_OPEN_Y` vs `ParamMouthOpenY`, etc).
 - Random blink (2.5–6.5 s), pointer-based eye-tracking.
 - **Tap to react**: head taps and body taps pick different motion groups and canned voice lines (ru / ja / zh / en).
-- **Emotion → motion** fallback for models without expression files (e.g., the built-in Shizuku).
+- **Emotion → motion** fallback for models without expression files (e.g., the legacy Shizuku Cubism 2 sample).
 - Draggable, pin-to-edge, resizable; empty space around the avatar is click-through so your desktop still works.
 
 ### RAG

@@ -201,6 +201,32 @@ pub fn set_desktop_automation_enabled(app: AppHandle<Wry>, enabled: bool) -> Res
 }
 
 #[tauri::command]
+pub fn set_auto_screen_watch_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
+    settings::set_auto_screen_watch_enabled(&app, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_chat_tool_calls_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
+    settings::set_chat_tool_calls_enabled(&app, enabled).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_avatar_zoom(app: AppHandle<Wry>, value: f64) -> Result<(), String> {
+    settings::set_avatar_zoom(&app, value).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_avatar_offset(
+    app: AppHandle<Wry>,
+    offset_x: f64,
+    offset_y: f64,
+) -> Result<(), String> {
+    settings::set_avatar_offset_x(&app, offset_x).map_err(|e| e.to_string())?;
+    settings::set_avatar_offset_y(&app, offset_y).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn set_game_coach_enabled(app: AppHandle<Wry>, enabled: bool) -> Result<(), String> {
     settings::set_game_coach_enabled(&app, enabled).map_err(|e| e.to_string())
 }
@@ -630,14 +656,14 @@ pub async fn synthesize_via_provider(
     }
 }
 
-/// Canned reaction lines played when the user taps the avatar. Picks a
-/// random line (seeded by the current timestamp) localized roughly by the
-/// reference-voice language, and emits it through the active TTS provider.
+/// LLM-driven, multilingual reaction line played when the user taps the
+/// avatar. `zone` is one of `head`, `body`, `hand` (legacy `head`/`body`
+/// callers still work). Generation route follows the global Mode setting
+/// (Local / Cloud / Auto) and falls back to canned localized strings on
+/// timeout or error so the user always hears something.
 #[tauri::command]
 pub async fn speak_reaction(app: AppHandle<Wry>, zone: String) -> Result<(), String> {
-    let lang = settings::public_snapshot(&app).sovits_text_lang;
-    let provider = settings::get_tts_provider(&app);
-    let text = pick_reaction(&zone, &lang, &provider);
+    let text = crate::react::generate(&app, &zone).await;
     if text.is_empty() {
         return Ok(());
     }
@@ -647,51 +673,19 @@ pub async fn speak_reaction(app: AppHandle<Wry>, zone: String) -> Result<(), Str
     Ok(())
 }
 
-fn pick_reaction(zone: &str, lang: &str, _provider: &str) -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    // Normalize language: for Piper we pick by piper voice locale; for now
-    // trust the user's SoVITS text_lang setting for both. "auto" → English.
-    let lang_key = match lang {
-        "ja" | "jp" => "ja",
-        "ru" => "ru",
-        "zh" => "zh",
-        _ => "en",
-    };
-    let pool: &[&str] = match (zone, lang_key) {
-        ("head", "ru") => &[
-            "Эй, щекотно!",
-            "Ты меня гладишь?",
-            "Хе-хе, приятно.",
-            "Не трогай волосы!",
-        ],
-        ("head", "ja") => &[
-            "ふふっ、なでなで？",
-            "きゃっ、くすぐったい！",
-            "もっと撫でて〜",
-            "えへへ♪",
-        ],
-        ("head", "zh") => &["嘿嘿，好痒~", "摸摸头~", "再来一下嘛", "嗯~舒服"],
-        ("head", _) => &[
-            "Hey, that tickles!",
-            "Are you petting me?",
-            "Hehe, that's nice.",
-            "Careful with the hair!",
-        ],
-        ("body", "ru") => &["Ой!", "Эй, полегче!", "Ты чего?", "Хи-хи."],
-        ("body", "ja") => &["きゃっ！", "もう〜", "どうしたの？", "ふふっ"],
-        ("body", "zh") => &["哎呀！", "干嘛啦~", "讨厌~", "嘻嘻"],
-        ("body", _) => &["Oh!", "Hey, easy!", "What are you doing?", "Hee hee."],
-        (_, "ru") => &["Да?", "Что такое?", "Я тут."],
-        (_, "ja") => &["はい？", "なに？", "ここだよ〜"],
-        (_, "zh") => &["嗯？", "怎么了？", "我在这里"],
-        _ => &["Yes?", "What's up?", "I'm here."],
-    };
-    let idx = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() as usize)
-        .unwrap_or(0)
-        % pool.len();
-    pool[idx].to_string()
+/// Generic event-driven reaction (drag, idle, custom). Same pipeline as
+/// [`speak_reaction`] — exposed separately so frontend code reads more
+/// naturally at call sites that aren't avatar taps.
+#[tauri::command]
+pub async fn react_event(app: AppHandle<Wry>, kind: String) -> Result<(), String> {
+    let text = crate::react::generate(&app, &kind).await;
+    if text.is_empty() {
+        return Ok(());
+    }
+    if let Ok(Some(wav)) = synthesize_via_provider(&app, &text).await {
+        emit_tts_wav(&app, &wav);
+    }
+    Ok(())
 }
 
 /// Emit synthesized WAV audio to the frontend.
@@ -799,6 +793,79 @@ pub async fn reload_tts(app: &AppHandle<Wry>) {
         };
         sovits.inner().configure(sv_cfg).await;
     }
+}
+
+// --- Vision (screen / region / attached image) ---------------------------
+
+/// Capture the primary monitor and ask the vision model about it. Streams
+/// the answer back via the normal `chat:*` event channel so the bubble,
+/// emotion tags, and TTS pipeline all work without changes.
+#[tauri::command]
+pub async fn vision_capture_full(
+    app: AppHandle<Wry>,
+    prompt: String,
+) -> Result<String, String> {
+    let monitor = 0usize;
+    let bytes = tokio::task::spawn_blocking(move || {
+        komorebi_desktop::capture::capture_screen(monitor)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let id = uuid_like();
+    crate::proactive::bump_last_interaction();
+    crate::chat::spawn_vision_generation(app, id.clone(), prompt, bytes);
+    Ok(id)
+}
+
+#[derive(serde::Deserialize)]
+pub struct VisionRegionArgs {
+    pub prompt: String,
+    pub monitor: Option<usize>,
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+#[tauri::command]
+pub async fn vision_capture_region(
+    app: AppHandle<Wry>,
+    args: VisionRegionArgs,
+) -> Result<String, String> {
+    let monitor = args.monitor.unwrap_or(0);
+    let (x, y, w, h) = (args.x, args.y, args.width, args.height);
+    let bytes = tokio::task::spawn_blocking(move || {
+        komorebi_desktop::capture::capture_region(monitor, x, y, w, h)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
+    let id = uuid_like();
+    crate::proactive::bump_last_interaction();
+    crate::chat::spawn_vision_generation(app, id.clone(), args.prompt, bytes);
+    Ok(id)
+}
+
+/// Send an arbitrary user-supplied image (already PNG-encoded) along with
+/// a question. Frontend uploads via base64 to keep IPC payloads simple.
+#[tauri::command]
+pub async fn vision_with_image(
+    app: AppHandle<Wry>,
+    prompt: String,
+    png_base64: String,
+) -> Result<String, String> {
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(png_base64.as_bytes())
+        .map_err(|e| format!("invalid base64 image: {e}"))?;
+    if bytes.is_empty() {
+        return Err("empty image".into());
+    }
+    let id = uuid_like();
+    crate::proactive::bump_last_interaction();
+    crate::chat::spawn_vision_generation(app, id.clone(), prompt, bytes);
+    Ok(id)
 }
 
 /// Lightweight id generator (avoids pulling in the `uuid` crate just for UX).

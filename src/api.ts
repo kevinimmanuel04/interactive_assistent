@@ -47,6 +47,8 @@ export interface PublicSettings {
   openrouter_stt_model?: string;
   game_coach_enabled?: boolean;
   game_coach_model?: string;
+  auto_screen_watch_enabled?: boolean;
+  chat_tool_calls_enabled?: boolean;
   faster_whisper_enabled?: boolean;
   faster_whisper_url?: string;
   faster_whisper_model?: string;
@@ -55,6 +57,9 @@ export interface PublicSettings {
   deepgram_enabled?: boolean;
   deepgram_model?: string;
   deepgram_language?: string | null;
+  avatar_zoom?: number;
+  avatar_offset_x?: number;
+  avatar_offset_y?: number;
 }
 
 export interface FolderStats {
@@ -236,6 +241,13 @@ export async function setDeepgramLanguage(language: string): Promise<void> {
   await invoke("set_deepgram_language", { language });
 }
 
+export async function setAvatarZoom(value: number): Promise<void> {
+  await invoke("set_avatar_zoom", { value });
+}
+export async function setAvatarOffset(offsetX: number, offsetY: number): Promise<void> {
+  await invoke("set_avatar_offset", { offsetX, offsetY });
+}
+
 export async function setTtsProsody(
   lengthScale: number | null,
   noiseScale: number | null,
@@ -383,6 +395,71 @@ export async function setOpenRouterModel(model: string): Promise<void> {
 
 export async function ragReindex(path?: string): Promise<IndexReport> {
   return invoke<IndexReport>("rag_reindex", { path: path ?? null });
+}
+
+// --- Vision (screen / region / attached image) ---------------------------
+
+export async function visionCaptureFull(prompt: string): Promise<string> {
+  return invoke<string>("vision_capture_full", { prompt });
+}
+
+export interface VisionRegion {
+  monitor?: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export async function visionCaptureRegion(
+  prompt: string,
+  region: VisionRegion,
+): Promise<string> {
+  return invoke<string>("vision_capture_region", {
+    args: {
+      prompt,
+      monitor: region.monitor ?? 0,
+      x: region.x,
+      y: region.y,
+      width: region.width,
+      height: region.height,
+    },
+  });
+}
+
+export async function visionWithImage(
+  prompt: string,
+  pngBase64: string,
+): Promise<string> {
+  return invoke<string>("vision_with_image", { prompt, pngBase64 });
+}
+
+/// Capture the primary monitor and return raw PNG bytes — used by the
+/// region picker overlay to show the user a still of the screen they can
+/// drag a rectangle on.
+export async function desktopScreenshot(monitor = 0): Promise<Uint8Array> {
+  const out = await invoke<ArrayBuffer | Uint8Array | number[]>(
+    "desktop_screenshot",
+    { monitor },
+  );
+  if (out instanceof Uint8Array) return out;
+  if (out instanceof ArrayBuffer) return new Uint8Array(out);
+  return new Uint8Array(out as number[]);
+}
+
+export interface ScreenInfo {
+  id: number;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  is_primary: boolean;
+  scale_factor: number;
+}
+
+export async function desktopListScreens(): Promise<ScreenInfo[]> {
+  return invoke<ScreenInfo[]>("desktop_list_screens");
 }
 
 export function onChat(cb: (e: ChatEvent) => void): Promise<UnlistenFn> {

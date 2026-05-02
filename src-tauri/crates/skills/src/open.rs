@@ -19,7 +19,21 @@ enum Target {
 
 fn parse(query: &str) -> Option<Target> {
     let q = norm(query);
-    let prefixes = ["open ", "открой ", "запусти ", "launch "];
+    let prefixes = [
+        "open ",        // EN
+        "launch ",
+        "start ",
+        "run ",
+        "открой ",     // RU
+        "открыть ",
+        "запусти ",
+        "запустить ",
+        "включи ",
+        "відкрий ",     // UK
+        "відкрити ",
+        "запустити ",
+        "увімкни ",
+    ];
     let mut rest: Option<&str> = None;
     for p in prefixes {
         if let Some(idx) = q.find(p) {

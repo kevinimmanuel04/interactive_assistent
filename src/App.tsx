@@ -3,9 +3,11 @@ import AvatarStage from "./components/AvatarStage";
 import ChatBubble from "./components/ChatBubble";
 import InputField from "./components/InputField";
 import ModelWizard from "./components/ModelWizard";
+import RegionPicker from "./components/RegionPicker";
 import SettingsPanel from "./components/SettingsPanel";
 import { listen } from "@tauri-apps/api/event";
 import { exit as tauriExit } from "@tauri-apps/plugin-process";
+import { invoke } from "@tauri-apps/api/core";
 import { avatarState } from "./avatarState";
 import { stripMoodTags } from "./emotion";
 import { lipSync } from "./lipsync";
@@ -20,6 +22,9 @@ import {
   resetChat,
   sendMessage,
   setListenEnabled,
+  visionCaptureFull,
+  visionCaptureRegion,
+  visionWithImage,
 } from "./api";
 
 type Route = "local" | "cloud" | "skill";
@@ -35,7 +40,12 @@ export default function App() {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [listening, setListening] = useState(false);
   const [heardHint, setHeardHint] = useState(false);
+  const [regionPickerOpen, setRegionPickerOpen] = useState(false);
   const activeIdRef = useRef<string | null>(null);
+  // Accumulated *raw* token stream including any `<mood:X>` markers, used
+  // for emotion classification. The visible bubble text strips the markers
+  // before display, so we can't re-derive the raw text from it.
+  const rawTextRef = useRef<string>("");
   const bubbleTimer = useRef<number | null>(null);
   const controllerRef = useRef<ListenController | null>(null);
   const settingsRef = useRef<PublicSettings | null>(null);
@@ -58,6 +68,18 @@ export default function App() {
   useEffect(() => {
     const p = listen<string>("hotkey:toggle-input", () => {
       setInputOpen((v) => !v);
+    });
+    return () => {
+      p.then((fn) => fn());
+    };
+  }, []);
+
+  // Alt+V hotkey: open the region picker overlay regardless of which UI
+  // panel is active. Lets the user ask about anything on screen without
+  // first opening the chat input field.
+  useEffect(() => {
+    const p = listen<string>("hotkey:vision-region", () => {
+      setRegionPickerOpen(true);
     });
     return () => {
       p.then((fn) => fn());
@@ -223,23 +245,21 @@ export default function App() {
         case "started":
           setRoute(e.route);
           setBubbleText("");
+          rawTextRef.current = "";
           setThinking(true);
           break;
         case "token":
           setThinking(false);
-          setBubbleText((t) => {
-            // Keep raw text (with mood tags) for emotion detection,
-            // but display the user-visible version with tags stripped.
-            const raw = (t ?? "") + e.text;
-            avatarState.onToken(raw);
-            return stripMoodTags(raw);
-          });
+          rawTextRef.current += e.text;
+          avatarState.onToken(rawTextRef.current);
+          setBubbleText(stripMoodTags(rawTextRef.current));
           break;
         case "done":
           setThinking(false);
           avatarState.onDone();
           scheduleBubbleHide();
           activeIdRef.current = null;
+          rawTextRef.current = "";
           break;
         case "error":
           setThinking(false);
@@ -247,6 +267,7 @@ export default function App() {
           setBubbleText(`⚠ ${e.message}`);
           scheduleBubbleHide(6000);
           activeIdRef.current = null;
+          rawTextRef.current = "";
           break;
       }
     });
@@ -273,7 +294,14 @@ export default function App() {
     avatarState.setThinking();
     activeIdRef.current = "pending";
     try {
-      const id = await sendMessage(text);
+      // Auto screen-watch mode: every text turn implicitly attaches a
+      // fresh screenshot, so the assistant is "looking" at the desktop
+      // throughout the conversation. Costs an OpenRouter vision request
+      // per message — gated behind an explicit setting + key.
+      const id =
+        settings?.auto_screen_watch_enabled && settings?.has_openrouter_key
+          ? await visionCaptureFull(text)
+          : await sendMessage(text);
       if (activeIdRef.current === "pending") activeIdRef.current = id;
     } catch (err) {
       activeIdRef.current = null;
@@ -284,6 +312,44 @@ export default function App() {
     }
   };
   handleSubmitRef.current = handleSubmit;
+
+  // Generic vision dispatcher: kicks the chat-state machine the same way
+  // handleSubmit does, then awaits the chosen invoke. Backend emits the
+  // normal `chat:*` event stream so the bubble, route badge, emotion tags,
+  // and TTS pipeline all work without further wiring.
+  const runVision = async (
+    label: string,
+    prompt: string,
+    invoker: () => Promise<string>,
+  ) => {
+    if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current);
+    setBubbleText("");
+    setUserEcho(prompt ? `${label}: ${prompt}` : label);
+    setThinking(true);
+    setRoute(null);
+    avatarState.setThinking();
+    activeIdRef.current = "pending";
+    try {
+      const id = await invoker();
+      if (activeIdRef.current === "pending") activeIdRef.current = id;
+    } catch (err) {
+      activeIdRef.current = null;
+      setThinking(false);
+      avatarState.onDone(500);
+      setBubbleText(`⚠ ${String(err)}`);
+      scheduleBubbleHide(6000);
+    }
+  };
+
+  const handleVisionFull = (prompt: string) =>
+    runVision("👁 screen", prompt, () => visionCaptureFull(prompt));
+  const handleVisionRegion = (
+    prompt: string,
+    region: { monitor: number; x: number; y: number; width: number; height: number },
+  ) =>
+    runVision("👁 region", prompt, () => visionCaptureRegion(prompt, region));
+  const handleVisionImage = (prompt: string, pngBase64: string) =>
+    runVision("🖼 image", prompt, () => visionWithImage(prompt, pngBase64));
 
   const handleReset = async () => {
     await cancelGeneration();
@@ -298,12 +364,23 @@ export default function App() {
 
   return (
     <>
-      <AvatarStage modelUrl={settings?.live2d_model_url ?? null} />
+      <AvatarStage
+        modelUrl={
+          settings?.live2d_model_url ?? "/live2d/mao_pro/mao_pro.model3.json"
+        }
+        zoom={settings?.avatar_zoom ?? 1}
+        offsetX={settings?.avatar_offset_x ?? 0}
+        offsetY={settings?.avatar_offset_y ?? 0}
+      />
       <ChatBubble text={bubbleText} route={route} thinking={thinking} userEcho={userEcho} />
       <InputField
         open={inputOpen && !settingsOpen && !wizardOpen}
         onClose={() => setInputOpen(false)}
         onSubmit={handleSubmit}
+        onVisionFull={handleVisionFull}
+        onVisionRegion={handleVisionRegion}
+        onVisionImage={handleVisionImage}
+        visionEnabled={Boolean(settings?.has_openrouter_key)}
         sttEnabled={Boolean(
           (settings?.stt_available && settings?.whisper_model_path) ||
             (settings?.openrouter_stt_enabled && settings?.has_openrouter_key) ||
@@ -345,6 +422,21 @@ export default function App() {
         }}
         onReset={handleReset}
         onQuit={() => tauriExit(0)}
+        autoWatch={settings?.auto_screen_watch_enabled === true}
+        autoWatchAvailable={Boolean(settings?.has_openrouter_key)}
+        onToggleAutoWatch={async () => {
+          const next = !(settings?.auto_screen_watch_enabled ?? false);
+          await invoke("set_auto_screen_watch_enabled", { enabled: next });
+          refreshSettings();
+        }}
+      />
+      <RegionPicker
+        open={regionPickerOpen}
+        onCancel={() => setRegionPickerOpen(false)}
+        onSelect={(region) => {
+          setRegionPickerOpen(false);
+          handleVisionRegion("", region);
+        }}
       />
     </>
   );
@@ -362,6 +454,9 @@ function TopBar(props: {
   onToggleWizard: () => void;
   onReset: () => void;
   onQuit: () => void;
+  autoWatch: boolean;
+  autoWatchAvailable: boolean;
+  onToggleAutoWatch: () => void;
 }) {
   const listenColor = !props.listenReady
     ? "rgba(20,20,28,0.7)"
@@ -411,6 +506,23 @@ function TopBar(props: {
         }
       >
         👂
+      </button>
+      <button
+        onClick={props.onToggleAutoWatch}
+        disabled={!props.autoWatchAvailable}
+        style={{
+          ...iconBtn,
+          background: props.autoWatch ? "#6fae5a" : "rgba(20,20,28,0.7)",
+        }}
+        title={
+          !props.autoWatchAvailable
+            ? "Add OpenRouter key first"
+            : props.autoWatch
+            ? "Always-watch ON — every message attaches a screenshot"
+            : "Always watch screen — toggle ON to attach screenshot to every message"
+        }
+      >
+        👁
       </button>
       <button onClick={props.onReset} style={iconBtn} title="Reset conversation">
         ↺

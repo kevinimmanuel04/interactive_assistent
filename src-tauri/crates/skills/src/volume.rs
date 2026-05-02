@@ -26,18 +26,43 @@ enum Action {
 
 fn parse(query: &str) -> Option<Action> {
     let q = norm(query);
-    if !(q.contains("громкост")
-        || q.contains("volume")
+    // Topic check (RU/EN/UK).
+    let is_volume_kw = q.contains("громкост")           // RU
         || q.contains("громче")
         || q.contains("тише")
+        || q.contains("звук")
+        || q.contains("volume")                         // EN
         || q.contains("louder")
         || q.contains("quieter")
+        || q.contains("sound")
         || q.contains("mute")
-        || q.contains("выключи звук"))
-    {
+        || q.contains("unmute")
+        || q.contains("гучніст")                        // UK
+        || q.contains("гучніше")
+        || q.contains("тихіше")
+        || q.contains("гучн")
+        || q.contains("вимкни звук")
+        || q.contains("вимкнути звук")
+        || q.contains("выключи звук")
+        || q.contains("приглуши")
+        || q.contains("приглуш");
+    if !is_volume_kw {
         return None;
     }
-    if q.contains("mute") || q.contains("выключи звук") {
+    if q.contains("unmute")
+        || q.contains("включи звук")
+        || q.contains("увімкни звук")
+        || q.contains("увімкнути звук")
+    {
+        // Treat as max volume bump (no separate Unmute action).
+        return Some(Action::Delta(20));
+    }
+    if q.contains("mute")
+        || q.contains("выключи звук")
+        || q.contains("вырубай звук")
+        || q.contains("вимкни звук")
+        || q.contains("вимкнути звук")
+    {
         return Some(Action::Mute);
     }
     // Absolute: first integer 0..=100 wins.
@@ -54,10 +79,27 @@ fn parse(query: &str) -> Option<Action> {
             return Some(Action::Set(n as u8));
         }
     }
-    if q.contains("громче") || q.contains("louder") || q.contains("up") {
+    if q.contains("громче")
+        || q.contains("louder")
+        || q.contains("гучніше")
+        || q.contains("up")
+        || q.contains("повыш")
+        || q.contains("подними")
+        || q.contains("підвищ")
+        || q.contains("підніми")
+    {
         return Some(Action::Delta(10));
     }
-    if q.contains("тише") || q.contains("quieter") || q.contains("down") {
+    if q.contains("тише")
+        || q.contains("quieter")
+        || q.contains("тихіше")
+        || q.contains("down")
+        || q.contains("понизь")
+        || q.contains("уменьш")
+        || q.contains("знизь")
+        || q.contains("зменш")
+        || q.contains("приглуш")
+    {
         return Some(Action::Delta(-10));
     }
     None
@@ -192,6 +234,9 @@ mod tests {
         assert!(matches!(parse("громкость 50%"), Some(Action::Set(50))));
         assert!(matches!(parse("volume 0"), Some(Action::Set(0))));
         assert!(matches!(parse("set volume to 100"), Some(Action::Set(100))));
+        // Common Russian phrasing the user actually types/speaks: «сделай звук 50%».
+        assert!(matches!(parse("сделай звук 50%"), Some(Action::Set(50))));
+        assert!(matches!(parse("зроби гучність 70"), Some(Action::Set(70))));
     }
 
     #[test]

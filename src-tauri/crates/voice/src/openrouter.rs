@@ -233,31 +233,75 @@ async fn synthesize(
         return Err(OpenRouterVoiceError::EmptyAudio);
     }
 
-    // Decoding strategy:
-    //   1. Try the OpenAI-recommended path: concatenate the base64 strings
-    //      and decode once. This is correct when chunks are byte-aligned.
-    //   2. If that fails (some relays insert per-chunk `=` padding which
-    //      is invalid mid-stream), fall back to decoding each chunk
-    //      individually and concatenating the raw bytes.
-    let joined: String = audio_chunks.concat();
-    let pcm = match base64::engine::general_purpose::STANDARD.decode(joined.as_bytes()) {
-        Ok(bytes) => bytes,
-        Err(_) => {
-            let mut buf = Vec::with_capacity(audio_chunks.iter().map(|s| s.len() * 3 / 4).sum());
-            for chunk in &audio_chunks {
-                let bytes = base64::engine::general_purpose::STANDARD
-                    .decode(chunk.as_bytes())
-                    .map_err(|e| OpenRouterVoiceError::Decode(e.to_string()))?;
-                buf.extend_from_slice(&bytes);
-            }
-            buf
+    // OpenRouter / OpenAI sometimes streams audio as *cumulative* deltas:
+    // each successive chunk re-includes everything previously emitted plus
+    // a small extension. Naively concatenating those yields audio many
+    // times longer than the actual utterance — what the user hears is the
+    // phrase, then repeated/overlapping copies, then a buzz/garbage tail.
+    //
+    // Detection strategies (any one is enough):
+    //   1. Decoded bytes form an exact prefix chain (chunk[i] starts with chunk[i-1]).
+    //   2. Chunk sizes grow monotonically (typical of cumulative streams).
+    //   3. The last chunk alone is ≥ 80 % of the concatenation.
+    let decoded: Vec<Vec<u8>> = audio_chunks
+        .iter()
+        .map(|s| base64::engine::general_purpose::STANDARD.decode(s.as_bytes()))
+        .collect::<Result<_, _>>()
+        .map_err(|e| OpenRouterVoiceError::Decode(e.to_string()))?;
+
+    let sizes: Vec<usize> = decoded.iter().map(|b| b.len()).collect();
+    let total_concat: usize = sizes.iter().sum();
+    let first = sizes.first().copied().unwrap_or(0);
+    let last = sizes.last().copied().unwrap_or(0);
+    let max = sizes.iter().copied().max().unwrap_or(0);
+    tracing::info!(
+        chunks = decoded.len(),
+        first,
+        last,
+        max,
+        total = total_concat,
+        "openrouter TTS chunk byte sizes"
+    );
+
+    let mut cumulative_strict = decoded.len() >= 2;
+    for i in 1..decoded.len() {
+        if decoded[i].len() < decoded[i - 1].len() || !decoded[i].starts_with(&decoded[i - 1]) {
+            cumulative_strict = false;
+            break;
         }
+    }
+
+    // Only the strict byte-prefix check is safe enough to trigger
+    // "keep last only". Heuristics on chunk sizes (monotonic growth, last
+    // share ≥ 80 %) misfire on regular incremental streams and turn the
+    // utterance into a 50 ms buzz, which is far worse than tolerating an
+    // overlong audio.
+    let cumulative = cumulative_strict;
+
+    let pcm: Vec<u8> = if cumulative {
+        let last_bytes = decoded.last().cloned().unwrap_or_default();
+        tracing::info!(
+            chunks = decoded.len(),
+            final_len = last_bytes.len(),
+            "openrouter TTS deltas are cumulative; keeping only the final chunk"
+        );
+        last_bytes
+    } else {
+        decoded.into_iter().flatten().collect()
     };
+
+    // Trim trailing silence / low-amplitude tail. OpenAI's PCM16 stream
+    // sometimes finishes with a stretch of near-zero samples followed by
+    // a few stray bytes that decode as a brief high-frequency click. We
+    // remove any continuous run of samples with |s| < threshold from the
+    // end, leaving a 100 ms safety margin.
+    let pcm = trim_trailing_silence(&pcm, 24_000, 0.01, 100);
 
     tracing::info!(
         chunks_seen,
         chunks_with_audio = audio_chunks.len(),
         source,
+        cumulative,
         pcm_bytes = pcm.len(),
         approx_seconds = pcm.len() as f32 / (24_000.0 * 2.0),
         "openrouter TTS stream decoded"
@@ -291,6 +335,44 @@ fn wrap_pcm16_as_wav(pcm: &[u8], sample_rate: u32) -> Vec<u8> {
     out.extend_from_slice(&data_size.to_le_bytes());
     out.extend_from_slice(pcm);
     out
+}
+
+/// Drop a continuous tail of near-silent PCM16 little-endian samples.
+/// `noise` is the absolute amplitude threshold in [0, 1]; samples whose
+/// |s| / 32767 < noise count as silence. We always keep `keep_ms` of the
+/// trailing region so a faint exhale isn't truncated.
+fn trim_trailing_silence(pcm: &[u8], sample_rate: u32, noise: f32, keep_ms: u32) -> Vec<u8> {
+    if pcm.len() < 4 {
+        return pcm.to_vec();
+    }
+    let n_samples = pcm.len() / 2;
+    let threshold = (noise * 32767.0) as i32;
+    let mut last_voiced: usize = 0;
+    let mut found = false;
+    for i in 0..n_samples {
+        let lo = pcm[i * 2] as i32;
+        let hi = pcm[i * 2 + 1] as i8 as i32;
+        let s = (hi << 8) | lo;
+        if s.abs() > threshold {
+            last_voiced = i;
+            found = true;
+        }
+    }
+    if !found {
+        return pcm.to_vec();
+    }
+    let keep_samples = (sample_rate * keep_ms / 1000) as usize;
+    let end_sample = (last_voiced + keep_samples + 1).min(n_samples);
+    let end_byte = end_sample * 2;
+    let trimmed = &pcm[..end_byte];
+    if trimmed.len() < pcm.len() {
+        tracing::info!(
+            removed_bytes = pcm.len() - trimmed.len(),
+            removed_seconds = (pcm.len() - trimmed.len()) as f32 / (sample_rate as f32 * 2.0),
+            "trimmed trailing silence"
+        );
+    }
+    trimmed.to_vec()
 }
 
 // ---------------------------------------------------------------- STT ----

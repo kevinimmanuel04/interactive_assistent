@@ -17,17 +17,39 @@ enum Action {
 
 fn parse(query: &str) -> Option<Action> {
     let q = norm(query);
-    if (q.contains("буфер") || q.contains("clipboard"))
+    let is_clip_topic = q.contains("буфер")           // RU/UK "буфер обмена / обміну"
+        || q.contains("clipboard")
+        || q.contains("clip board")
+        || q.contains("clip");
+    if is_clip_topic
         && (q.contains("что")
+            || q.contains("що")
             || q.contains("прочит")
+            || q.contains("прочитай")
             || q.contains("read")
             || q.contains("show")
-            || q.contains("get"))
+            || q.contains("get")
+            || q.contains("покажи")
+            || q.contains("покажить")
+            || q.contains("покажи мне")
+            || q.contains("покажи мені")
+            || q.contains("paste")
+            || q.contains("вставить")
+            || q.contains("вставити"))
     {
         return Some(Action::Read);
     }
-    // "скопируй <payload>" / "copy <payload>"
-    for prefix in ["скопируй ", "copy "] {
+    // "скопируй X" / "copy X" / "скопіюй X"
+    for prefix in [
+        "скопируй ",
+        "скопіюй ",
+        "скопіювати ",
+        "скопіювати в буфер ",
+        "в буфер ",
+        "copy ",
+        "put on clipboard ",
+        "copy to clipboard ",
+    ] {
         if let Some(idx) = q.find(prefix) {
             let payload = query[idx + prefix.len()..].trim();
             if !payload.is_empty() {
@@ -35,7 +57,11 @@ fn parse(query: &str) -> Option<Action> {
             }
         }
     }
-    if q == "что в буфере" || q == "read clipboard" {
+    if q == "что в буфере"
+        || q == "що в буфері"
+        || q == "read clipboard"
+        || q == "show clipboard"
+    {
         return Some(Action::Read);
     }
     None
