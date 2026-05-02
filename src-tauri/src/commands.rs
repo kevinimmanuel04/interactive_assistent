@@ -216,11 +216,7 @@ pub fn set_avatar_zoom(app: AppHandle<Wry>, value: f64) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn set_avatar_offset(
-    app: AppHandle<Wry>,
-    offset_x: f64,
-    offset_y: f64,
-) -> Result<(), String> {
+pub fn set_avatar_offset(app: AppHandle<Wry>, offset_x: f64, offset_y: f64) -> Result<(), String> {
     settings::set_avatar_offset_x(&app, offset_x).map_err(|e| e.to_string())?;
     settings::set_avatar_offset_y(&app, offset_y).map_err(|e| e.to_string())?;
     Ok(())
@@ -801,17 +797,13 @@ pub async fn reload_tts(app: &AppHandle<Wry>) {
 /// the answer back via the normal `chat:*` event channel so the bubble,
 /// emotion tags, and TTS pipeline all work without changes.
 #[tauri::command]
-pub async fn vision_capture_full(
-    app: AppHandle<Wry>,
-    prompt: String,
-) -> Result<String, String> {
+pub async fn vision_capture_full(app: AppHandle<Wry>, prompt: String) -> Result<String, String> {
     let monitor = 0usize;
-    let bytes = tokio::task::spawn_blocking(move || {
-        komorebi_desktop::capture::capture_screen(monitor)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    let bytes =
+        tokio::task::spawn_blocking(move || komorebi_desktop::capture::capture_screen(monitor))
+            .await
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
     let id = uuid_like();
     crate::proactive::bump_last_interaction();
     crate::chat::spawn_vision_generation(app, id.clone(), prompt, bytes);

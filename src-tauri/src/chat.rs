@@ -149,10 +149,7 @@ fn extract_tool_call(text: &str) -> Option<ParsedToolCall> {
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     let name = v.get("tool")?.as_str()?.to_string();
     let args = v.get("args").cloned().unwrap_or(serde_json::Value::Null);
-    Some(ParsedToolCall {
-        name,
-        args,
-    })
+    Some(ParsedToolCall { name, args })
 }
 
 /// Tools that don't mutate system state and can run without the
@@ -190,8 +187,8 @@ async fn execute_chat_tool(
         tool: name.to_string(),
         args,
     };
-    let result = crate::tools::dispatch_inner(app.clone(), call, /*allow_mutating=*/ automation)
-        .await;
+    let result =
+        crate::tools::dispatch_inner(app.clone(), call, /*allow_mutating=*/ automation).await;
     serde_json::json!({
         "ok": result.ok,
         "value": result.value,
@@ -284,8 +281,9 @@ async fn run_vision_generation(
         .clone();
     service.cancel.store(false, Ordering::SeqCst);
 
-    let key = settings::get_openrouter_key(&app)
-        .ok_or_else(|| "OpenRouter API key required for vision. Add one in settings.".to_string())?;
+    let key = settings::get_openrouter_key(&app).ok_or_else(|| {
+        "OpenRouter API key required for vision. Add one in settings.".to_string()
+    })?;
     let model = settings::get_game_coach_model(&app);
 
     emit(
@@ -340,7 +338,9 @@ async fn run_vision_generation(
         let mut hist = service.history.lock().await;
         // Synthetic user turn: keeps the LLM aware in subsequent text-only
         // turns that an image was discussed.
-        hist.push(ChatMessage::user(format!("[смотрит на экран/картинку] {prompt}")));
+        hist.push(ChatMessage::user(format!(
+            "[смотрит на экран/картинку] {prompt}"
+        )));
         hist.push(ChatMessage::assistant(raw.clone()));
     }
     emit(
@@ -402,25 +402,25 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
             // skill invocation regardless of phrasing. If yes, short-circuit
             // straight into the named skill.
             let catalog = SkillRegistry::catalog();
-            let llm_picked: Option<komorebi_cloud::SkillIntent> =
-                if let Ok(picker) = CloudSkillClassifier::new(key.clone(), model.clone(), &catalog)
-                {
-                    match picker.pick(&prompt).await {
-                        Ok(opt) => {
-                            tracing::info!(
-                                picked = ?opt.as_ref().map(|i| i.skill.as_str()),
-                                "chat: LLM skill picker result"
-                            );
-                            opt
-                        }
-                        Err(e) => {
-                            tracing::debug!(?e, "skill classifier errored");
-                            None
-                        }
+            let llm_picked: Option<komorebi_cloud::SkillIntent> = if let Ok(picker) =
+                CloudSkillClassifier::new(key.clone(), model.clone(), &catalog)
+            {
+                match picker.pick(&prompt).await {
+                    Ok(opt) => {
+                        tracing::info!(
+                            picked = ?opt.as_ref().map(|i| i.skill.as_str()),
+                            "chat: LLM skill picker result"
+                        );
+                        opt
                     }
-                } else {
-                    None
-                };
+                    Err(e) => {
+                        tracing::debug!(?e, "skill classifier errored");
+                        None
+                    }
+                }
+            } else {
+                None
+            };
             // Keyword fallback: if the LLM picker returned `none` (or failed),
             // give the cheap pattern matcher one more shot. Lots of phrasings
             // like "сделай звук 50%" hit our keyword router cleanly even when
@@ -520,7 +520,9 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
         m.push(ChatMessage::system(crate::sysctx::render_context_message()));
         // Tool-use protocol: only when chat tool calls are enabled.
         if settings::get_chat_tool_calls_enabled(&app) {
-            m.push(tools_system_prompt(settings::get_desktop_automation_enabled(&app)));
+            m.push(tools_system_prompt(
+                settings::get_desktop_automation_enabled(&app),
+            ));
         }
         // RAG: retrieve top-k chunks for the current user prompt and
         // prepend them as an additional system message.

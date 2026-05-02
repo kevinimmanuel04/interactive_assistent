@@ -96,12 +96,13 @@ pub async fn dispatch_inner(
         "click" => {
             mutating!();
             match serde_json::from_value::<desktop_cmds::ClickArgs>(call.args) {
-            Ok(a) => match desktop_cmds::desktop_click(a) {
-                Ok(_) => ToolResult::ok(serde_json::Value::Bool(true)),
-                Err(e) => ToolResult::err(e),
-            },
-            Err(e) => ToolResult::err(e.to_string()),
-        }},
+                Ok(a) => match desktop_cmds::desktop_click(a) {
+                    Ok(_) => ToolResult::ok(serde_json::Value::Bool(true)),
+                    Err(e) => ToolResult::err(e),
+                },
+                Err(e) => ToolResult::err(e.to_string()),
+            }
+        }
         "type" => {
             mutating!();
             let text = call
@@ -140,12 +141,13 @@ pub async fn dispatch_inner(
         "write_file" => {
             mutating!();
             match serde_json::from_value::<desktop_cmds::WriteFileArgs>(call.args) {
-            Ok(a) => match desktop_cmds::desktop_write_file(app, a) {
-                Ok(p) => ToolResult::ok(serde_json::Value::String(p)),
-                Err(e) => ToolResult::err(e),
-            },
-            Err(e) => ToolResult::err(e.to_string()),
-        }},
+                Ok(a) => match desktop_cmds::desktop_write_file(app, a) {
+                    Ok(p) => ToolResult::ok(serde_json::Value::String(p)),
+                    Err(e) => ToolResult::err(e),
+                },
+                Err(e) => ToolResult::err(e.to_string()),
+            }
+        }
         "read_file" => {
             let rel = call
                 .args

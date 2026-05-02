@@ -57,10 +57,7 @@ fn parse(query: &str) -> Option<Action> {
             }
         }
     }
-    if q == "что в буфере"
-        || q == "що в буфері"
-        || q == "read clipboard"
-        || q == "show clipboard"
+    if q == "что в буфере" || q == "що в буфері" || q == "read clipboard" || q == "show clipboard"
     {
         return Some(Action::Read);
     }

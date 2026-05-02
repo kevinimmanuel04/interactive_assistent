@@ -78,10 +78,7 @@ fn parse(query: &str) -> Option<MediaAction> {
     {
         return Some(MediaAction::Next);
     }
-    if q.contains("prev")
-        || q.contains("предыдущ")
-        || q.contains("попередн")
-        || q.contains("назад")
+    if q.contains("prev") || q.contains("предыдущ") || q.contains("попередн") || q.contains("назад")
     {
         return Some(MediaAction::Prev);
     }

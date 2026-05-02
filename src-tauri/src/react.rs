@@ -16,11 +16,11 @@
 
 use std::time::Duration;
 
+use futures::StreamExt;
 use komorebi_cloud::OpenRouterClient;
 use komorebi_llm::{default_engine, LlmConfig, LlmEvent};
 use komorebi_router::{ChatMessage, Mode};
 use tauri::{AppHandle, Wry};
-use futures::StreamExt;
 
 use crate::settings;
 
@@ -112,8 +112,7 @@ async fn dispatch(
 }
 
 async fn run_cloud(app: &AppHandle<Wry>, messages: &[ChatMessage]) -> Result<String, String> {
-    let key = settings::get_openrouter_key(app)
-        .ok_or_else(|| "no openrouter key".to_string())?;
+    let key = settings::get_openrouter_key(app).ok_or_else(|| "no openrouter key".to_string())?;
     // Reuse the cheap classifier model — 30 tokens is plenty.
     let model = settings::get_classifier_model(app);
     let client = OpenRouterClient::new(key).map_err(|e| e.to_string())?;
@@ -167,7 +166,9 @@ fn build_messages(kind: &str, lang: &str) -> Vec<ChatMessage> {
     let user = match kind {
         kinds::HEAD => "The user just patted my head gently. React.",
         kinds::BODY => "The user just poked my body. React with mild surprise.",
-        kinds::HAND => "The user touched my hand — the one holding my paint brush. React playfully.",
+        kinds::HAND => {
+            "The user touched my hand — the one holding my paint brush. React playfully."
+        }
         kinds::DRAG => "The user is dragging my window across the screen. React.",
         kinds::IDLE => "I have been idle for a while. Say a short cute thought to myself.",
         _ => "The user interacted with me somehow. React briefly.",
@@ -209,31 +210,111 @@ fn strip_mood_prefix(s: &str) -> &str {
 fn canned(kind: &str, lang: &str) -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let pool: &[&str] = match (kind, lang) {
-        ("head", "ru") => &["Эй, щекотно!", "Ты меня гладишь?", "Хе-хе.", "Не трогай волосы~"],
-        ("head", "uk") => &["Гей, лоскотно!", "Ти мене гладиш?", "Хі-хі.", "Не чіпай волосся~"],
-        ("head", "ja") => &["ふふっ、なでなで？", "きゃっ、くすぐったい！", "もっと撫でて〜", "えへへ♪"],
+        ("head", "ru") => &[
+            "Эй, щекотно!",
+            "Ты меня гладишь?",
+            "Хе-хе.",
+            "Не трогай волосы~",
+        ],
+        ("head", "uk") => &[
+            "Гей, лоскотно!",
+            "Ти мене гладиш?",
+            "Хі-хі.",
+            "Не чіпай волосся~",
+        ],
+        ("head", "ja") => &[
+            "ふふっ、なでなで？",
+            "きゃっ、くすぐったい！",
+            "もっと撫でて〜",
+            "えへへ♪",
+        ],
         ("head", "zh") => &["嘿嘿，好痒~", "摸摸头~", "再来一下嘛", "嗯~舒服"],
-        ("head", _) => &["Hey, that tickles!", "Are you petting me?", "Hehe.", "Careful with the hair!"],
+        ("head", _) => &[
+            "Hey, that tickles!",
+            "Are you petting me?",
+            "Hehe.",
+            "Careful with the hair!",
+        ],
         ("body", "ru") => &["Ой!", "Эй, полегче!", "Ты чего?", "Хи-хи."],
         ("body", "uk") => &["Ой!", "Гей, обережно!", "Ти що?", "Хі-хі."],
         ("body", "ja") => &["きゃっ！", "もう〜", "どうしたの？", "ふふっ"],
         ("body", "zh") => &["哎呀！", "干嘛啦~", "讨厌~", "嘻嘻"],
         ("body", _) => &["Oh!", "Hey, easy!", "What are you doing?", "Hee hee."],
-        ("hand", "ru") => &["Хочешь, нарисую тебе что-нибудь?", "Моя кисточка~", "Сейчас будет искусство!", "Подержи кисть."],
-        ("hand", "uk") => &["Хочеш, намалюю щось?", "Мій пензлик~", "Зараз буде мистецтво!", "Потримай пензля."],
-        ("hand", "ja") => &["絵を描いてあげようか？", "私の筆だよ〜", "アートの時間〜", "そっと触ってね"],
+        ("hand", "ru") => &[
+            "Хочешь, нарисую тебе что-нибудь?",
+            "Моя кисточка~",
+            "Сейчас будет искусство!",
+            "Подержи кисть.",
+        ],
+        ("hand", "uk") => &[
+            "Хочеш, намалюю щось?",
+            "Мій пензлик~",
+            "Зараз буде мистецтво!",
+            "Потримай пензля.",
+        ],
+        ("hand", "ja") => &[
+            "絵を描いてあげようか？",
+            "私の筆だよ〜",
+            "アートの時間〜",
+            "そっと触ってね",
+        ],
         ("hand", "zh") => &["要我画一幅吗？", "我的画笔~", "艺术时间！", "轻轻拿着哦"],
-        ("hand", _) => &["Want me to draw you something?", "My brush~", "Art time!", "Hold the brush gently."],
-        ("drag", "ru") => &["Ой, кружится голова!", "Куда мы летим?", "Эй, не тряси меня!", "Меня укачало~"],
-        ("drag", "uk") => &["Ой, голова крутиться!", "Куди ми летимо?", "Гей, не труси мене!", "Мене заколисало~"],
-        ("drag", "ja") => &["わわっ、目が回る！", "どこに連れていくの？", "揺らさないで〜", "酔いそう…"],
+        ("hand", _) => &[
+            "Want me to draw you something?",
+            "My brush~",
+            "Art time!",
+            "Hold the brush gently.",
+        ],
+        ("drag", "ru") => &[
+            "Ой, кружится голова!",
+            "Куда мы летим?",
+            "Эй, не тряси меня!",
+            "Меня укачало~",
+        ],
+        ("drag", "uk") => &[
+            "Ой, голова крутиться!",
+            "Куди ми летимо?",
+            "Гей, не труси мене!",
+            "Мене заколисало~",
+        ],
+        ("drag", "ja") => &[
+            "わわっ、目が回る！",
+            "どこに連れていくの？",
+            "揺らさないで〜",
+            "酔いそう…",
+        ],
         ("drag", "zh") => &["哇，头晕！", "要带我去哪？", "别摇我啦~", "我要晕了…"],
-        ("drag", _) => &["Whoa, dizzy!", "Where are we going?", "Stop shaking me!", "I'm getting carsick~"],
-        ("idle", "ru") => &["Хм... о чём бы подумать?", "Тихо как...", "Ты ещё тут?", "Скучно~"],
-        ("idle", "uk") => &["Хм... про що б подумати?", "Як тихо...", "Ти ще тут?", "Нудно~"],
-        ("idle", "ja") => &["うーん、何しようかな", "しーん…", "まだいる？", "ひまだなぁ"],
+        ("drag", _) => &[
+            "Whoa, dizzy!",
+            "Where are we going?",
+            "Stop shaking me!",
+            "I'm getting carsick~",
+        ],
+        ("idle", "ru") => &[
+            "Хм... о чём бы подумать?",
+            "Тихо как...",
+            "Ты ещё тут?",
+            "Скучно~",
+        ],
+        ("idle", "uk") => &[
+            "Хм... про що б подумати?",
+            "Як тихо...",
+            "Ти ще тут?",
+            "Нудно~",
+        ],
+        ("idle", "ja") => &[
+            "うーん、何しようかな",
+            "しーん…",
+            "まだいる？",
+            "ひまだなぁ",
+        ],
         ("idle", "zh") => &["嗯…在想什么呢", "好安静…", "你还在吗？", "好无聊~"],
-        ("idle", _) => &["Hmm, what to think about...", "So quiet...", "Still there?", "Bored~"],
+        ("idle", _) => &[
+            "Hmm, what to think about...",
+            "So quiet...",
+            "Still there?",
+            "Bored~",
+        ],
         (_, "ru") => &["Да?", "Что такое?", "Я тут."],
         (_, "uk") => &["Так?", "Що таке?", "Я тут."],
         (_, "ja") => &["はい？", "なに？", "ここだよ〜"],

@@ -20,16 +20,16 @@ enum Target {
 fn parse(query: &str) -> Option<Target> {
     let q = norm(query);
     let prefixes = [
-        "open ",        // EN
+        "open ", // EN
         "launch ",
         "start ",
         "run ",
-        "открой ",     // RU
+        "открой ", // RU
         "открыть ",
         "запусти ",
         "запустить ",
         "включи ",
-        "відкрий ",     // UK
+        "відкрий ", // UK
         "відкрити ",
         "запустити ",
         "увімкни ",
