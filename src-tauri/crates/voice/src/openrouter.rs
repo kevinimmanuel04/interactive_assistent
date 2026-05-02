@@ -92,11 +92,14 @@ async fn synthesize(
     // true"). We therefore always stream and reassemble the base64 PCM
     // from the SSE deltas.
     //
-    // `max_tokens` is intentionally tight: at gpt-4o-audio's ~50 Hz audio
-    // token rate, 600 tokens ≈ 12 s of speech, which is enough for any
-    // single chat reply. Without this cap the model frequently keeps
-    // generating silence/repetitions for the full default budget,
-    // producing minute-long WAVs for ~5 s of text.
+    // `max_tokens` is sized to the input length: at gpt-4o-audio's ~50 Hz
+    // audio token rate, ~50 tokens ≈ 1 s of speech. Speech-rate budget is
+    // ~12 chars/s English, so we allow `chars / 12 * 50 * 2` tokens (2x
+    // safety margin) and a hard floor/ceiling. Without a tight cap the
+    // model frequently keeps emitting silence/repetitions for the full
+    // default budget, producing 30-second WAVs for a 30-character reply.
+    let chars = text.chars().count() as f32;
+    let token_budget = ((chars / 12.0 * 50.0 * 2.0).ceil() as u32).clamp(120, 600);
     let body = serde_json::json!({
         "model": cfg.model,
         "modalities": ["text", "audio"],
@@ -110,10 +113,16 @@ async fn synthesize(
             }
         ],
         "temperature": 0.0,
-        "max_tokens": 600,
+        "max_tokens": token_budget,
     });
 
-    tracing::info!(model = %cfg.model, voice = %cfg.voice, text_len = text.len(), "openrouter TTS request");
+    tracing::info!(
+        model = %cfg.model,
+        voice = %cfg.voice,
+        text_len = text.len(),
+        token_budget,
+        "openrouter TTS request",
+    );
 
     let resp = http_client()?
         .post(ENDPOINT)
@@ -296,6 +305,27 @@ async fn synthesize(
     // remove any continuous run of samples with |s| < threshold from the
     // end, leaving a 100 ms safety margin.
     let pcm = trim_trailing_silence(&pcm, 24_000, 0.01, 100);
+
+    // Hard duration cap based on input length. The model occasionally
+    // goes off the rails on very short inputs and emits 30+ s of audio
+    // (repeated phrase, hummed padding, etc.) for a 30-character reply.
+    // Estimated speech rate: ~12 chars/sec; allow 3x slack + 2 s safety
+    // floor, then clamp into a reasonable absolute window.
+    let expected_seconds = (chars / 12.0).max(0.5);
+    let max_seconds = (expected_seconds * 3.0 + 2.0).clamp(3.0, 20.0);
+    let max_pcm_bytes = (max_seconds * 24_000.0 * 2.0) as usize;
+    let pcm = if pcm.len() > max_pcm_bytes {
+        let actual_seconds = pcm.len() as f32 / (24_000.0 * 2.0);
+        tracing::warn!(
+            chars,
+            actual_seconds,
+            max_seconds,
+            "openrouter TTS audio exceeds expected duration; truncating",
+        );
+        pcm[..max_pcm_bytes].to_vec()
+    } else {
+        pcm
+    };
 
     tracing::info!(
         chunks_seen,
