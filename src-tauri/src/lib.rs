@@ -8,9 +8,11 @@ mod imagegen;
 mod models;
 mod proactive;
 mod react;
+mod relationship;
 mod settings;
 mod sysctx;
 mod tools;
+mod weather;
 
 use std::sync::Arc;
 use tauri::{
@@ -185,6 +187,19 @@ pub fn run() {
             commands::set_imagegen_negative_prompt,
             commands::set_replicate_token,
             commands::clear_replicate_token,
+            commands::get_weather,
+            commands::set_weather_provider,
+            commands::set_weather_api_key,
+            commands::clear_weather_api_key,
+            commands::set_weather_default_city,
+            commands::set_weather_use_ip,
+            commands::set_weather_units,
+            commands::get_relationship_state,
+            commands::reset_relationship,
+            commands::set_user_name,
+            commands::set_relationship_visibility,
+            commands::set_relationship_nsfw_allowed,
+            commands::set_relationship_decay_enabled,
         ])
         .setup(move |app| {
             app.global_shortcut().register(toggle_input)?;

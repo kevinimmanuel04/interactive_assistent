@@ -386,6 +386,70 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
         .clone();
     service.cancel.store(false, Ordering::SeqCst);
 
+    // Relationship scoring: every user turn updates the affinity state
+    // BEFORE we route. Auto-extract a self-introduction when the user name
+    // isn't set yet so the persona can address them by name from message
+    // two onwards.
+    if settings::get_user_name(&app).is_none() {
+        if let Some(name) = crate::relationship::extract_self_introduction(&prompt) {
+            if let Err(e) = settings::set_user_name(&app, &name) {
+                tracing::warn!(?e, "failed to persist auto-extracted user name");
+            } else {
+                tracing::info!(?name, "auto-extracted user name");
+            }
+        }
+    }
+    let _ = crate::relationship::apply_user_message(&app, &prompt);
+
+    // Weather pre-check: bypass the LLM for direct weather questions when
+    // smart routing is enabled. Slash command (`/weather …`) goes through
+    // a dedicated frontend path and reaches `commands::get_weather`
+    // instead.
+    if settings::get_smart_routing(&app)
+        && komorebi_weather::is_weather_query(&prompt)
+        // Avoid hijacking conversational mentions (e.g. "обсудим погоду
+        // позже"). Require either a city extraction OR an explicit
+        // direct-question pattern.
+        && (komorebi_weather::extract_city_from_text(&prompt).is_some()
+            || prompt.contains('?')
+            || prompt.to_lowercase().starts_with("какая погода")
+            || prompt.to_lowercase().starts_with("what")
+            || prompt.to_lowercase().starts_with("how"))
+    {
+        emit(
+            &app,
+            ChatEventOut::Started {
+                id: id.clone(),
+                route: "skill".into(),
+            },
+        );
+        if let Some(reply) = crate::weather::maybe_handle(&app, &prompt).await {
+            // Wrap with a default mood tag so the avatar reacts.
+            let tagged = format!("<mood:happy>{reply}");
+            emit(
+                &app,
+                ChatEventOut::Token {
+                    id: id.clone(),
+                    text: tagged.clone(),
+                },
+            );
+            {
+                let mut hist = service.history.lock().await;
+                hist.push(ChatMessage::user(prompt.clone()));
+                hist.push(ChatMessage::assistant(tagged.clone()));
+            }
+            emit(
+                &app,
+                ChatEventOut::Done {
+                    id,
+                    full_text: tagged.clone(),
+                },
+            );
+            maybe_speak(&app, tagged).await;
+            return Ok(());
+        }
+    }
+
     let mode = settings::get_mode(&app);
     let smart = settings::get_smart_routing(&app);
     tracing::info!(
@@ -514,6 +578,11 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
         let hist = service.history.lock().await;
         let mut m = Vec::with_capacity(hist.len() + 4);
         m.push(system_prompt());
+        // Relationship persona/context — drives tone, pet-names, and how
+        // closely the assistant treats the user. Always present.
+        m.push(ChatMessage::system(
+            crate::relationship::system_prompt_addition(&app),
+        ));
         // Always include a fresh machine/time context so the LLM can
         // answer simple environment questions ("what time is it", "how
         // much RAM do I have") without a dedicated skill.

@@ -71,6 +71,15 @@ export interface PublicSettings {
   imagegen_steps: number;
   imagegen_negative_prompt: string | null;
   has_replicate_token: boolean;
+  weather_provider?: string;
+  weather_default_city?: string | null;
+  weather_use_ip?: boolean;
+  weather_units?: string;
+  has_weather_api_key?: boolean;
+  user_name?: string | null;
+  relationship_visibility?: string;
+  relationship_nsfw_allowed?: boolean;
+  relationship_decay_enabled?: boolean;
 }
 
 export interface FolderStats {
@@ -559,6 +568,152 @@ export async function setReplicateToken(key: string): Promise<void> {
 export async function clearReplicateToken(): Promise<void> {
   await invoke("clear_replicate_token");
 }
+
+// --- Weather --------------------------------------------------------------
+
+export interface WeatherLocation {
+  name: string;
+  country: string | null;
+  lat: number;
+  lon: number;
+}
+
+export interface WeatherReport {
+  location: WeatherLocation;
+  provider: string;
+  temperature: number;
+  feels_like: number | null;
+  humidity: number | null;
+  wind_speed: number | null;
+  description: string;
+  icon: string;
+  units: string;
+}
+
+export async function getWeather(city?: string): Promise<WeatherReport> {
+  return invoke<WeatherReport>("get_weather", { city: city ?? null });
+}
+
+export async function setWeatherProvider(provider: "openmeteo" | "openweathermap"): Promise<void> {
+  await invoke("set_weather_provider", { provider });
+}
+
+export async function setWeatherApiKey(key: string): Promise<void> {
+  await invoke("set_weather_api_key", { key });
+}
+
+export async function clearWeatherApiKey(): Promise<void> {
+  await invoke("clear_weather_api_key");
+}
+
+export async function setWeatherDefaultCity(city: string): Promise<void> {
+  await invoke("set_weather_default_city", { city });
+}
+
+export async function setWeatherUseIp(enabled: boolean): Promise<void> {
+  await invoke("set_weather_use_ip", { enabled });
+}
+
+export async function setWeatherUnits(units: "metric" | "imperial"): Promise<void> {
+  await invoke("set_weather_units", { units });
+}
+
+export function onWeather(cb: (r: WeatherReport) => void): Promise<UnlistenFn> {
+  return listen<WeatherReport>("weather:result", (evt) => cb(evt.payload));
+}
+
+// --- Relationship ---------------------------------------------------------
+
+export type RelationshipStage =
+  | "stranger"
+  | "acquaintance"
+  | "friend"
+  | "close"
+  | "trusted"
+  | "romantic"
+  | "lover";
+
+export interface RelationshipEvent {
+  ts: number;
+  kind: string;
+  delta: number;
+  note: string;
+}
+
+export interface RelationshipState {
+  score: number;
+  stage: RelationshipStage;
+  last_interaction_at: number;
+  last_decay_at: number;
+  total_interactions: number;
+  daily_streak: number;
+  last_compliment_at: number;
+  events: RelationshipEvent[];
+}
+
+export interface RelationshipStageChange {
+  previous: RelationshipStage;
+  current: RelationshipStage;
+  score: number;
+}
+
+export async function getRelationshipState(): Promise<RelationshipState> {
+  return invoke<RelationshipState>("get_relationship_state");
+}
+
+export async function resetRelationship(): Promise<void> {
+  await invoke("reset_relationship");
+}
+
+export async function setUserName(name: string): Promise<void> {
+  await invoke("set_user_name", { name });
+}
+
+export async function setRelationshipVisibility(
+  visibility: "indicator" | "hidden"
+): Promise<void> {
+  await invoke("set_relationship_visibility", { visibility });
+}
+
+export async function setRelationshipNsfwAllowed(allowed: boolean): Promise<void> {
+  await invoke("set_relationship_nsfw_allowed", { allowed });
+}
+
+export async function setRelationshipDecayEnabled(enabled: boolean): Promise<void> {
+  await invoke("set_relationship_decay_enabled", { enabled });
+}
+
+export function onRelationshipUpdated(
+  cb: (s: RelationshipState) => void
+): Promise<UnlistenFn> {
+  return listen<RelationshipState>("relationship:updated", (evt) => cb(evt.payload));
+}
+
+export function onRelationshipStageChange(
+  cb: (e: RelationshipStageChange) => void
+): Promise<UnlistenFn> {
+  return listen<RelationshipStageChange>("relationship:stage-change", (evt) => cb(evt.payload));
+}
+
+export const STAGE_LABELS: Record<RelationshipStage, { en: string; ru: string; emoji: string }> = {
+  stranger: { en: "Stranger", ru: "Незнакомец", emoji: "🤍" },
+  acquaintance: { en: "Acquaintance", ru: "Знакомый", emoji: "🩶" },
+  friend: { en: "Friend", ru: "Друг", emoji: "💚" },
+  close: { en: "Close", ru: "Близкий", emoji: "💛" },
+  trusted: { en: "Trusted", ru: "Доверенный", emoji: "🧡" },
+  romantic: { en: "Romantic", ru: "Романтика", emoji: "💖" },
+  lover: { en: "Lover", ru: "Любимый", emoji: "❤️" },
+};
+
+export const STAGE_THRESHOLDS: Record<RelationshipStage, number> = {
+  stranger: 0,
+  acquaintance: 50,
+  friend: 150,
+  close: 300,
+  trusted: 500,
+  romantic: 750,
+  lover: 1000,
+};
 
 export function onModelProgress(
   cb: (e: DownloadEvent) => void

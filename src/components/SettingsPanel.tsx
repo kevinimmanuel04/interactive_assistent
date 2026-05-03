@@ -67,6 +67,20 @@ import {
   setWhisperModel,
   systemInfo,
   SystemInfo,
+  setWeatherProvider,
+  setWeatherApiKey,
+  clearWeatherApiKey,
+  setWeatherDefaultCity,
+  setWeatherUseIp,
+  setWeatherUnits,
+  setUserName,
+  setRelationshipVisibility,
+  setRelationshipNsfwAllowed,
+  setRelationshipDecayEnabled,
+  resetRelationship,
+  getRelationshipState,
+  RelationshipState,
+  STAGE_LABELS,
 } from "../api";
 
 interface Props {
@@ -1264,6 +1278,8 @@ function SttSection({
       <FasterWhisperBlock settings={settings} onChanged={onChanged} />
       <DeepgramBlock settings={settings} onChanged={onChanged} />
       <ImageGenBlock settings={settings} onChanged={onChanged} />
+      <WeatherBlock settings={settings} onChanged={onChanged} />
+      <RelationshipBlock settings={settings} onChanged={onChanged} />
     </div>
   );
 }
@@ -2669,3 +2685,273 @@ const hintStyle: React.CSSProperties = {
   margin: "4px 0 0 0",
   lineHeight: 1.4,
 };
+
+// --- Weather --------------------------------------------------------------
+
+function WeatherBlock({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [keyInput, setKeyInput] = useState("");
+  const [city, setCity] = useState(settings?.weather_default_city ?? "");
+  const provider = settings?.weather_provider ?? "openmeteo";
+  const useIp = settings?.weather_use_ip ?? true;
+  const units = settings?.weather_units ?? "metric";
+  const hasKey = settings?.has_weather_api_key ?? false;
+  useEffect(() => {
+    setCity(settings?.weather_default_city ?? "");
+  }, [settings?.weather_default_city]);
+
+  return (
+    <section style={sectionStyle}>
+      <h3 style={h3Style}>🌤️ Weather</h3>
+      <p style={hintStyle}>
+        Komorebi can answer "погода в Берлине", "/weather Tokyo", or just
+        "what's the weather". Open-Meteo is free and needs no key.
+      </p>
+      <label style={lblStyle}>Provider</label>
+      <select
+        value={provider}
+        onChange={async (e) => {
+          await setWeatherProvider(e.target.value as "openmeteo" | "openweathermap");
+          await onChanged();
+        }}
+        style={inpStyle}
+      >
+        <option value="openmeteo">Open-Meteo (free, no key)</option>
+        <option value="openweathermap">OpenWeatherMap (requires key)</option>
+      </select>
+      {provider === "openweathermap" && (
+        <>
+          <label style={lblStyle}>OpenWeatherMap API key {hasKey ? "✓" : "—"}</label>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              type="password"
+              placeholder={hasKey ? "(saved — leave blank)" : "paste API key"}
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              style={{ ...inpStyle, flex: 1 }}
+            />
+            <button
+              onClick={async () => {
+                if (!keyInput.trim()) return;
+                await setWeatherApiKey(keyInput.trim());
+                setKeyInput("");
+                await onChanged();
+              }}
+              style={btnStyle}
+            >
+              Save
+            </button>
+            {hasKey && (
+              <button
+                onClick={async () => {
+                  await clearWeatherApiKey();
+                  await onChanged();
+                }}
+                style={btnStyle}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </>
+      )}
+      <label style={lblStyle}>Default city (optional)</label>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          placeholder="e.g. Berlin"
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+          style={{ ...inpStyle, flex: 1 }}
+        />
+        <button
+          onClick={async () => {
+            await setWeatherDefaultCity(city);
+            await onChanged();
+          }}
+          style={btnStyle}
+        >
+          Save
+        </button>
+      </div>
+      <label style={{ ...lblStyle, display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+        <input
+          type="checkbox"
+          checked={useIp}
+          onChange={async (e) => {
+            await setWeatherUseIp(e.target.checked);
+            await onChanged();
+          }}
+        />
+        <span>Auto-detect city via IP when not specified</span>
+      </label>
+      <label style={lblStyle}>Units</label>
+      <select
+        value={units}
+        onChange={async (e) => {
+          await setWeatherUnits(e.target.value as "metric" | "imperial");
+          await onChanged();
+        }}
+        style={inpStyle}
+      >
+        <option value="metric">Metric (°C, m/s)</option>
+        <option value="imperial">Imperial (°F, mph)</option>
+      </select>
+    </section>
+  );
+}
+
+// --- Relationship ---------------------------------------------------------
+
+function RelationshipBlock({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  const [name, setName] = useState(settings?.user_name ?? "");
+  const [state, setState] = useState<RelationshipState | null>(null);
+  const visibility = settings?.relationship_visibility ?? "indicator";
+  const nsfw = settings?.relationship_nsfw_allowed ?? false;
+  const decay = settings?.relationship_decay_enabled ?? true;
+
+  useEffect(() => {
+    setName(settings?.user_name ?? "");
+  }, [settings?.user_name]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getRelationshipState()
+      .then((s) => {
+        if (!cancelled) setState(s);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [settings]);
+
+  const stageMeta = state ? STAGE_LABELS[state.stage] : null;
+
+  return (
+    <section style={sectionStyle}>
+      <h3 style={h3Style}>💞 Relationship</h3>
+      <p style={hintStyle}>
+        The assistant remembers how you treat her. Compliments, regular
+        contact, and substantive conversation deepen affinity; rudeness and
+        long silences pull it back. Stages alter tone, animations, and
+        endearments.
+      </p>
+      {state && stageMeta && (
+        <div style={{ display: "flex", gap: 12, alignItems: "center", margin: "8px 0" }}>
+          <div style={{ fontSize: 22 }}>{stageMeta.emoji}</div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 14, fontWeight: 600 }}>
+              {stageMeta.ru} · {state.score} pts
+            </div>
+            <div style={{ fontSize: 11, opacity: 0.7 }}>
+              {state.total_interactions} interactions · streak {state.daily_streak}d
+            </div>
+          </div>
+        </div>
+      )}
+      <label style={lblStyle}>Your name (optional)</label>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          placeholder="How should she call you?"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          style={{ ...inpStyle, flex: 1 }}
+        />
+        <button
+          onClick={async () => {
+            await setUserName(name);
+            await onChanged();
+          }}
+          style={btnStyle}
+        >
+          Save
+        </button>
+      </div>
+      <label style={lblStyle}>Indicator visibility</label>
+      <select
+        value={visibility}
+        onChange={async (e) => {
+          await setRelationshipVisibility(e.target.value as "indicator" | "hidden");
+          await onChanged();
+        }}
+        style={inpStyle}
+      >
+        <option value="indicator">Show heart badge in top bar</option>
+        <option value="hidden">Hide indicator</option>
+      </select>
+      <label style={{ ...lblStyle, display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+        <input
+          type="checkbox"
+          checked={decay}
+          onChange={async (e) => {
+            await setRelationshipDecayEnabled(e.target.checked);
+            await onChanged();
+          }}
+        />
+        <span>Slowly decay affinity during inactivity (~1 pt/day)</span>
+      </label>
+      {state && (state.stage === "romantic" || state.stage === "lover") && (
+        <label style={{ ...lblStyle, display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={nsfw}
+            onChange={async (e) => {
+              await setRelationshipNsfwAllowed(e.target.checked);
+              await onChanged();
+            }}
+          />
+          <span>Allow flirty/intimate replies at high stages</span>
+        </label>
+      )}
+      {state && state.events.length > 0 && (
+        <details style={{ marginTop: 8 }}>
+          <summary style={{ cursor: "pointer", fontSize: 11, opacity: 0.8 }}>
+            Recent events ({state.events.length})
+          </summary>
+          <ul
+            style={{
+              maxHeight: 180,
+              overflow: "auto",
+              fontSize: 10,
+              margin: "6px 0 0 0",
+              padding: "0 0 0 16px",
+              lineHeight: 1.5,
+              opacity: 0.85,
+            }}
+          >
+            {[...state.events].reverse().slice(0, 30).map((ev, i) => (
+              <li key={i}>
+                <span style={{ color: ev.delta >= 0 ? "#7fc97f" : "#e08585" }}>
+                  {ev.delta >= 0 ? "+" : ""}
+                  {ev.delta}
+                </span>{" "}
+                {ev.kind} — {ev.note}
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      <button
+        onClick={async () => {
+          if (!confirm("Reset relationship state to Stranger?")) return;
+          await resetRelationship();
+          await onChanged();
+        }}
+        style={{ ...btnStyle, marginTop: 8 }}
+      >
+        Reset relationship
+      </button>
+    </section>
+  );
+}

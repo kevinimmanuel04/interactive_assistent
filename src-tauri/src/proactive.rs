@@ -67,6 +67,9 @@ pub fn spawn(app: AppHandle<Wry>) {
             .unwrap_or_else(Instant::now);
         loop {
             tokio::time::sleep(Duration::from_secs(POLL_SECS)).await;
+            // Relationship decay tick — runs on the same cadence; the
+            // relationship module itself rate-limits to once per 24h.
+            crate::relationship::apply_decay(&app);
             if !settings::get_proactive_enabled(&app) {
                 continue;
             }

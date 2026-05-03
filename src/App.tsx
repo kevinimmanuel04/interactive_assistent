@@ -20,15 +20,21 @@ import {
   enterRegionPickerMode,
   exitRegionPickerMode,
   generateImage,
+  getRelationshipState,
   getSettings,
+  getWeather,
   ImageEvent,
   onChat,
   onImage,
+  onRelationshipStageChange,
+  onRelationshipUpdated,
   PublicSettings,
+  RelationshipState,
   resetChat,
   saveGeneratedImage,
   sendMessage,
   setListenEnabled,
+  STAGE_LABELS,
   visionCaptureFull,
   visionWithImage,
 } from "./api";
@@ -54,6 +60,7 @@ export default function App() {
     "generating" | "done" | "error" | null
   >(null);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [relationship, setRelationship] = useState<RelationshipState | null>(null);
   const activeImageIdRef = useRef<string | null>(null);
   const activeIdRef = useRef<string | null>(null);
   // Accumulated *raw* token stream including any `<mood:X>` markers, used
@@ -426,6 +433,62 @@ export default function App() {
     }
   }, []);
 
+  // Weather slash command — always emits a chat-style bubble in response.
+  const handleWeatherSlash = useCallback(async (city: string) => {
+    if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current);
+    setUserEcho(city ? `🌤️ /weather ${city}` : "🌤️ /weather");
+    setBubbleText("");
+    setRoute("skill");
+    setThinking(true);
+    avatarState.setThinking();
+    try {
+      const r = await getWeather(city || undefined);
+      const loc = r.location.country
+        ? `${r.location.name}, ${r.location.country}`
+        : r.location.name;
+      const tempUnit = r.units === "imperial" ? "°F" : "°C";
+      const windUnit = r.units === "imperial" ? "mph" : "м/с";
+      const parts = [`${r.icon} ${loc}: ${Math.round(r.temperature)}${tempUnit}`];
+      if (r.feels_like != null) parts.push(`ощущается ${Math.round(r.feels_like)}${tempUnit}`);
+      parts.push(r.description);
+      if (r.wind_speed != null) parts.push(`ветер ${r.wind_speed.toFixed(1)} ${windUnit}`);
+      if (r.humidity != null) parts.push(`влажность ${Math.round(r.humidity)}%`);
+      setBubbleText(parts.join(" · "));
+    } catch (err) {
+      setBubbleText(`⚠ Не удалось получить погоду: ${String(err)}`);
+    } finally {
+      setThinking(false);
+      avatarState.onDone();
+      scheduleBubbleHide(12000);
+    }
+  }, []);
+
+  // Initial relationship state + live updates.
+  useEffect(() => {
+    let cancelled = false;
+    void getRelationshipState().then((s) => {
+      if (!cancelled) setRelationship(s);
+    }).catch(() => {});
+    const updP = onRelationshipUpdated((s) => setRelationship(s));
+    const stageP = onRelationshipStageChange((e) => {
+      const next = STAGE_LABELS[e.current];
+      const prev = STAGE_LABELS[e.previous];
+      const up =
+        Object.keys(STAGE_LABELS).indexOf(e.current) >
+        Object.keys(STAGE_LABELS).indexOf(e.previous);
+      const msg = up
+        ? `${next.emoji} Stage up: ${prev.ru} → ${next.ru}`
+        : `${next.emoji} Stage: ${prev.ru} → ${next.ru}`;
+      setBubbleText(msg);
+      scheduleBubbleHide(6000);
+    });
+    return () => {
+      cancelled = true;
+      updP.then((fn) => fn());
+      stageP.then((fn) => fn());
+    };
+  }, []);
+
   const scheduleBubbleHide = (ms = 8000) => {
     if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current);
     bubbleTimer.current = window.setTimeout(() => {
@@ -444,6 +507,14 @@ export default function App() {
         return;
       }
       void handleImagePrompt(prompt);
+      return;
+    }
+    if (
+      text.trim().toLowerCase().startsWith("/weather") ||
+      text.trim().toLowerCase() === "/weather"
+    ) {
+      const city = text.trim().replace(/^\/weather\s*/i, "").trim();
+      void handleWeatherSlash(city);
       return;
     }
     if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current);
@@ -603,6 +674,8 @@ export default function App() {
           await invoke("set_auto_screen_watch_enabled", { enabled: next });
           refreshSettings();
         }}
+        relationship={relationship}
+        showRelationshipBadge={(settings?.relationship_visibility ?? "indicator") !== "hidden"}
       />
       <RegionPicker
         open={pickerOpen}
@@ -641,6 +714,8 @@ function TopBar(props: {
   autoWatch: boolean;
   autoWatchAvailable: boolean;
   onToggleAutoWatch: () => void;
+  relationship: RelationshipState | null;
+  showRelationshipBadge: boolean;
 }) {
   const listenColor = !props.listenReady
     ? "rgba(20,20,28,0.7)"
@@ -677,6 +752,9 @@ function TopBar(props: {
         {props.mode}
         {!props.hasKey && props.mode !== "local" && " ⚠"}
       </span>
+      {props.showRelationshipBadge && props.relationship && (
+        <RelationshipBadge state={props.relationship} />
+      )}
       <button
         onClick={props.onToggleListen}
         disabled={!props.listenReady}
@@ -725,6 +803,52 @@ function TopBar(props: {
         ✕
       </button>
     </div>
+  );
+}
+
+function RelationshipBadge({ state }: { state: RelationshipState }) {
+  const meta = STAGE_LABELS[state.stage];
+  const stages = Object.keys(STAGE_LABELS) as (keyof typeof STAGE_LABELS)[];
+  const idx = stages.indexOf(state.stage);
+  const thresholds = [0, 50, 150, 300, 500, 750, 1000];
+  const lo = thresholds[idx] ?? 0;
+  const hi = thresholds[idx + 1] ?? state.score + 1;
+  const pct = Math.max(0, Math.min(1, (state.score - lo) / (hi - lo))) * 100;
+  return (
+    <span
+      title={`Stage: ${meta.en} (${state.score} pts, ${state.total_interactions} interactions)`}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 4,
+        padding: "3px 8px",
+        borderRadius: 8,
+        background: "rgba(20,20,28,0.7)",
+        fontSize: 11,
+      }}
+    >
+      <span>{meta.emoji}</span>
+      <span style={{ opacity: 0.95 }}>{meta.ru}</span>
+      <span
+        style={{
+          width: 28,
+          height: 4,
+          borderRadius: 2,
+          background: "rgba(255,255,255,0.18)",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <span
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: `${pct}%`,
+            background: "#f0a3c0",
+          }}
+        />
+      </span>
+    </span>
   );
 }
 

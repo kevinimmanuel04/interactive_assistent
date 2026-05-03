@@ -10,10 +10,11 @@ members = [
     "crates/storage",
     "crates/desktop",
     "crates/imagegen",
+    "crates/weather",
 ]
 
 [workspace.package]
-version = "1.4.1"
+version = "1.5.0"
 edition = "2021"
 license = "Apache-2.0 OR MIT"
 authors = ["Komorebi contributors"]
@@ -81,6 +82,7 @@ komorebi-skills = { path = "crates/skills" }
 komorebi-storage = { path = "crates/storage" }
 komorebi-desktop = { path = "crates/desktop" }
 komorebi-imagegen = { path = "crates/imagegen" }
+komorebi-weather = { path = "crates/weather" }
 
 [features]
 default = []

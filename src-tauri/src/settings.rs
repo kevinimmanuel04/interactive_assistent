@@ -75,6 +75,22 @@ const KEY_IMAGEGEN_STEPS: &str = "imagegen_steps";
 const KEY_IMAGEGEN_NEGATIVE: &str = "imagegen_negative_prompt";
 const KEY_REPLICATE_API: &str = "replicate_api_token";
 
+const KEY_WEATHER_PROVIDER: &str = "weather_provider";
+const KEY_WEATHER_API_KEY: &str = "weather_api_key";
+const KEY_WEATHER_DEFAULT_CITY: &str = "weather_default_city";
+const KEY_WEATHER_USE_IP: &str = "weather_use_ip";
+const KEY_WEATHER_UNITS: &str = "weather_units";
+
+const KEY_USER_NAME: &str = "user_name";
+const KEY_RELATIONSHIP_STATE: &str = "relationship_state";
+const KEY_RELATIONSHIP_VISIBILITY: &str = "relationship_visibility";
+const KEY_RELATIONSHIP_NSFW_ALLOWED: &str = "relationship_nsfw_allowed";
+const KEY_RELATIONSHIP_DECAY_ENABLED: &str = "relationship_decay_enabled";
+
+pub const DEFAULT_WEATHER_PROVIDER: &str = "openmeteo";
+pub const DEFAULT_WEATHER_UNITS: &str = "metric";
+pub const DEFAULT_RELATIONSHIP_VISIBILITY: &str = "indicator";
+
 pub const DEFAULT_OPENROUTER_TTS_MODEL: &str = "openai/gpt-4o-audio-preview";
 pub const DEFAULT_OPENROUTER_TTS_VOICE: &str = "shimmer";
 pub const DEFAULT_OPENROUTER_STT_MODEL: &str = "openai/gpt-4o-audio-preview";
@@ -156,6 +172,15 @@ pub struct PublicSettings {
     pub imagegen_steps: i64,
     pub imagegen_negative_prompt: Option<String>,
     pub has_replicate_token: bool,
+    pub weather_provider: String,
+    pub weather_default_city: Option<String>,
+    pub weather_use_ip: bool,
+    pub weather_units: String,
+    pub has_weather_api_key: bool,
+    pub user_name: Option<String>,
+    pub relationship_visibility: String,
+    pub relationship_nsfw_allowed: bool,
+    pub relationship_decay_enabled: bool,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -303,6 +328,15 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         imagegen_steps: get_i64(app, KEY_IMAGEGEN_STEPS).unwrap_or(DEFAULT_IMAGEGEN_STEPS),
         imagegen_negative_prompt: read_string(app, KEY_IMAGEGEN_NEGATIVE),
         has_replicate_token: get_replicate_token(app).is_some(),
+        weather_provider: get_weather_provider(app),
+        weather_default_city: read_string(app, KEY_WEATHER_DEFAULT_CITY),
+        weather_use_ip: get_weather_use_ip(app),
+        weather_units: get_weather_units(app),
+        has_weather_api_key: get_weather_api_key(app).is_some(),
+        user_name: read_string(app, KEY_USER_NAME),
+        relationship_visibility: get_relationship_visibility(app),
+        relationship_nsfw_allowed: get_bool(app, KEY_RELATIONSHIP_NSFW_ALLOWED, false),
+        relationship_decay_enabled: get_bool(app, KEY_RELATIONSHIP_DECAY_ENABLED, true),
     }
 }
 
@@ -900,6 +934,142 @@ pub fn set_replicate_token<R: Runtime>(app: &AppHandle<R>, key: &str) -> Result<
             serde_json::Value::String(key.trim().to_string()),
         );
     }
+    store.save()?;
+    Ok(())
+}
+
+// --- Weather --------------------------------------------------------------
+
+pub fn get_weather_provider(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_WEATHER_PROVIDER).unwrap_or_else(|| DEFAULT_WEATHER_PROVIDER.to_string())
+}
+pub fn set_weather_provider<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    let normalized = match v.trim().to_lowercase().as_str() {
+        "openweathermap" | "owm" => "openweathermap",
+        _ => "openmeteo",
+    };
+    write_optional_string(app, KEY_WEATHER_PROVIDER, normalized)
+}
+
+pub fn get_weather_api_key(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_WEATHER_API_KEY)
+}
+pub fn set_weather_api_key<R: Runtime>(app: &AppHandle<R>, key: &str) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    if key.trim().is_empty() {
+        store.delete(KEY_WEATHER_API_KEY);
+    } else {
+        store.set(
+            KEY_WEATHER_API_KEY,
+            serde_json::Value::String(key.trim().to_string()),
+        );
+    }
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_weather_default_city(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_WEATHER_DEFAULT_CITY)
+}
+pub fn set_weather_default_city<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_WEATHER_DEFAULT_CITY, v)
+}
+
+pub fn get_weather_use_ip(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_WEATHER_USE_IP, true)
+}
+pub fn set_weather_use_ip<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_WEATHER_USE_IP, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_weather_units(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_WEATHER_UNITS).unwrap_or_else(|| DEFAULT_WEATHER_UNITS.to_string())
+}
+pub fn set_weather_units<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    let normalized = match v.trim().to_lowercase().as_str() {
+        "imperial" | "f" | "fahrenheit" => "imperial",
+        _ => "metric",
+    };
+    write_optional_string(app, KEY_WEATHER_UNITS, normalized)
+}
+
+/// Build a [`komorebi_weather::WeatherConfig`] from the persisted settings.
+pub fn weather_config(app: &AppHandle<Wry>) -> komorebi_weather::WeatherConfig {
+    komorebi_weather::WeatherConfig {
+        provider: Some(komorebi_weather::Provider::parse(&get_weather_provider(
+            app,
+        ))),
+        api_key: get_weather_api_key(app),
+        default_city: get_weather_default_city(app),
+        use_ip: get_weather_use_ip(app),
+        units: Some(komorebi_weather::Units::parse(&get_weather_units(app))),
+    }
+}
+
+// --- Relationship ---------------------------------------------------------
+
+pub fn get_user_name(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_USER_NAME)
+}
+pub fn set_user_name<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_USER_NAME, v)
+}
+
+pub fn get_relationship_visibility(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_RELATIONSHIP_VISIBILITY)
+        .unwrap_or_else(|| DEFAULT_RELATIONSHIP_VISIBILITY.to_string())
+}
+pub fn set_relationship_visibility<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    let normalized = match v.trim().to_lowercase().as_str() {
+        "hidden" => "hidden",
+        _ => "indicator",
+    };
+    write_optional_string(app, KEY_RELATIONSHIP_VISIBILITY, normalized)
+}
+
+pub fn get_relationship_nsfw_allowed(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_RELATIONSHIP_NSFW_ALLOWED, false)
+}
+pub fn set_relationship_nsfw_allowed<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_RELATIONSHIP_NSFW_ALLOWED, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_relationship_decay_enabled(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_RELATIONSHIP_DECAY_ENABLED, true)
+}
+pub fn set_relationship_decay_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_RELATIONSHIP_DECAY_ENABLED, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+/// Read the persisted relationship-state JSON blob (or `None` if absent).
+pub fn read_relationship_state(app: &AppHandle<Wry>) -> Option<serde_json::Value> {
+    let store = app.store(STORE_FILE).ok()?;
+    store.get(KEY_RELATIONSHIP_STATE)
+}
+
+/// Write the relationship-state JSON blob.
+pub fn write_relationship_state<R: Runtime>(
+    app: &AppHandle<R>,
+    state: &serde_json::Value,
+) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_RELATIONSHIP_STATE, state.clone());
+    store.save()?;
+    Ok(())
+}
+
+pub fn clear_relationship_state<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.delete(KEY_RELATIONSHIP_STATE);
     store.save()?;
     Ok(())
 }
