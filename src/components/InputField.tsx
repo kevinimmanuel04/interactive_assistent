@@ -1,7 +1,6 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { cancelRecording, startRecording, stopRecording } from "../api";
-import RegionPicker from "./RegionPicker";
 
 interface Props {
   open: boolean;
@@ -9,11 +8,9 @@ interface Props {
   onSubmit: (text: string) => void;
   /// Vision callbacks. Each takes the current question text (may be empty).
   onVisionFull?: (prompt: string) => void;
-  onVisionRegion?: (
-    prompt: string,
-    region: { monitor: number; x: number; y: number; width: number; height: number },
-  ) => void;
+  onOpenVisionRegionPicker?: (prompt: string) => void;
   onVisionImage?: (prompt: string, pngBase64: string) => void;
+  onImagePrompt?: (prompt: string) => void;
   sttEnabled?: boolean;
   visionEnabled?: boolean;
 }
@@ -23,8 +20,9 @@ export default function InputField({
   onClose,
   onSubmit,
   onVisionFull,
-  onVisionRegion,
+  onOpenVisionRegionPicker,
   onVisionImage,
+  onImagePrompt,
   sttEnabled = false,
   visionEnabled = false,
 }: Props) {
@@ -34,7 +32,6 @@ export default function InputField({
   const [busy, setBusy] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const [visionMenuOpen, setVisionMenuOpen] = useState(false);
-  const [regionPickerOpen, setRegionPickerOpen] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -171,6 +168,31 @@ export default function InputField({
                 padding: "6px 6px",
               }}
             />
+            {onImagePrompt && (
+              <button
+                type="button"
+                onClick={() => {
+                  const prompt = value.trim();
+                  if (!prompt) return;
+                  onImagePrompt(prompt);
+                  setValue("");
+                }}
+                title="Generate image from prompt"
+                style={{
+                  width: 30,
+                  height: 30,
+                  borderRadius: 15,
+                  border: "none",
+                  cursor: "pointer",
+                  background: "rgba(179,157,219,0.25)",
+                  color: "#fff",
+                  fontSize: 14,
+                  marginRight: 4,
+                }}
+              >
+                🎨
+              </button>
+            )}
             {visionEnabled && (
               <div style={{ position: "relative" }}>
                 <button
@@ -225,7 +247,8 @@ export default function InputField({
                       style={menuBtn}
                       onClick={() => {
                         setVisionMenuOpen(false);
-                        setRegionPickerOpen(true);
+                        onOpenVisionRegionPicker?.(value.trim());
+                        setValue("");
                       }}
                     >
                       ▭ Select region…
@@ -267,15 +290,6 @@ export default function InputField({
           )}
         </motion.form>
       )}
-      <RegionPicker
-        open={regionPickerOpen}
-        onCancel={() => setRegionPickerOpen(false)}
-        onSelect={(region) => {
-          setRegionPickerOpen(false);
-          onVisionRegion?.(value.trim(), region);
-          setValue("");
-        }}
-      />
     </AnimatePresence>
   );
 }

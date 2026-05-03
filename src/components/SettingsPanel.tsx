@@ -50,6 +50,17 @@ import {
   setDeepgramLanguage,
   setAvatarZoom,
   setAvatarOffset,
+  setImagegenProvider,
+  setImagegenOpenrouterModel,
+  setImagegenReplicateModel,
+  setImagegenLocalBinary,
+  setImagegenLocalModel,
+  setImagegenDevice,
+  setImagegenSize,
+  setImagegenSteps,
+  setImagegenNegativePrompt,
+  setReplicateToken,
+  clearReplicateToken,
   setGameCoachEnabled,
   setGameCoachModel,
   setWakeWord,
@@ -1252,6 +1263,7 @@ function SttSection({
 
       <FasterWhisperBlock settings={settings} onChanged={onChanged} />
       <DeepgramBlock settings={settings} onChanged={onChanged} />
+      <ImageGenBlock settings={settings} onChanged={onChanged} />
     </div>
   );
 }
@@ -2380,3 +2392,280 @@ function DeepgramBlock({
     </div>
   );
 }
+
+
+// ----------------------------- Image generation ---------------------------
+
+function ImageGenBlock({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void;
+}) {
+  const provider = (settings?.imagegen_provider ?? "openrouter") as
+    | "openrouter"
+    | "replicate"
+    | "local";
+  const [orModel, setOrModel] = useState(
+    settings?.imagegen_openrouter_model ?? "google/gemini-2.5-flash-image-preview",
+  );
+  const [repModel, setRepModel] = useState(
+    settings?.imagegen_replicate_model ?? "black-forest-labs/flux-schnell",
+  );
+  const [bin, setBin] = useState(settings?.imagegen_local_binary ?? "");
+  const [model, setModel] = useState(settings?.imagegen_local_model ?? "");
+  const [device, setDevice] = useState(
+    (settings?.imagegen_device ?? "auto") as "auto" | "cpu" | "cuda",
+  );
+  const [width, setWidth] = useState(settings?.imagegen_width ?? 768);
+  const [height, setHeight] = useState(settings?.imagegen_height ?? 768);
+  const [steps, setSteps] = useState(settings?.imagegen_steps ?? 20);
+  const [neg, setNeg] = useState(settings?.imagegen_negative_prompt ?? "");
+  const [token, setToken] = useState("");
+
+  useEffect(() => {
+    setOrModel(settings?.imagegen_openrouter_model ?? "google/gemini-2.5-flash-image-preview");
+    setRepModel(settings?.imagegen_replicate_model ?? "black-forest-labs/flux-schnell");
+    setBin(settings?.imagegen_local_binary ?? "");
+    setModel(settings?.imagegen_local_model ?? "");
+    setDevice((settings?.imagegen_device ?? "auto") as "auto" | "cpu" | "cuda");
+    setWidth(settings?.imagegen_width ?? 768);
+    setHeight(settings?.imagegen_height ?? 768);
+    setSteps(settings?.imagegen_steps ?? 20);
+    setNeg(settings?.imagegen_negative_prompt ?? "");
+  }, [
+    settings?.imagegen_openrouter_model,
+    settings?.imagegen_replicate_model,
+    settings?.imagegen_local_binary,
+    settings?.imagegen_local_model,
+    settings?.imagegen_device,
+    settings?.imagegen_width,
+    settings?.imagegen_height,
+    settings?.imagegen_steps,
+    settings?.imagegen_negative_prompt,
+  ]);
+
+  const change = async (fn: () => Promise<void>) => {
+    try {
+      await fn();
+    } finally {
+      onChanged();
+    }
+  };
+
+  return (
+    <section style={sectionStyle}>
+      <h3 style={h3Style}>Image generation</h3>
+      <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+        {(["openrouter", "replicate", "local"] as const).map((p) => (
+          <button
+            key={p}
+            onClick={() => change(() => setImagegenProvider(p))}
+            style={{
+              flex: 1,
+              padding: "6px 8px",
+              borderRadius: 6,
+              border: "1px solid rgba(255,255,255,0.15)",
+              background:
+                provider === p ? "rgba(179,157,219,0.35)" : "rgba(255,255,255,0.05)",
+              color: "#fff",
+              cursor: "pointer",
+              fontSize: 12,
+            }}
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+
+      {provider === "openrouter" && (
+        <>
+          <label style={lblStyle}>OpenRouter model</label>
+          <input
+            value={orModel}
+            onChange={(e) => setOrModel(e.target.value)}
+            onBlur={() => change(() => setImagegenOpenrouterModel(orModel))}
+            placeholder="google/gemini-2.5-flash-image-preview"
+            style={inpStyle}
+          />
+          <p style={hintStyle}>
+            Uses your OpenRouter API key. Try: google/gemini-2.5-flash-image-preview,
+            openai/dall-e-3.
+          </p>
+        </>
+      )}
+
+      {provider === "replicate" && (
+        <>
+          <label style={lblStyle}>Replicate API token</label>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              type="password"
+              placeholder={
+                settings?.has_replicate_token ? "(saved — leave blank)" : "r8_..."
+              }
+              style={{ ...inpStyle, flex: 1 }}
+            />
+            <button
+              onClick={() =>
+                change(async () => {
+                  if (!token.trim()) return;
+                  await setReplicateToken(token.trim());
+                  setToken("");
+                })
+              }
+              style={btnStyle}
+            >
+              Save
+            </button>
+            {settings?.has_replicate_token && (
+              <button onClick={() => change(() => clearReplicateToken())} style={btnStyle}>
+                Clear
+              </button>
+            )}
+          </div>
+          <label style={lblStyle}>Replicate model (owner/name[:version])</label>
+          <input
+            value={repModel}
+            onChange={(e) => setRepModel(e.target.value)}
+            onBlur={() => change(() => setImagegenReplicateModel(repModel))}
+            placeholder="black-forest-labs/flux-schnell"
+            style={inpStyle}
+          />
+        </>
+      )}
+
+      {provider === "local" && (
+        <>
+          <label style={lblStyle}>stable-diffusion.cpp binary (sd.exe)</label>
+          <input
+            value={bin}
+            onChange={(e) => setBin(e.target.value)}
+            onBlur={() => change(() => setImagegenLocalBinary(bin))}
+            placeholder="C:\\tools\\sd.exe"
+            style={inpStyle}
+          />
+          <label style={lblStyle}>Model file (.gguf / .safetensors)</label>
+          <input
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            onBlur={() => change(() => setImagegenLocalModel(model))}
+            placeholder="C:\\models\\sd15.q4.gguf"
+            style={inpStyle}
+          />
+          <label style={lblStyle}>Device</label>
+          <select
+            value={device}
+            onChange={(e) => {
+              const v = e.target.value as "auto" | "cpu" | "cuda";
+              setDevice(v);
+              void change(() => setImagegenDevice(v));
+            }}
+            style={inpStyle}
+          >
+            <option value="auto">Auto (CUDA if available)</option>
+            <option value="cpu">CPU only</option>
+            <option value="cuda">NVIDIA CUDA</option>
+          </select>
+          <p style={hintStyle}>
+            Build sd.exe from{" "}
+            <ExternalLink href="https://github.com/leejet/stable-diffusion.cpp">
+              stable-diffusion.cpp
+            </ExternalLink>{" "}
+            with `-DSD_CUDA=ON` for GPU.
+          </p>
+        </>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+        <div style={{ flex: 1 }}>
+          <label style={lblStyle}>Width</label>
+          <input
+            type="number"
+            value={width}
+            onChange={(e) => setWidth(Number(e.target.value) || 0)}
+            onBlur={() => change(() => setImagegenSize(width, height))}
+            style={inpStyle}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={lblStyle}>Height</label>
+          <input
+            type="number"
+            value={height}
+            onChange={(e) => setHeight(Number(e.target.value) || 0)}
+            onBlur={() => change(() => setImagegenSize(width, height))}
+            style={inpStyle}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={lblStyle}>Steps</label>
+          <input
+            type="number"
+            value={steps}
+            onChange={(e) => setSteps(Number(e.target.value) || 0)}
+            onBlur={() => change(() => setImagegenSteps(steps))}
+            style={inpStyle}
+          />
+        </div>
+      </div>
+
+      <label style={lblStyle}>Negative prompt (local / replicate)</label>
+      <input
+        value={neg}
+        onChange={(e) => setNeg(e.target.value)}
+        onBlur={() => change(() => setImagegenNegativePrompt(neg))}
+        placeholder="blurry, low quality"
+        style={inpStyle}
+      />
+    </section>
+  );
+}
+
+const sectionStyle: React.CSSProperties = {
+  marginTop: 14,
+  paddingTop: 12,
+  borderTop: "1px solid rgba(255,255,255,0.08)",
+};
+const h3Style: React.CSSProperties = {
+  fontSize: 13,
+  margin: "0 0 8px 0",
+  letterSpacing: 0.4,
+  textTransform: "uppercase",
+  opacity: 0.85,
+};
+const lblStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: 11,
+  opacity: 0.7,
+  marginTop: 6,
+  marginBottom: 2,
+};
+const inpStyle: React.CSSProperties = {
+  width: "100%",
+  background: "rgba(0,0,0,0.3)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 6,
+  color: "#fff",
+  padding: "5px 8px",
+  fontSize: 12,
+  boxSizing: "border-box",
+};
+const btnStyle: React.CSSProperties = {
+  padding: "5px 12px",
+  borderRadius: 6,
+  border: "1px solid rgba(255,255,255,0.18)",
+  background: "rgba(179,157,219,0.25)",
+  color: "#fff",
+  cursor: "pointer",
+  fontSize: 12,
+};
+const hintStyle: React.CSSProperties = {
+  fontSize: 10,
+  opacity: 0.55,
+  margin: "4px 0 0 0",
+  lineHeight: 1.4,
+};

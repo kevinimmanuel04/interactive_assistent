@@ -1,10 +1,27 @@
 import { AnimatePresence, motion } from "framer-motion";
 
+const imgButtonStyle: React.CSSProperties = {
+  fontSize: 11,
+  padding: "3px 10px",
+  borderRadius: 6,
+  background: "rgba(179,157,219,0.22)",
+  color: "#fff",
+  border: "1px solid rgba(179,157,219,0.45)",
+  cursor: "pointer",
+};
+
 interface Props {
   text: string | null;
   route?: "local" | "cloud" | "skill" | null;
   thinking?: boolean;
   userEcho?: string | null;
+  imageBase64?: string | null;
+  imageSavePath?: string | null;
+  imageStatus?: "generating" | "done" | "error" | null;
+  imageError?: string | null;
+  onSaveImage?: () => void;
+  onCopyImage?: () => void;
+  onCancelImage?: () => void;
 }
 
 // Minimal markdown renderer: triple-backtick fenced code blocks (with
@@ -104,8 +121,26 @@ function renderInline(src: string, baseKey: number): JSX.Element[] {
   return out;
 }
 
-export default function ChatBubble({ text, route, thinking, userEcho }: Props) {
-  const show = !!text || !!thinking || !!userEcho;
+export default function ChatBubble({
+  text,
+  route,
+  thinking,
+  userEcho,
+  imageBase64,
+  imageSavePath,
+  imageStatus,
+  imageError,
+  onSaveImage,
+  onCopyImage,
+  onCancelImage,
+}: Props) {
+  const show =
+    !!text ||
+    !!thinking ||
+    !!userEcho ||
+    !!imageBase64 ||
+    imageStatus === "generating" ||
+    imageStatus === "error";
   return (
     <AnimatePresence>
       {show && (
@@ -171,6 +206,63 @@ export default function ChatBubble({ text, route, thinking, userEcho }: Props) {
           ) : text ? (
             <div>{renderMarkdown(text)}</div>
           ) : null}
+          {imageStatus === "generating" && !imageBase64 && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: text ? 8 : 0 }}>
+              <span style={{ opacity: 0.75 }}>🎨 Generating image…</span>
+              {onCancelImage && (
+                <button
+                  onClick={onCancelImage}
+                  style={{
+                    fontSize: 11,
+                    padding: "2px 8px",
+                    borderRadius: 6,
+                    background: "rgba(255,255,255,0.08)",
+                    color: "#fff",
+                    border: "1px solid rgba(255,255,255,0.18)",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          )}
+          {imageStatus === "error" && imageError && (
+            <div style={{ marginTop: 6, color: "#ff8080", fontSize: 12 }}>
+              Image error: {imageError}
+            </div>
+          )}
+          {imageBase64 && (
+            <div style={{ marginTop: text || userEcho ? 8 : 0 }}>
+              <img
+                src={`data:image/png;base64,${imageBase64}`}
+                alt="generated"
+                style={{
+                  maxWidth: "100%",
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  display: "block",
+                }}
+              />
+              <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+                {onSaveImage && (
+                  <button onClick={onSaveImage} style={imgButtonStyle}>
+                    Save as…
+                  </button>
+                )}
+                {onCopyImage && (
+                  <button onClick={onCopyImage} style={imgButtonStyle}>
+                    Copy
+                  </button>
+                )}
+                {imageSavePath && (
+                  <span style={{ fontSize: 10, opacity: 0.55, alignSelf: "center" }}>
+                    saved: {imageSavePath}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </motion.div>
       )}
     </AnimatePresence>

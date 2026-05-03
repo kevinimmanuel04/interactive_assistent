@@ -15,15 +15,21 @@ import { ListenController } from "./listen";
 import { checkForUpdatesQuietly } from "./updater";
 import {
   cancelGeneration,
+  cancelImageGeneration,
   ChatEvent,
+  enterRegionPickerMode,
+  exitRegionPickerMode,
+  generateImage,
   getSettings,
+  ImageEvent,
   onChat,
+  onImage,
   PublicSettings,
   resetChat,
+  saveGeneratedImage,
   sendMessage,
   setListenEnabled,
   visionCaptureFull,
-  visionCaptureRegion,
   visionWithImage,
 } from "./api";
 
@@ -40,7 +46,15 @@ export default function App() {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [listening, setListening] = useState(false);
   const [heardHint, setHeardHint] = useState(false);
-  const [regionPickerOpen, setRegionPickerOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerInitialPrompt, setPickerInitialPrompt] = useState("");
+  const [imageBase64, setImageBase64] = useState<string | null>(null);
+  const [imageSavePath, setImageSavePath] = useState<string | null>(null);
+  const [imageStatus, setImageStatus] = useState<
+    "generating" | "done" | "error" | null
+  >(null);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const activeImageIdRef = useRef<string | null>(null);
   const activeIdRef = useRef<string | null>(null);
   // Accumulated *raw* token stream including any `<mood:X>` markers, used
   // for emotion classification. The visible bubble text strips the markers
@@ -79,11 +93,31 @@ export default function App() {
   // first opening the chat input field.
   useEffect(() => {
     const p = listen<string>("hotkey:vision-region", () => {
-      setRegionPickerOpen(true);
+      void openPickerWithPrompt("");
     });
     return () => {
       p.then((fn) => fn());
     };
+  }, []);
+
+  const openPickerWithPrompt = useCallback(async (prompt: string) => {
+    try {
+      setPickerInitialPrompt(prompt);
+      await enterRegionPickerMode(prompt);
+      setPickerOpen(true);
+    } catch (err) {
+      setBubbleText(`⚠ ${String(err)}`);
+      scheduleBubbleHide(5000);
+    }
+  }, []);
+
+  const closePicker = useCallback(async () => {
+    setPickerOpen(false);
+    try {
+      await exitRegionPickerMode();
+    } catch {
+      // best effort restore
+    }
   }, []);
 
   // Apply output-device preference: browsers identify outputs by deviceId
@@ -276,6 +310,122 @@ export default function App() {
     };
   }, []);
 
+  // Stream image-generation events.
+  useEffect(() => {
+    const p = onImage(async (e: ImageEvent) => {
+      if (e.kind === "started") {
+        if (activeImageIdRef.current !== e.id) return;
+        setImageStatus("generating");
+        setImageError(null);
+        setImageBase64(null);
+        setImageSavePath(null);
+        return;
+      }
+      if (activeImageIdRef.current !== e.id) return;
+      if (e.kind === "done") {
+        setImageStatus("done");
+        setImageBase64(e.png_base64);
+        setImageSavePath(e.save_path);
+        setThinking(false);
+        avatarState.onDone();
+        activeIdRef.current = null;
+        // Auto-copy PNG to clipboard (best-effort).
+        try {
+          const bin = atob(e.png_base64);
+          const buf = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+          const blob = new Blob([buf], { type: "image/png" });
+          // ClipboardItem is not in lib.dom typings on all targets.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const CI: any = (window as any).ClipboardItem;
+          if (CI && navigator.clipboard?.write) {
+            await navigator.clipboard.write([new CI({ "image/png": blob })]);
+          }
+        } catch {
+          // Clipboard may be denied; non-fatal.
+        }
+      } else if (e.kind === "error") {
+        setImageStatus("error");
+        setImageError(e.message);
+        setThinking(false);
+        avatarState.onDone(500);
+        activeIdRef.current = null;
+        activeImageIdRef.current = null;
+      }
+    });
+    return () => {
+      p.then((fn) => fn());
+    };
+  }, []);
+
+  const handleImagePrompt = useCallback(
+    async (prompt: string, size?: { width: number; height: number }) => {
+      if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current);
+      setBubbleText(null);
+      setUserEcho(`🎨 ${prompt}`);
+      setRoute(null);
+      setImageBase64(null);
+      setImageSavePath(null);
+      setImageError(null);
+      setImageStatus("generating");
+      setThinking(true);
+      avatarState.setThinking();
+      try {
+        const id = await generateImage(prompt, size);
+        activeImageIdRef.current = id;
+        activeIdRef.current = id;
+      } catch (err) {
+        setImageStatus("error");
+        setImageError(String(err));
+        setThinking(false);
+        avatarState.onDone(500);
+      }
+    },
+    [],
+  );
+
+  const handleSaveImage = useCallback(async () => {
+    if (!imageBase64) return;
+    try {
+      const { save } = await import("@tauri-apps/plugin-dialog");
+      const target = await save({
+        defaultPath: `image-${Date.now()}.png`,
+        filters: [{ name: "PNG", extensions: ["png"] }],
+      });
+      if (typeof target === "string" && target.trim()) {
+        await saveGeneratedImage(imageBase64, target);
+        setImageSavePath(target);
+      }
+    } catch (err) {
+      setImageError(String(err));
+    }
+  }, [imageBase64]);
+
+  const handleCopyImage = useCallback(async () => {
+    if (!imageBase64) return;
+    try {
+      const bin = atob(imageBase64);
+      const buf = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      const blob = new Blob([buf], { type: "image/png" });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const CI: any = (window as any).ClipboardItem;
+      if (CI && navigator.clipboard?.write) {
+        await navigator.clipboard.write([new CI({ "image/png": blob })]);
+      }
+    } catch (err) {
+      setImageError(String(err));
+    }
+  }, [imageBase64]);
+
+  const handleCancelImage = useCallback(async () => {
+    try {
+      await cancelImageGeneration();
+    } catch {
+      // best-effort
+    }
+  }, []);
+
   const scheduleBubbleHide = (ms = 8000) => {
     if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current);
     bubbleTimer.current = window.setTimeout(() => {
@@ -286,11 +436,25 @@ export default function App() {
   };
 
   const handleSubmit = async (text: string) => {
+    if (text.trim().toLowerCase().startsWith("/img ") || text.trim().toLowerCase() === "/img") {
+      const prompt = text.trim().replace(/^\/img\s*/i, "").trim();
+      if (!prompt) {
+        setBubbleText("Usage: /img <prompt>");
+        scheduleBubbleHide(4000);
+        return;
+      }
+      void handleImagePrompt(prompt);
+      return;
+    }
     if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current);
     setBubbleText("");
     setUserEcho(text);
     setThinking(true);
     setRoute(null);
+    setImageBase64(null);
+    setImageSavePath(null);
+    setImageStatus(null);
+    setImageError(null);
     avatarState.setThinking();
     activeIdRef.current = "pending";
     try {
@@ -343,11 +507,6 @@ export default function App() {
 
   const handleVisionFull = (prompt: string) =>
     runVision("👁 screen", prompt, () => visionCaptureFull(prompt));
-  const handleVisionRegion = (
-    prompt: string,
-    region: { monitor: number; x: number; y: number; width: number; height: number },
-  ) =>
-    runVision("👁 region", prompt, () => visionCaptureRegion(prompt, region));
   const handleVisionImage = (prompt: string, pngBase64: string) =>
     runVision("🖼 image", prompt, () => visionWithImage(prompt, pngBase64));
 
@@ -372,14 +531,29 @@ export default function App() {
         offsetX={settings?.avatar_offset_x ?? 0}
         offsetY={settings?.avatar_offset_y ?? 0}
       />
-      <ChatBubble text={bubbleText} route={route} thinking={thinking} userEcho={userEcho} />
+      <ChatBubble
+        text={bubbleText}
+        route={route}
+        thinking={thinking}
+        userEcho={userEcho}
+        imageBase64={imageBase64}
+        imageSavePath={imageSavePath}
+        imageStatus={imageStatus}
+        imageError={imageError}
+        onSaveImage={handleSaveImage}
+        onCopyImage={handleCopyImage}
+        onCancelImage={handleCancelImage}
+      />
       <InputField
         open={inputOpen && !settingsOpen && !wizardOpen}
         onClose={() => setInputOpen(false)}
         onSubmit={handleSubmit}
         onVisionFull={handleVisionFull}
-        onVisionRegion={handleVisionRegion}
+        onOpenVisionRegionPicker={(prompt) => {
+          void openPickerWithPrompt(prompt);
+        }}
         onVisionImage={handleVisionImage}
+        onImagePrompt={(prompt) => void handleImagePrompt(prompt)}
         visionEnabled={Boolean(settings?.has_openrouter_key)}
         sttEnabled={Boolean(
           (settings?.stt_available && settings?.whisper_model_path) ||
@@ -431,11 +605,21 @@ export default function App() {
         }}
       />
       <RegionPicker
-        open={regionPickerOpen}
-        onCancel={() => setRegionPickerOpen(false)}
-        onSelect={(region) => {
-          setRegionPickerOpen(false);
-          handleVisionRegion("", region);
+        open={pickerOpen}
+        initialPrompt={pickerInitialPrompt}
+        onCancel={() => {
+          void closePicker();
+        }}
+        onSubmit={(s) => {
+          void closePicker();
+          // Composited PNG already includes every region rectangle and
+          // its importance tag, so route through `visionWithImage` rather
+          // than asking the backend to re-crop a single rect.
+          handleVisionImage(s.prompt, s.imageBase64);
+        }}
+        onGenerateVariant={(prompt, size) => {
+          void closePicker();
+          void handleImagePrompt(prompt, size);
         }}
       />
     </>

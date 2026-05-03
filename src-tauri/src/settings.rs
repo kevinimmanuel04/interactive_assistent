@@ -63,6 +63,17 @@ const KEY_DEEPGRAM_LANGUAGE: &str = "deepgram_language";
 const KEY_AVATAR_ZOOM: &str = "avatar_zoom";
 const KEY_AVATAR_OFFSET_X: &str = "avatar_offset_x";
 const KEY_AVATAR_OFFSET_Y: &str = "avatar_offset_y";
+const KEY_IMAGEGEN_PROVIDER: &str = "imagegen_provider";
+const KEY_IMAGEGEN_OR_MODEL: &str = "imagegen_openrouter_model";
+const KEY_IMAGEGEN_REPLICATE_MODEL: &str = "imagegen_replicate_model";
+const KEY_IMAGEGEN_LOCAL_BINARY: &str = "imagegen_local_binary";
+const KEY_IMAGEGEN_LOCAL_MODEL: &str = "imagegen_local_model";
+const KEY_IMAGEGEN_DEVICE: &str = "imagegen_device";
+const KEY_IMAGEGEN_WIDTH: &str = "imagegen_width";
+const KEY_IMAGEGEN_HEIGHT: &str = "imagegen_height";
+const KEY_IMAGEGEN_STEPS: &str = "imagegen_steps";
+const KEY_IMAGEGEN_NEGATIVE: &str = "imagegen_negative_prompt";
+const KEY_REPLICATE_API: &str = "replicate_api_token";
 
 pub const DEFAULT_OPENROUTER_TTS_MODEL: &str = "openai/gpt-4o-audio-preview";
 pub const DEFAULT_OPENROUTER_TTS_VOICE: &str = "shimmer";
@@ -71,6 +82,13 @@ pub const DEFAULT_GAME_COACH_MODEL: &str = "openai/gpt-4o-mini";
 pub const DEFAULT_FASTER_WHISPER_URL: &str = "http://localhost:8000";
 pub const DEFAULT_FASTER_WHISPER_MODEL: &str = "Systran/faster-whisper-base";
 pub const DEFAULT_DEEPGRAM_MODEL: &str = "nova-3";
+pub const DEFAULT_IMAGEGEN_PROVIDER: &str = "openrouter";
+pub const DEFAULT_IMAGEGEN_OR_MODEL: &str = "google/gemini-2.5-flash-image-preview";
+pub const DEFAULT_IMAGEGEN_REPLICATE_MODEL: &str = "black-forest-labs/flux-schnell";
+pub const DEFAULT_IMAGEGEN_DEVICE: &str = "auto";
+pub const DEFAULT_IMAGEGEN_WIDTH: i64 = 768;
+pub const DEFAULT_IMAGEGEN_HEIGHT: i64 = 768;
+pub const DEFAULT_IMAGEGEN_STEPS: i64 = 20;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PublicSettings {
@@ -127,6 +145,17 @@ pub struct PublicSettings {
     pub avatar_zoom: f64,
     pub avatar_offset_x: f64,
     pub avatar_offset_y: f64,
+    pub imagegen_provider: String,
+    pub imagegen_openrouter_model: String,
+    pub imagegen_replicate_model: String,
+    pub imagegen_local_binary: Option<String>,
+    pub imagegen_local_model: Option<String>,
+    pub imagegen_device: String,
+    pub imagegen_width: i64,
+    pub imagegen_height: i64,
+    pub imagegen_steps: i64,
+    pub imagegen_negative_prompt: Option<String>,
+    pub has_replicate_token: bool,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -263,6 +292,17 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         avatar_zoom: get_f64(app, KEY_AVATAR_ZOOM).unwrap_or(1.0),
         avatar_offset_x: get_f64(app, KEY_AVATAR_OFFSET_X).unwrap_or(0.0),
         avatar_offset_y: get_f64(app, KEY_AVATAR_OFFSET_Y).unwrap_or(0.0),
+        imagegen_provider: get_imagegen_provider(app),
+        imagegen_openrouter_model: get_imagegen_openrouter_model(app),
+        imagegen_replicate_model: get_imagegen_replicate_model(app),
+        imagegen_local_binary: read_string(app, KEY_IMAGEGEN_LOCAL_BINARY),
+        imagegen_local_model: read_string(app, KEY_IMAGEGEN_LOCAL_MODEL),
+        imagegen_device: get_imagegen_device(app),
+        imagegen_width: get_i64(app, KEY_IMAGEGEN_WIDTH).unwrap_or(DEFAULT_IMAGEGEN_WIDTH),
+        imagegen_height: get_i64(app, KEY_IMAGEGEN_HEIGHT).unwrap_or(DEFAULT_IMAGEGEN_HEIGHT),
+        imagegen_steps: get_i64(app, KEY_IMAGEGEN_STEPS).unwrap_or(DEFAULT_IMAGEGEN_STEPS),
+        imagegen_negative_prompt: read_string(app, KEY_IMAGEGEN_NEGATIVE),
+        has_replicate_token: get_replicate_token(app).is_some(),
     }
 }
 
@@ -758,4 +798,106 @@ pub fn get_deepgram_language(app: &AppHandle<Wry>) -> Option<String> {
 }
 pub fn set_deepgram_language<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
     write_optional_string(app, KEY_DEEPGRAM_LANGUAGE, v)
+}
+
+
+// --- Image generation -----------------------------------------------------
+
+fn get_i64(app: &AppHandle<Wry>, key: &str) -> Option<i64> {
+    let store = app.store(STORE_FILE).ok()?;
+    store.get(key).and_then(|v| v.as_i64())
+}
+
+fn write_i64<R: Runtime>(app: &AppHandle<R>, key: &str, value: i64) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(key, serde_json::Value::from(value));
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_imagegen_provider(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_IMAGEGEN_PROVIDER).unwrap_or_else(|| DEFAULT_IMAGEGEN_PROVIDER.to_string())
+}
+pub fn set_imagegen_provider<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_IMAGEGEN_PROVIDER, v)
+}
+
+pub fn get_imagegen_openrouter_model(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_IMAGEGEN_OR_MODEL).unwrap_or_else(|| DEFAULT_IMAGEGEN_OR_MODEL.to_string())
+}
+pub fn set_imagegen_openrouter_model<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_IMAGEGEN_OR_MODEL, v)
+}
+
+pub fn get_imagegen_replicate_model(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_IMAGEGEN_REPLICATE_MODEL)
+        .unwrap_or_else(|| DEFAULT_IMAGEGEN_REPLICATE_MODEL.to_string())
+}
+pub fn set_imagegen_replicate_model<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_IMAGEGEN_REPLICATE_MODEL, v)
+}
+
+pub fn get_imagegen_local_binary(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_IMAGEGEN_LOCAL_BINARY)
+}
+pub fn set_imagegen_local_binary<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_IMAGEGEN_LOCAL_BINARY, v)
+}
+
+pub fn get_imagegen_local_model(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_IMAGEGEN_LOCAL_MODEL)
+}
+pub fn set_imagegen_local_model<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_IMAGEGEN_LOCAL_MODEL, v)
+}
+
+pub fn get_imagegen_device(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_IMAGEGEN_DEVICE).unwrap_or_else(|| DEFAULT_IMAGEGEN_DEVICE.to_string())
+}
+pub fn set_imagegen_device<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_IMAGEGEN_DEVICE, v)
+}
+
+pub fn set_imagegen_size<R: Runtime>(app: &AppHandle<R>, w: i64, h: i64) -> Result<()> {
+    write_i64(app, KEY_IMAGEGEN_WIDTH, w.clamp(64, 4096))?;
+    write_i64(app, KEY_IMAGEGEN_HEIGHT, h.clamp(64, 4096))?;
+    Ok(())
+}
+
+pub fn set_imagegen_steps<R: Runtime>(app: &AppHandle<R>, n: i64) -> Result<()> {
+    write_i64(app, KEY_IMAGEGEN_STEPS, n.clamp(1, 200))
+}
+
+pub fn set_imagegen_negative_prompt<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_IMAGEGEN_NEGATIVE, v)
+}
+
+pub fn get_imagegen_width(app: &AppHandle<Wry>) -> i64 {
+    get_i64(app, KEY_IMAGEGEN_WIDTH).unwrap_or(DEFAULT_IMAGEGEN_WIDTH)
+}
+
+pub fn get_imagegen_height(app: &AppHandle<Wry>) -> i64 {
+    get_i64(app, KEY_IMAGEGEN_HEIGHT).unwrap_or(DEFAULT_IMAGEGEN_HEIGHT)
+}
+
+pub fn get_imagegen_steps(app: &AppHandle<Wry>) -> i64 {
+    get_i64(app, KEY_IMAGEGEN_STEPS).unwrap_or(DEFAULT_IMAGEGEN_STEPS)
+}
+
+pub fn get_imagegen_negative_prompt(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_IMAGEGEN_NEGATIVE)
+}
+
+pub fn get_replicate_token(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_REPLICATE_API)
+}
+pub fn set_replicate_token<R: Runtime>(app: &AppHandle<R>, key: &str) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    if key.trim().is_empty() {
+        store.delete(KEY_REPLICATE_API);
+    } else {
+        store.set(KEY_REPLICATE_API, serde_json::Value::String(key.trim().to_string()));
+    }
+    store.save()?;
+    Ok(())
 }

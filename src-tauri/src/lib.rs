@@ -4,6 +4,7 @@ mod chat;
 mod coach;
 mod commands;
 mod desktop_cmds;
+mod imagegen;
 mod models;
 mod proactive;
 mod react;
@@ -50,6 +51,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
@@ -72,6 +74,8 @@ pub fn run() {
         .manage(komorebi_voice::tts::PiperTts::new())
         .manage(komorebi_voice::sovits::SoVitsTts::new())
         .manage(komorebi_voice::stt::Recorder::new())
+        .manage::<commands::RegionPickerState>(std::sync::Mutex::new(None))
+        .manage::<Arc<imagegen::ImageGenState>>(Arc::new(imagegen::ImageGenState::default()))
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::set_openrouter_key,
@@ -161,10 +165,26 @@ pub fn run() {
             commands::vision_capture_full,
             commands::vision_capture_region,
             commands::vision_with_image,
+            commands::enter_region_picker_mode,
+            commands::exit_region_picker_mode,
             commands::set_auto_screen_watch_enabled,
             commands::set_chat_tool_calls_enabled,
             commands::set_avatar_zoom,
             commands::set_avatar_offset,
+            commands::generate_image,
+            commands::cancel_image_generation,
+            commands::save_generated_image,
+            commands::set_imagegen_provider,
+            commands::set_imagegen_openrouter_model,
+            commands::set_imagegen_replicate_model,
+            commands::set_imagegen_local_binary,
+            commands::set_imagegen_local_model,
+            commands::set_imagegen_device,
+            commands::set_imagegen_size,
+            commands::set_imagegen_steps,
+            commands::set_imagegen_negative_prompt,
+            commands::set_replicate_token,
+            commands::clear_replicate_token,
         ])
         .setup(move |app| {
             app.global_shortcut().register(toggle_input)?;

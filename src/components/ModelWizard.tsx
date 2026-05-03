@@ -11,6 +11,11 @@ import {
   setLocalModel,
   setPiperVoice,
   setWhisperModel,
+  setImagegenProvider,
+  setImagegenLocalBinary,
+  setImagegenLocalModel,
+  setImagegenDevice,
+  generateImage,
 } from "../api";
 
 interface Props {
@@ -37,6 +42,7 @@ export default function ModelWizard({
   const [assets, setAssets] = useState<Asset[]>([]);
   const [progress, setProgress] = useState<Record<string, ProgressState>>({});
   const [toast, setToast] = useState<string | null>(null);
+  const [tab, setTab] = useState<"models" | "imagegen">("models");
 
   const flash = (msg: string) => {
     setToast(msg);
@@ -240,6 +246,30 @@ export default function ModelWizard({
             Files are downloaded to your app-data folder. You can close this
             window — downloads continue in the background.
           </div>
+          <div style={{ display: "flex", gap: 6 }}>
+            {([
+              ["models", "Models"],
+              ["imagegen", "Image generation"],
+            ] as const).map(([k, label]) => (
+              <button
+                key={k}
+                onClick={() => setTab(k)}
+                style={{
+                  flex: 1,
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background:
+                    tab === k ? "rgba(179,157,219,0.32)" : "rgba(255,255,255,0.04)",
+                  color: "#fff",
+                  cursor: "pointer",
+                  fontSize: 12,
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {toast && (
             <div
               style={{
@@ -253,7 +283,15 @@ export default function ModelWizard({
               {toast}
             </div>
           )}
-          {assets.map((a) => {
+          {tab === "imagegen" && (
+            <ImageGenPanel
+              settings={settings}
+              onSettingsChanged={onSettingsChanged}
+              flash={flash}
+            />
+          )}
+          {tab === "models" &&
+            assets.map((a) => {
             const st = progress[a.file_name];
             const pct =
               st && st.total ? Math.round((st.downloaded / st.total) * 100) : null;
@@ -372,6 +410,240 @@ export default function ModelWizard({
         </motion.div>
       )}
     </AnimatePresence>
+  );
+}
+
+function ImageGenPanel({
+  settings,
+  onSettingsChanged,
+  flash,
+}: {
+  settings: PublicSettings | null;
+  onSettingsChanged: () => void;
+  flash: (msg: string) => void;
+}) {
+  const provider = (settings?.imagegen_provider ?? "openrouter") as
+    | "openrouter"
+    | "replicate"
+    | "local";
+  const [bin, setBin] = useState(settings?.imagegen_local_binary ?? "");
+  const [model, setModel] = useState(settings?.imagegen_local_model ?? "");
+  const [device, setDevice] = useState(
+    (settings?.imagegen_device ?? "auto") as "auto" | "cpu" | "cuda",
+  );
+  const [testPrompt, setTestPrompt] = useState("a cute orange cat");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setBin(settings?.imagegen_local_binary ?? "");
+    setModel(settings?.imagegen_local_model ?? "");
+    setDevice((settings?.imagegen_device ?? "auto") as "auto" | "cpu" | "cuda");
+  }, [
+    settings?.imagegen_local_binary,
+    settings?.imagegen_local_model,
+    settings?.imagegen_device,
+  ]);
+
+  const pickFile = async (
+    title: string,
+    extensions: string[],
+  ): Promise<string | null> => {
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const result = await open({
+        multiple: false,
+        title,
+        filters: [{ name: title, extensions }],
+      });
+      if (typeof result === "string") return result;
+      return null;
+    } catch (e) {
+      flash(`Pick failed: ${e}`);
+      return null;
+    }
+  };
+
+  const card: React.CSSProperties = {
+    padding: 10,
+    borderRadius: 10,
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.03)",
+  };
+  const lbl: React.CSSProperties = {
+    fontSize: 11,
+    opacity: 0.7,
+    marginTop: 6,
+    marginBottom: 2,
+    display: "block",
+  };
+  const inp: React.CSSProperties = {
+    width: "100%",
+    background: "rgba(0,0,0,0.3)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 6,
+    color: "#fff",
+    padding: "5px 8px",
+    fontSize: 12,
+    boxSizing: "border-box",
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={card}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>Provider</div>
+        <div style={{ display: "flex", gap: 6 }}>
+          {(["openrouter", "replicate", "local"] as const).map((p) => (
+            <button
+              key={p}
+              onClick={async () => {
+                await setImagegenProvider(p);
+                onSettingsChanged();
+                flash(`Provider: ${p}`);
+              }}
+              style={{
+                flex: 1,
+                padding: "6px 8px",
+                borderRadius: 6,
+                border: "1px solid rgba(255,255,255,0.15)",
+                background:
+                  provider === p ? "rgba(179,157,219,0.35)" : "rgba(255,255,255,0.05)",
+                color: "#fff",
+                cursor: "pointer",
+                fontSize: 12,
+              }}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+        <div style={{ fontSize: 10, opacity: 0.55, marginTop: 6, lineHeight: 1.4 }}>
+          Cloud providers (OpenRouter, Replicate) need API keys configured in
+          Settings. Local needs an external <code>sd.exe</code> binary built from{" "}
+          <a
+            href="https://github.com/leejet/stable-diffusion.cpp"
+            target="_blank"
+            rel="noreferrer"
+            style={{ color: "#b39ddb" }}
+          >
+            stable-diffusion.cpp
+          </a>
+          .
+        </div>
+      </div>
+
+      {provider === "local" && (
+        <div style={card}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Local stable-diffusion.cpp</div>
+          <label style={lbl}>sd.exe binary</label>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              value={bin}
+              onChange={(e) => setBin(e.target.value)}
+              onBlur={async () => {
+                await setImagegenLocalBinary(bin);
+                onSettingsChanged();
+              }}
+              placeholder="C:\\tools\\sd.exe"
+              style={{ ...inp, flex: 1 }}
+            />
+            <button
+              onClick={async () => {
+                const p = await pickFile("sd.exe", ["exe"]);
+                if (p) {
+                  setBin(p);
+                  await setImagegenLocalBinary(p);
+                  onSettingsChanged();
+                  flash("Binary set");
+                }
+              }}
+              style={btn()}
+            >
+              Browse…
+            </button>
+          </div>
+          <label style={lbl}>Model file (.gguf / .safetensors / .ckpt)</label>
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              onBlur={async () => {
+                await setImagegenLocalModel(model);
+                onSettingsChanged();
+              }}
+              placeholder="C:\\models\\sd15.q4.gguf"
+              style={{ ...inp, flex: 1 }}
+            />
+            <button
+              onClick={async () => {
+                const p = await pickFile("SD model", [
+                  "gguf",
+                  "safetensors",
+                  "ckpt",
+                  "bin",
+                ]);
+                if (p) {
+                  setModel(p);
+                  await setImagegenLocalModel(p);
+                  onSettingsChanged();
+                  flash("Model set");
+                }
+              }}
+              style={btn()}
+            >
+              Browse…
+            </button>
+          </div>
+          <label style={lbl}>Compute device</label>
+          <select
+            value={device}
+            onChange={async (e) => {
+              const v = e.target.value as "auto" | "cpu" | "cuda";
+              setDevice(v);
+              await setImagegenDevice(v);
+              onSettingsChanged();
+            }}
+            style={inp}
+          >
+            <option value="auto">Auto (CUDA if available)</option>
+            <option value="cpu">CPU only</option>
+            <option value="cuda">NVIDIA CUDA</option>
+          </select>
+          <div style={{ fontSize: 10, opacity: 0.55, marginTop: 6, lineHeight: 1.4 }}>
+            Tip: SD-model URLs are unstable across hosts, so download weights
+            manually (HuggingFace, Civitai) and point this dialog at the file.
+          </div>
+        </div>
+      )}
+
+      <div style={card}>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>Quick test</div>
+        <input
+          value={testPrompt}
+          onChange={(e) => setTestPrompt(e.target.value)}
+          placeholder="prompt"
+          style={inp}
+        />
+        <button
+          onClick={async () => {
+            const p = testPrompt.trim();
+            if (!p) return;
+            setBusy(true);
+            try {
+              await generateImage(p);
+              flash("Generation started — see chat bubble");
+            } catch (e) {
+              flash(`Failed: ${e}`);
+            } finally {
+              setBusy(false);
+            }
+          }}
+          disabled={busy}
+          style={{ ...btn(), marginTop: 6 }}
+        >
+          {busy ? "Starting…" : "Generate"}
+        </button>
+      </div>
+    </div>
   );
 }
 
