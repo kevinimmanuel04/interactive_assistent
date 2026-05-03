@@ -948,7 +948,6 @@ fn uuid_like() -> String {
     format!("msg-{nanos:x}")
 }
 
-
 // --- Image generation commands -------------------------------------------
 
 #[tauri::command]

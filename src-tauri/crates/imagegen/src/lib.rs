@@ -12,9 +12,9 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+pub mod local;
 pub mod openrouter;
 pub mod replicate;
-pub mod local;
 
 #[derive(Debug, Error)]
 pub enum ImageGenError {

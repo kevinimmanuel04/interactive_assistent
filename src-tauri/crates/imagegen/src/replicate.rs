@@ -23,7 +23,11 @@ impl ReplicateImage {
         let http = reqwest::Client::builder()
             .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
             .build()?;
-        Ok(Self { http, token, model: model.into() })
+        Ok(Self {
+            http,
+            token,
+            model: model.into(),
+        })
     }
 }
 
@@ -85,9 +89,15 @@ impl Generator for ReplicateImage {
             format!("{BASE}/models/{}/predictions", self.model)
         };
         let body = if let Some((_, version)) = self.model.split_once(':') {
-            CreateBody { version: Some(version), input }
+            CreateBody {
+                version: Some(version),
+                input,
+            }
         } else {
-            CreateBody { version: None, input }
+            CreateBody {
+                version: None,
+                input,
+            }
         };
 
         let resp = self
@@ -107,8 +117,8 @@ impl Generator for ReplicateImage {
                 text.chars().take(400).collect::<String>()
             )));
         }
-        let mut pred: Prediction = serde_json::from_str(&text)
-            .map_err(|e| ImageGenError::Decode(e.to_string()))?;
+        let mut pred: Prediction =
+            serde_json::from_str(&text).map_err(|e| ImageGenError::Decode(e.to_string()))?;
 
         // If `Prefer: wait` already finished it, skip polling.
         let mut tries = 0;
@@ -148,7 +158,10 @@ impl Generator for ReplicateImage {
             .bytes()
             .await?
             .to_vec();
-        Ok(GenerateOk { png: bytes, revised_prompt: None })
+        Ok(GenerateOk {
+            png: bytes,
+            revised_prompt: None,
+        })
     }
 }
 

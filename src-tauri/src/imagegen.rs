@@ -15,8 +15,8 @@ use komorebi_imagegen::{
     GenerateRequest, Generator, ImageGenError,
 };
 use serde::Serialize;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, Wry};
 
 #[derive(Debug, Serialize, Clone)]
@@ -152,7 +152,8 @@ async fn run_generation(
             _ = wait_cancel(state.clone()) => return Err(ImageGenError::Cancelled),
         }
     } else {
-        task.await.map_err(|e| ImageGenError::Provider(format!("task join: {e}")))?
+        task.await
+            .map_err(|e| ImageGenError::Provider(format!("task join: {e}")))?
     };
     let ok = result?;
 

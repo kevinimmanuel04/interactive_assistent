@@ -800,7 +800,6 @@ pub fn set_deepgram_language<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<
     write_optional_string(app, KEY_DEEPGRAM_LANGUAGE, v)
 }
 
-
 // --- Image generation -----------------------------------------------------
 
 fn get_i64(app: &AppHandle<Wry>, key: &str) -> Option<i64> {
@@ -896,7 +895,10 @@ pub fn set_replicate_token<R: Runtime>(app: &AppHandle<R>, key: &str) -> Result<
     if key.trim().is_empty() {
         store.delete(KEY_REPLICATE_API);
     } else {
-        store.set(KEY_REPLICATE_API, serde_json::Value::String(key.trim().to_string()));
+        store.set(
+            KEY_REPLICATE_API,
+            serde_json::Value::String(key.trim().to_string()),
+        );
     }
     store.save()?;
     Ok(())

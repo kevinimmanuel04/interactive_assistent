@@ -40,7 +40,11 @@ impl LocalSd {
         if !model.exists() {
             return Err(ImageGenError::MissingConfig("sd model not found"));
         }
-        Ok(Self { binary, model, device })
+        Ok(Self {
+            binary,
+            model,
+            device,
+        })
     }
 }
 
@@ -113,7 +117,10 @@ impl Generator for LocalSd {
         }
         let png = tokio::fs::read(&out).await.map_err(ImageGenError::from)?;
         let _ = tokio::fs::remove_file(&out).await;
-        Ok(GenerateOk { png, revised_prompt: None })
+        Ok(GenerateOk {
+            png,
+            revised_prompt: None,
+        })
     }
 }
 

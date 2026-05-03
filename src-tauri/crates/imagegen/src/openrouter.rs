@@ -2,7 +2,9 @@
 //! `modalities: ["image", "text"]`. Models like
 //! `google/gemini-2.5-flash-image-preview` return an inline image_url.
 
-use crate::{decode_data_uri_or_b64, GenerateOk, GenerateRequest, Generator, ImageGenError, Result};
+use crate::{
+    decode_data_uri_or_b64, GenerateOk, GenerateRequest, Generator, ImageGenError, Result,
+};
 use serde::Deserialize;
 
 const URL: &str = "https://openrouter.ai/api/v1/chat/completions";
@@ -22,7 +24,11 @@ impl OpenRouterImage {
         let http = reqwest::Client::builder()
             .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
             .build()?;
-        Ok(Self { http, api_key, model: model.into() })
+        Ok(Self {
+            http,
+            api_key,
+            model: model.into(),
+        })
     }
 }
 
@@ -100,8 +106,9 @@ impl Generator for OpenRouterImage {
                 text.chars().take(400).collect::<String>()
             )));
         }
-        let parsed: Resp = serde_json::from_str(&text)
-            .map_err(|e| ImageGenError::Decode(format!("{e}; body={}", &text[..text.len().min(400)])))?;
+        let parsed: Resp = serde_json::from_str(&text).map_err(|e| {
+            ImageGenError::Decode(format!("{e}; body={}", &text[..text.len().min(400)]))
+        })?;
         if let Some(err) = parsed.error {
             return Err(ImageGenError::Provider(
                 err.message.unwrap_or_else(|| "openrouter error".into()),
@@ -133,7 +140,10 @@ impl Generator for OpenRouterImage {
             }
             r.bytes().await?.to_vec()
         };
-        Ok(GenerateOk { png: bytes, revised_prompt: None })
+        Ok(GenerateOk {
+            png: bytes,
+            revised_prompt: None,
+        })
     }
 }
 
