@@ -87,6 +87,10 @@ const KEY_RELATIONSHIP_VISIBILITY: &str = "relationship_visibility";
 const KEY_RELATIONSHIP_NSFW_ALLOWED: &str = "relationship_nsfw_allowed";
 const KEY_RELATIONSHIP_DECAY_ENABLED: &str = "relationship_decay_enabled";
 
+const KEY_LANGUAGE: &str = "language";
+
+pub const DEFAULT_LANGUAGE: &str = "auto";
+
 pub const DEFAULT_WEATHER_PROVIDER: &str = "openmeteo";
 pub const DEFAULT_WEATHER_UNITS: &str = "metric";
 pub const DEFAULT_RELATIONSHIP_VISIBILITY: &str = "indicator";
@@ -181,6 +185,7 @@ pub struct PublicSettings {
     pub relationship_visibility: String,
     pub relationship_nsfw_allowed: bool,
     pub relationship_decay_enabled: bool,
+    pub language: String,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -337,6 +342,7 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         relationship_visibility: get_relationship_visibility(app),
         relationship_nsfw_allowed: get_bool(app, KEY_RELATIONSHIP_NSFW_ALLOWED, false),
         relationship_decay_enabled: get_bool(app, KEY_RELATIONSHIP_DECAY_ENABLED, true),
+        language: get_language(app),
     }
 }
 
@@ -1048,6 +1054,44 @@ pub fn set_relationship_decay_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) 
     store.set(KEY_RELATIONSHIP_DECAY_ENABLED, serde_json::Value::Bool(on));
     store.save()?;
     Ok(())
+}
+
+/// User-selected UI/assistant language. One of `auto`, `en`, `ru`, `uk`.
+pub fn get_language(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_LANGUAGE).unwrap_or_else(|| DEFAULT_LANGUAGE.to_string())
+}
+
+pub fn set_language<R: Runtime>(app: &AppHandle<R>, lang: &str) -> Result<()> {
+    let v = match lang {
+        "auto" | "en" | "ru" | "uk" => lang,
+        _ => "auto",
+    };
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_LANGUAGE, serde_json::Value::String(v.to_string()));
+    store.save()?;
+    Ok(())
+}
+
+/// Resolves "auto" to a concrete language code based on OS locale.
+/// Falls back to "en" when the locale is unknown or unsupported.
+pub fn resolve_language(app: &AppHandle<Wry>) -> &'static str {
+    let pref = get_language(app);
+    if pref == "en" || pref == "ru" || pref == "uk" {
+        return match pref.as_str() {
+            "ru" => "ru",
+            "uk" => "uk",
+            _ => "en",
+        };
+    }
+    // auto — sniff the OS locale.
+    let locale = sys_locale::get_locale().unwrap_or_default().to_lowercase();
+    if locale.starts_with("uk") {
+        "uk"
+    } else if locale.starts_with("ru") {
+        "ru"
+    } else {
+        "en"
+    }
 }
 
 /// Read the persisted relationship-state JSON blob (or `None` if absent).

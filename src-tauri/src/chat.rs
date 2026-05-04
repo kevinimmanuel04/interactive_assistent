@@ -68,11 +68,16 @@ fn emit(app: &AppHandle<Wry>, evt: ChatEventOut) {
     }
 }
 
-fn system_prompt() -> ChatMessage {
-    ChatMessage::system(
+fn system_prompt(language: &str) -> ChatMessage {
+    let lang_directive = match language {
+        "ru" => "Reply in Russian (русский язык). Use natural, idiomatic Russian.",
+        "uk" => "Reply in Ukrainian (українська мова). Use natural, idiomatic Ukrainian.",
+        _ => "Reply in English. Use natural, idiomatic English.",
+    };
+    ChatMessage::system(format!(
         "You are Komorebi, a cheerful, expressive anime-styled virtual \
          assistant. Reply concisely (1-4 sentences) unless asked for \
-         detail. Match the user's language. \
+         detail. {lang_directive} \
          \
          Emotion protocol: ALWAYS prepend EXACTLY ONE of these tags as the \
          very first characters of every reply, before any other text: \
@@ -89,7 +94,7 @@ fn system_prompt() -> ChatMessage {
          Use <mood:neutral> only when none of the others fit. \
          Never explain the tag, never speak it aloud, never put it \
          anywhere except at the very start.",
-    )
+    ))
 }
 
 /// Extra system message appended when chat tool-calls are enabled.
@@ -577,7 +582,8 @@ async fn run_generation(app: AppHandle<Wry>, id: String, prompt: String) -> Resu
     let messages: Vec<ChatMessage> = {
         let hist = service.history.lock().await;
         let mut m = Vec::with_capacity(hist.len() + 4);
-        m.push(system_prompt());
+        let lang = crate::settings::resolve_language(&app);
+        m.push(system_prompt(lang));
         // Relationship persona/context — drives tone, pet-names, and how
         // closely the assistant treats the user. Always present.
         m.push(ChatMessage::system(

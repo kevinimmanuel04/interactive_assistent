@@ -13,6 +13,7 @@ import { stripMoodTags } from "./emotion";
 import { lipSync } from "./lipsync";
 import { ListenController } from "./listen";
 import { checkForUpdatesQuietly } from "./updater";
+import { bootstrapLocale, t, useLocale } from "./i18n";
 import {
   cancelGeneration,
   cancelImageGeneration,
@@ -78,7 +79,16 @@ export default function App() {
   }, []);
   useEffect(() => {
     refreshSettings();
+    void bootstrapLocale();
   }, [refreshSettings]);
+
+  // Re-bootstrap locale whenever the language preference changes.
+  useEffect(() => {
+    if (settings?.language !== undefined) void bootstrapLocale();
+  }, [settings?.language]);
+
+  // Subscribe to locale changes so all `t(...)` calls re-render.
+  useLocale();
 
   // Check for app updates in the background on startup.
   useEffect(() => {
@@ -472,13 +482,13 @@ export default function App() {
     const updP = onRelationshipUpdated((s) => setRelationship(s));
     const stageP = onRelationshipStageChange((e) => {
       const next = STAGE_LABELS[e.current];
-      const prev = STAGE_LABELS[e.previous];
       const up =
         Object.keys(STAGE_LABELS).indexOf(e.current) >
         Object.keys(STAGE_LABELS).indexOf(e.previous);
+      const stageName = (s: typeof e.current) => t(`stage.${s}` as any);
       const msg = up
-        ? `${next.emoji} Stage up: ${prev.ru} → ${next.ru}`
-        : `${next.emoji} Stage: ${prev.ru} → ${next.ru}`;
+        ? `${next.emoji} ${t("rel.stage_up")}: ${stageName(e.previous)} → ${stageName(e.current)}`
+        : `${next.emoji} ${stageName(e.previous)} → ${stageName(e.current)}`;
       setBubbleText(msg);
       scheduleBubbleHide(6000);
     });
@@ -717,13 +727,8 @@ function TopBar(props: {
   relationship: RelationshipState | null;
   showRelationshipBadge: boolean;
 }) {
-  const listenColor = !props.listenReady
-    ? "rgba(20,20,28,0.7)"
-    : props.heard
-    ? "#e24a4a"
-    : props.listening
-    ? "#6fae5a"
-    : "rgba(20,20,28,0.7)";
+  useLocale(); // re-render on language change
+  const listenIcon = props.heard ? "👂•" : "👂";
   return (
     <div
       className="interactive"
@@ -747,7 +752,7 @@ function TopBar(props: {
           textTransform: "uppercase",
           letterSpacing: 0.5,
         }}
-        title={props.hasKey ? "OpenRouter key saved" : "No OpenRouter key"}
+        title={props.hasKey ? t("topbar.key_saved") : t("topbar.no_key")}
       >
         {props.mode}
         {!props.hasKey && props.mode !== "local" && " ⚠"}
@@ -758,48 +763,41 @@ function TopBar(props: {
       <button
         onClick={props.onToggleListen}
         disabled={!props.listenReady}
-        style={{ ...iconBtn, background: listenColor }}
+        style={iconBtnStyle(props.listening)}
         title={
           !props.listenReady
-            ? "Set up Whisper or enable OpenRouter STT first"
+            ? t("topbar.listen.tip_setup")
             : props.listening
-            ? "Listening — click to stop"
-            : "Continuous listen"
+            ? t("topbar.listen.tip_listening")
+            : t("topbar.listen.tip_idle")
         }
       >
-        👂
+        {listenIcon}
       </button>
       <button
         onClick={props.onToggleAutoWatch}
         disabled={!props.autoWatchAvailable}
-        style={{
-          ...iconBtn,
-          background: props.autoWatch ? "#6fae5a" : "rgba(20,20,28,0.7)",
-        }}
+        style={iconBtnStyle(props.autoWatch)}
         title={
           !props.autoWatchAvailable
-            ? "Add OpenRouter key first"
+            ? t("topbar.watch.tip_setup")
             : props.autoWatch
-            ? "Always-watch ON — every message attaches a screenshot"
-            : "Always watch screen — toggle ON to attach screenshot to every message"
+            ? t("topbar.watch.tip_on")
+            : t("topbar.watch.tip_off")
         }
       >
         👁
       </button>
-      <button onClick={props.onReset} style={iconBtn} title="Reset conversation">
+      <button onClick={props.onReset} style={iconBtn} title={t("topbar.reset")}>
         ↺
       </button>
-      <button onClick={props.onToggleWizard} style={iconBtn} title="Model downloads">
+      <button onClick={props.onToggleWizard} style={iconBtn} title={t("topbar.downloads")}>
         ⬇
       </button>
-      <button onClick={props.onToggleSettings} style={iconBtn} title="Settings">
+      <button onClick={props.onToggleSettings} style={iconBtn} title={t("topbar.settings")}>
         ⚙
       </button>
-      <button
-        onClick={props.onQuit}
-        style={{ ...iconBtn, background: "rgba(226, 74, 74, 0.7)" }}
-        title="Quit Komorebi"
-      >
+      <button onClick={props.onQuit} style={iconBtn} title={t("topbar.quit")}>
         ✕
       </button>
     </div>
@@ -807,6 +805,7 @@ function TopBar(props: {
 }
 
 function RelationshipBadge({ state }: { state: RelationshipState }) {
+  useLocale();
   const meta = STAGE_LABELS[state.stage];
   const stages = Object.keys(STAGE_LABELS) as (keyof typeof STAGE_LABELS)[];
   const idx = stages.indexOf(state.stage);
@@ -814,9 +813,10 @@ function RelationshipBadge({ state }: { state: RelationshipState }) {
   const lo = thresholds[idx] ?? 0;
   const hi = thresholds[idx + 1] ?? state.score + 1;
   const pct = Math.max(0, Math.min(1, (state.score - lo) / (hi - lo))) * 100;
+  const stageName = t(`stage.${state.stage}` as any);
   return (
     <span
-      title={`Stage: ${meta.en} (${state.score} pts, ${state.total_interactions} interactions)`}
+      title={`${stageName} · ${t("rel.score", { score: state.score })} · ${t("rel.interactions", { count: state.total_interactions, streak: state.daily_streak })}`}
       style={{
         display: "inline-flex",
         alignItems: "center",
@@ -828,7 +828,7 @@ function RelationshipBadge({ state }: { state: RelationshipState }) {
       }}
     >
       <span>{meta.emoji}</span>
-      <span style={{ opacity: 0.95 }}>{meta.ru}</span>
+      <span style={{ opacity: 0.95 }}>{stageName}</span>
       <span
         style={{
           width: 28,
@@ -844,7 +844,7 @@ function RelationshipBadge({ state }: { state: RelationshipState }) {
             position: "absolute",
             inset: 0,
             width: `${pct}%`,
-            background: "#f0a3c0",
+            background: "rgba(255,255,255,0.55)",
           }}
         />
       </span>
@@ -856,7 +856,7 @@ const iconBtn: React.CSSProperties = {
   width: 24,
   height: 24,
   borderRadius: 8,
-  border: "1px solid rgba(255,255,255,0.1)",
+  border: "1px solid rgba(255,255,255,0.12)",
   background: "rgba(20,20,28,0.7)",
   color: "#fff",
   cursor: "pointer",
@@ -866,3 +866,11 @@ const iconBtn: React.CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
 };
+
+/** Same neutral icon button, with a subtle white border when "active". */
+function iconBtnStyle(active: boolean): React.CSSProperties {
+  return {
+    ...iconBtn,
+    border: active ? "1px solid rgba(255,255,255,0.55)" : iconBtn.border,
+  };
+}

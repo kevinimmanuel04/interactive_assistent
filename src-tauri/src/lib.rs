@@ -200,6 +200,8 @@ pub fn run() {
             commands::set_relationship_visibility,
             commands::set_relationship_nsfw_allowed,
             commands::set_relationship_decay_enabled,
+            commands::set_language,
+            commands::get_resolved_language,
         ])
         .setup(move |app| {
             app.global_shortcut().register(toggle_input)?;

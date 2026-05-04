@@ -80,6 +80,7 @@ export interface PublicSettings {
   relationship_visibility?: string;
   relationship_nsfw_allowed?: boolean;
   relationship_decay_enabled?: boolean;
+  language?: string;
 }
 
 export interface FolderStats {
@@ -681,6 +682,14 @@ export async function setRelationshipNsfwAllowed(allowed: boolean): Promise<void
 
 export async function setRelationshipDecayEnabled(enabled: boolean): Promise<void> {
   await invoke("set_relationship_decay_enabled", { enabled });
+}
+
+export async function setLanguage(language: "auto" | "en" | "ru" | "uk"): Promise<void> {
+  await invoke("set_language", { language });
+}
+
+export async function getResolvedLanguage(): Promise<"en" | "ru" | "uk"> {
+  return (await invoke<string>("get_resolved_language")) as "en" | "ru" | "uk";
 }
 
 export function onRelationshipUpdated(

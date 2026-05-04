@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import ExternalLink from "./ExternalLink";
+import { t, useLocale } from "../i18n";
 import {
   FolderStats,
   getSettings,
@@ -81,6 +82,7 @@ import {
   getRelationshipState,
   RelationshipState,
   STAGE_LABELS,
+  setLanguage,
 } from "../api";
 
 interface Props {
@@ -217,9 +219,9 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
                       padding: "6px 10px",
                       borderRadius: 8,
                       border: active
-                        ? "1px solid #b39ddb"
+                        ? "1px solid rgba(255,255,255,0.55)"
                         : "1px solid rgba(255,255,255,0.1)",
-                      background: active ? "rgba(179,157,219,0.2)" : "transparent",
+                      background: active ? "rgba(20,20,28,0.7)" : "transparent",
                       color: "#fff",
                       cursor: "pointer",
                       textTransform: "capitalize",
@@ -263,13 +265,13 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
                 style={{
                   padding: "6px 10px",
                   borderRadius: 8,
-                  border: "1px solid #b39ddb",
-                  background: "rgba(179,157,219,0.2)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  background: "rgba(20,20,28,0.7)",
                   color: "#fff",
                   cursor: "pointer",
                 }}
               >
-                Save
+                {t("common.save")}
               </button>
               {settings?.has_openrouter_key && (
                 <button
@@ -1278,6 +1280,7 @@ function SttSection({
       <FasterWhisperBlock settings={settings} onChanged={onChanged} />
       <DeepgramBlock settings={settings} onChanged={onChanged} />
       <ImageGenBlock settings={settings} onChanged={onChanged} />
+      <LanguageBlock settings={settings} onChanged={onChanged} />
       <WeatherBlock settings={settings} onChanged={onChanged} />
       <RelationshipBlock settings={settings} onChanged={onChanged} />
     </div>
@@ -2673,8 +2676,8 @@ const inpStyle: React.CSSProperties = {
 const btnStyle: React.CSSProperties = {
   padding: "5px 12px",
   borderRadius: 6,
-  border: "1px solid rgba(255,255,255,0.18)",
-  background: "rgba(179,157,219,0.25)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(20,20,28,0.7)",
   color: "#fff",
   cursor: "pointer",
   fontSize: 12,
@@ -2686,6 +2689,38 @@ const hintStyle: React.CSSProperties = {
   lineHeight: 1.4,
 };
 
+// --- Language -------------------------------------------------------------
+
+function LanguageBlock({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  useLocale();
+  const language = (settings?.language ?? "auto") as "auto" | "en" | "ru" | "uk";
+  return (
+    <section style={sectionStyle}>
+      <h3 style={h3Style}>🌐 {t("settings.language.title")}</h3>
+      <p style={hintStyle}>{t("settings.language.hint")}</p>
+      <select
+        value={language}
+        onChange={async (e) => {
+          await setLanguage(e.target.value as "auto" | "en" | "ru" | "uk");
+          await onChanged();
+        }}
+        style={inpStyle}
+      >
+        <option value="auto">{t("settings.language.auto")}</option>
+        <option value="en">{t("settings.language.en")}</option>
+        <option value="ru">{t("settings.language.ru")}</option>
+        <option value="uk">{t("settings.language.uk")}</option>
+      </select>
+    </section>
+  );
+}
+
 // --- Weather --------------------------------------------------------------
 
 function WeatherBlock({
@@ -2695,6 +2730,7 @@ function WeatherBlock({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const [keyInput, setKeyInput] = useState("");
   const [city, setCity] = useState(settings?.weather_default_city ?? "");
   const provider = settings?.weather_provider ?? "openmeteo";
@@ -2707,12 +2743,9 @@ function WeatherBlock({
 
   return (
     <section style={sectionStyle}>
-      <h3 style={h3Style}>🌤️ Weather</h3>
-      <p style={hintStyle}>
-        Komorebi can answer "погода в Берлине", "/weather Tokyo", or just
-        "what's the weather". Open-Meteo is free and needs no key.
-      </p>
-      <label style={lblStyle}>Provider</label>
+      <h3 style={h3Style}>🌤️ {t("weather.title")}</h3>
+      <p style={hintStyle}>{t("weather.hint")}</p>
+      <label style={lblStyle}>{t("weather.provider")}</label>
       <select
         value={provider}
         onChange={async (e) => {
@@ -2721,16 +2754,16 @@ function WeatherBlock({
         }}
         style={inpStyle}
       >
-        <option value="openmeteo">Open-Meteo (free, no key)</option>
-        <option value="openweathermap">OpenWeatherMap (requires key)</option>
+        <option value="openmeteo">{t("weather.provider.openmeteo")}</option>
+        <option value="openweathermap">{t("weather.provider.owm")}</option>
       </select>
       {provider === "openweathermap" && (
         <>
-          <label style={lblStyle}>OpenWeatherMap API key {hasKey ? "✓" : "—"}</label>
+          <label style={lblStyle}>{t("weather.api_key")} {hasKey ? "✓" : "—"}</label>
           <div style={{ display: "flex", gap: 6 }}>
             <input
               type="password"
-              placeholder={hasKey ? "(saved — leave blank)" : "paste API key"}
+              placeholder={hasKey ? t("weather.api_key.placeholder_saved") : t("weather.api_key.placeholder_empty")}
               value={keyInput}
               onChange={(e) => setKeyInput(e.target.value)}
               style={{ ...inpStyle, flex: 1 }}
@@ -2744,7 +2777,7 @@ function WeatherBlock({
               }}
               style={btnStyle}
             >
-              Save
+              {t("common.save")}
             </button>
             {hasKey && (
               <button
@@ -2754,16 +2787,16 @@ function WeatherBlock({
                 }}
                 style={btnStyle}
               >
-                Clear
+                {t("common.clear")}
               </button>
             )}
           </div>
         </>
       )}
-      <label style={lblStyle}>Default city (optional)</label>
+      <label style={lblStyle}>{t("weather.default_city")}</label>
       <div style={{ display: "flex", gap: 6 }}>
         <input
-          placeholder="e.g. Berlin"
+          placeholder={t("weather.default_city.placeholder")}
           value={city}
           onChange={(e) => setCity(e.target.value)}
           style={{ ...inpStyle, flex: 1 }}
@@ -2775,7 +2808,7 @@ function WeatherBlock({
           }}
           style={btnStyle}
         >
-          Save
+          {t("common.save")}
         </button>
       </div>
       <label style={{ ...lblStyle, display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
@@ -2787,9 +2820,9 @@ function WeatherBlock({
             await onChanged();
           }}
         />
-        <span>Auto-detect city via IP when not specified</span>
+        <span>{t("weather.use_ip")}</span>
       </label>
-      <label style={lblStyle}>Units</label>
+      <label style={lblStyle}>{t("weather.units")}</label>
       <select
         value={units}
         onChange={async (e) => {
@@ -2798,8 +2831,8 @@ function WeatherBlock({
         }}
         style={inpStyle}
       >
-        <option value="metric">Metric (°C, m/s)</option>
-        <option value="imperial">Imperial (°F, mph)</option>
+        <option value="metric">{t("weather.units.metric")}</option>
+        <option value="imperial">{t("weather.units.imperial")}</option>
       </select>
     </section>
   );
@@ -2814,6 +2847,7 @@ function RelationshipBlock({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const [name, setName] = useState(settings?.user_name ?? "");
   const [state, setState] = useState<RelationshipState | null>(null);
   const visibility = settings?.relationship_visibility ?? "indicator";
@@ -2840,30 +2874,25 @@ function RelationshipBlock({
 
   return (
     <section style={sectionStyle}>
-      <h3 style={h3Style}>💞 Relationship</h3>
-      <p style={hintStyle}>
-        The assistant remembers how you treat her. Compliments, regular
-        contact, and substantive conversation deepen affinity; rudeness and
-        long silences pull it back. Stages alter tone, animations, and
-        endearments.
-      </p>
+      <h3 style={h3Style}>💞 {t("rel.title")}</h3>
+      <p style={hintStyle}>{t("rel.hint")}</p>
       {state && stageMeta && (
         <div style={{ display: "flex", gap: 12, alignItems: "center", margin: "8px 0" }}>
           <div style={{ fontSize: 22 }}>{stageMeta.emoji}</div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 14, fontWeight: 600 }}>
-              {stageMeta.ru} · {state.score} pts
+              {t(`stage.${state.stage}` as any)} · {t("rel.score", { score: state.score })}
             </div>
             <div style={{ fontSize: 11, opacity: 0.7 }}>
-              {state.total_interactions} interactions · streak {state.daily_streak}d
+              {t("rel.interactions", { count: state.total_interactions, streak: state.daily_streak })}
             </div>
           </div>
         </div>
       )}
-      <label style={lblStyle}>Your name (optional)</label>
+      <label style={lblStyle}>{t("rel.your_name")}</label>
       <div style={{ display: "flex", gap: 6 }}>
         <input
-          placeholder="How should she call you?"
+          placeholder={t("rel.your_name.placeholder")}
           value={name}
           onChange={(e) => setName(e.target.value)}
           style={{ ...inpStyle, flex: 1 }}
@@ -2875,10 +2904,10 @@ function RelationshipBlock({
           }}
           style={btnStyle}
         >
-          Save
+          {t("common.save")}
         </button>
       </div>
-      <label style={lblStyle}>Indicator visibility</label>
+      <label style={lblStyle}>{t("rel.visibility")}</label>
       <select
         value={visibility}
         onChange={async (e) => {
@@ -2887,8 +2916,8 @@ function RelationshipBlock({
         }}
         style={inpStyle}
       >
-        <option value="indicator">Show heart badge in top bar</option>
-        <option value="hidden">Hide indicator</option>
+        <option value="indicator">{t("rel.visibility.show")}</option>
+        <option value="hidden">{t("rel.visibility.hide")}</option>
       </select>
       <label style={{ ...lblStyle, display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
         <input
@@ -2899,7 +2928,7 @@ function RelationshipBlock({
             await onChanged();
           }}
         />
-        <span>Slowly decay affinity during inactivity (~1 pt/day)</span>
+        <span>{t("rel.decay")}</span>
       </label>
       {state && (state.stage === "romantic" || state.stage === "lover") && (
         <label style={{ ...lblStyle, display: "flex", alignItems: "center", gap: 8 }}>
@@ -2911,13 +2940,13 @@ function RelationshipBlock({
               await onChanged();
             }}
           />
-          <span>Allow flirty/intimate replies at high stages</span>
+          <span>{t("rel.nsfw")}</span>
         </label>
       )}
       {state && state.events.length > 0 && (
         <details style={{ marginTop: 8 }}>
           <summary style={{ cursor: "pointer", fontSize: 11, opacity: 0.8 }}>
-            Recent events ({state.events.length})
+            {t("rel.recent_events")} ({state.events.length})
           </summary>
           <ul
             style={{
@@ -2932,7 +2961,7 @@ function RelationshipBlock({
           >
             {[...state.events].reverse().slice(0, 30).map((ev, i) => (
               <li key={i}>
-                <span style={{ color: ev.delta >= 0 ? "#7fc97f" : "#e08585" }}>
+                <span style={{ opacity: 0.8 }}>
                   {ev.delta >= 0 ? "+" : ""}
                   {ev.delta}
                 </span>{" "}
@@ -2944,13 +2973,13 @@ function RelationshipBlock({
       )}
       <button
         onClick={async () => {
-          if (!confirm("Reset relationship state to Stranger?")) return;
+          if (!confirm(t("rel.reset.confirm"))) return;
           await resetRelationship();
           await onChanged();
         }}
         style={{ ...btnStyle, marginTop: 8 }}
       >
-        Reset relationship
+        {t("rel.reset.button")}
       </button>
     </section>
   );

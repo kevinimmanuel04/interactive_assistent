@@ -380,7 +380,7 @@ export default function ModelWizard({
                             style={{
                               width: `${pct ?? 0}%`,
                               height: "100%",
-                              background: "#b39ddb",
+                              background: "rgba(255,255,255,0.55)",
                               transition: "width 0.2s linear",
                             }}
                           />
@@ -648,22 +648,14 @@ function ImageGenPanel({
 }
 
 function btn(variant: "default" | "danger" = "default"): React.CSSProperties {
-  if (variant === "danger") {
-    return {
-      padding: "6px 10px",
-      borderRadius: 8,
-      border: "1px solid rgba(239,154,154,0.55)",
-      background: "rgba(239,83,80,0.18)",
-      color: "#fff",
-      cursor: "pointer",
-      fontSize: 12,
-    };
-  }
+  // Unified neutral style; `variant` retained for call-site compat but renders
+  // the same tile so the UI stays monochrome.
+  void variant;
   return {
     padding: "6px 10px",
     borderRadius: 8,
-    border: "1px solid rgba(179,157,219,0.6)",
-    background: "rgba(179,157,219,0.2)",
+    border: "1px solid rgba(255,255,255,0.12)",
+    background: "rgba(20,20,28,0.7)",
     color: "#fff",
     cursor: "pointer",
     fontSize: 12,
