@@ -87,11 +87,21 @@ jobs:
           Write-Host "NSIS bundle contents:"
           Get-ChildItem $dir | ForEach-Object { Write-Host "  $($_.Name) ($($_.Length) bytes)" }
 
+      - name: Stage installer (flatten paths)
+        shell: pwsh
+        run: |
+          $src = "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis"
+          $dst = "staging/komorebi-windows"
+          New-Item -ItemType Directory -Path $dst -Force | Out-Null
+          Copy-Item "$src/*" $dst -Force
+          Write-Host "Staged contents:"
+          Get-ChildItem $dst | ForEach-Object { Write-Host "  $($_.Name) ($($_.Length) bytes)" }
+
       - name: Upload installer artifact
         uses: actions/upload-artifact@v5
         with:
           name: komorebi-windows
-          path: src-tauri/target/*/release/bundle/nsis/*
+          path: staging/komorebi-windows/*
           if-no-files-found: error
 
       - name: Attach to GitHub Release
@@ -99,7 +109,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           draft: true
-          files: src-tauri/target/*/release/bundle/nsis/*
+          files: staging/komorebi-windows/*
 
   updater-manifest:
     needs: build
@@ -108,10 +118,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Download platform bundles
+      - name: Download Windows installer
         uses: actions/download-artifact@v5
         with:
-          path: bundles
+          name: komorebi-windows
+          path: bundles/komorebi-windows
 
       - name: List downloaded artifacts
         run: |
