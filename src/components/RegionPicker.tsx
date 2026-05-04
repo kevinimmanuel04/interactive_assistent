@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { desktopListScreens, desktopScreenshot, ScreenInfo } from "../api";
+import { t, useLocale } from "../i18n";
 
 export type Importance = "low" | "normal" | "high" | "critical";
 
@@ -78,6 +79,7 @@ export default function RegionPicker({
   onSubmit,
   onGenerateVariant,
 }: Props) {
+  useLocale();
   const [imgUrl, setImgUrl] = useState<string | null>(null);
   const [imgBitmap, setImgBitmap] = useState<HTMLImageElement | null>(null);
   const [screen, setScreen] = useState<ScreenInfo | null>(null);
@@ -599,9 +601,9 @@ export default function RegionPicker({
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <strong>Region picker</strong>
+          <strong>{t("region.title")}</strong>
           <span style={{ opacity: 0.7 }}>
-            Drag to add · click to select · Del removes · Enter sends · Ctrl+C copies
+            {t("region.help")}
           </span>
           {regions.length > 0 && (
             <span
@@ -612,7 +614,9 @@ export default function RegionPicker({
                 fontWeight: 600,
               }}
             >
-              {regions.length} region{regions.length === 1 ? "" : "s"}
+              {regions.length === 1
+                ? t("region.count_one", { n: regions.length })
+                : t("region.count_many", { n: regions.length })}
             </span>
           )}
         </div>
@@ -621,15 +625,15 @@ export default function RegionPicker({
             <button
               onClick={clearAll}
               style={btnStyle()}
-              title="Remove all regions"
+              title={t("region.clear_all.tip")}
             >
-              Clear all
+              {t("region.clear_all")}
             </button>
           )}
           <button
             onClick={onCancel}
-            aria-label="Close region picker"
-            title="Close (Esc)"
+            aria-label={t("region.close.tip")}
+            title={`${t("region.close.tip")} (Esc)`}
             style={{
               width: 32,
               height: 32,
@@ -670,7 +674,7 @@ export default function RegionPicker({
       >
         <div>
           <div style={labelStyle}>
-            {selected ? "Color (selected)" : "Next color"}
+            {selected ? t("region.color.selected") : t("region.color.next")}
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {COLORS.map((c) => (
@@ -700,7 +704,7 @@ export default function RegionPicker({
         </div>
         <div>
           <div style={labelStyle}>
-            {selected ? "Importance (selected)" : "Next importance"}
+            {selected ? t("region.importance.selected") : t("region.importance.next")}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {(Object.keys(IMPORTANCE_META) as Importance[]).map((imp) => {
@@ -737,18 +741,18 @@ export default function RegionPicker({
         </div>
         {selected && (
           <div>
-            <div style={labelStyle}>Label (optional)</div>
+            <div style={labelStyle}>{t("region.label")}</div>
             <input
               value={selected.label ?? ""}
               onChange={(e) => updateSelected({ label: e.target.value })}
-              placeholder="e.g. error toast"
+              placeholder={t("region.label.placeholder")}
               style={inputStyle}
             />
             <button
               onClick={deleteSelected}
               style={{ ...btnStyle(), marginTop: 8, width: "100%" }}
             >
-              Delete region
+              {t("region.delete")}
             </button>
           </div>
         )}
@@ -778,7 +782,7 @@ export default function RegionPicker({
             pointerEvents: "auto",
           }}
         >
-          <div style={labelStyle}>Regions</div>
+          <div style={labelStyle}>{t("region.list_title")}</div>
           {regions.map((r, i) => {
             const meta = IMPORTANCE_META[r.importance];
             const isSel = r.id === selectedId;

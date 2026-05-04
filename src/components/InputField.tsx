@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { cancelRecording, startRecording, stopRecording } from "../api";
+import { t, useLocale } from "../i18n";
 
 interface Props {
   open: boolean;
@@ -26,6 +27,7 @@ export default function InputField({
   sttEnabled = false,
   visionEnabled = false,
 }: Props) {
+  useLocale();
   const [value, setValue] = useState("");
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -63,7 +65,7 @@ export default function InputField({
           setValue("");
           onSubmit(trimmed);
         } else {
-          setMicError("No speech detected");
+          setMicError(t("input.no_speech"));
           queueMicrotask(() => ref.current?.focus());
         }
       } catch (err) {
@@ -123,14 +125,14 @@ export default function InputField({
                 type="button"
                 onClick={toggleMic}
                 disabled={busy}
-                title={recording ? "Stop recording" : "Start recording (mic)"}
+                title={recording ? t("input.mic.stop") : t("input.mic.start")}
                 style={{
                   width: 30,
                   height: 30,
                   borderRadius: 15,
-                  border: "none",
+                  border: "1px solid rgba(255,255,255,0.12)",
                   cursor: busy ? "wait" : "pointer",
-                  background: recording ? "#e24a4a" : "rgba(255,255,255,0.08)",
+                  background: recording ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)",
                   color: "#fff",
                   display: "flex",
                   alignItems: "center",
@@ -153,10 +155,10 @@ export default function InputField({
               }}
               placeholder={
                 transcribing
-                  ? "Transcribing…"
+                  ? t("input.transcribing")
                   : recording
-                  ? "Listening…"
-                  : "Ask anything…"
+                  ? t("input.listening")
+                  : t("input.placeholder")
               }
               style={{
                 flex: 1,
@@ -177,7 +179,7 @@ export default function InputField({
                   onImagePrompt(prompt);
                   setValue("");
                 }}
-                title="Generate image from prompt"
+                title={t("input.image_prompt")}
                 style={{
                   width: 30,
                   height: 30,
@@ -198,15 +200,15 @@ export default function InputField({
                 <button
                   type="button"
                   onClick={() => setVisionMenuOpen((v) => !v)}
-                  title="Show me — capture screen / region / image"
+                  title={t("input.vision.tooltip")}
                   style={{
                     width: 30,
                     height: 30,
                     borderRadius: 15,
-                    border: "none",
+                    border: "1px solid rgba(255,255,255,0.12)",
                     cursor: "pointer",
                     background: visionMenuOpen
-                      ? "rgba(111,174,90,0.6)"
+                      ? "rgba(255,255,255,0.18)"
                       : "rgba(255,255,255,0.08)",
                     color: "#fff",
                     fontSize: 14,
@@ -240,7 +242,7 @@ export default function InputField({
                         setValue("");
                       }}
                     >
-                      🖥 Full screen
+                      {t("input.vision.full_screen")}
                     </button>
                     <button
                       type="button"
@@ -251,7 +253,7 @@ export default function InputField({
                         setValue("");
                       }}
                     >
-                      ▭ Select region…
+                      {t("input.vision.select_region")}
                     </button>
                     <button
                       type="button"
@@ -261,7 +263,7 @@ export default function InputField({
                         fileRef.current?.click();
                       }}
                     >
-                      🖼 Attach image…
+                      {t("input.vision.attach_image")}
                     </button>
                   </div>
                 )}

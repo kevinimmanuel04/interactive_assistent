@@ -92,6 +92,7 @@ interface Props {
 }
 
 export default function SettingsPanel({ open, onClose, onChanged }: Props) {
+  useLocale();
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -172,7 +173,7 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
               flexShrink: 0,
             }}
           >
-            <strong style={{ fontSize: 14 }}>Settings</strong>
+            <strong style={{ fontSize: 14 }}>{t("settings.title")}</strong>
             <button
               onClick={onClose}
               style={{
@@ -187,7 +188,7 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
                 height: 24,
                 borderRadius: 6,
               }}
-              aria-label="Close"
+              aria-label={t("common.close")}
             >
               ×
             </button>
@@ -206,9 +207,9 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
           >
 
           <div>
-            <div style={{ opacity: 0.7, marginBottom: 6 }}>Routing mode</div>
+            <div style={{ opacity: 0.7, marginBottom: 6 }}>{t("settings.routing.title")}</div>
             <div style={{ display: "flex", gap: 6 }}>
-              {(["auto", "local", "cloud"] as const).map((m) => {
+              {((["auto", "local", "cloud"] as const)).map((m) => {
                 const active = settings?.mode === m;
                 return (
                   <button
@@ -224,10 +225,9 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
                       background: active ? "rgba(20,20,28,0.7)" : "transparent",
                       color: "#fff",
                       cursor: "pointer",
-                      textTransform: "capitalize",
                     }}
                   >
-                    {m}
+                    {t(`settings.routing.${m}` as const)}
                   </button>
                 );
               })}
@@ -236,16 +236,18 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
 
           <div>
             <div style={{ opacity: 0.7, marginBottom: 6 }}>
-              OpenRouter API key{" "}
+              {t("settings.openrouter.key")}{" "}
               {settings?.has_openrouter_key && (
-                <span style={{ color: "#a5d6a7" }}>• saved</span>
+                <span style={{ color: "#a5d6a7" }}>{t("settings.status.saved")}</span>
               )}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <input
                 type="password"
                 placeholder={
-                  settings?.has_openrouter_key ? "••••••••" : "sk-or-..."
+                  settings?.has_openrouter_key
+                    ? t("settings.openrouter.key.placeholder_saved")
+                    : t("settings.openrouter.key.placeholder_empty")
                 }
                 value={keyInput}
                 onChange={(e) => setKeyInput(e.target.value)}
@@ -285,12 +287,12 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
                     cursor: "pointer",
                   }}
                 >
-                  Clear
+                  {t("common.clear")}
                 </button>
               )}
             </div>
             <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
-              Model: {settings?.openrouter_model ?? "…"}
+              {t("settings.openrouter.model_info", { model: settings?.openrouter_model ?? "…" })}
             </div>
           </div>
 
@@ -397,6 +399,7 @@ function Live2DSection({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -417,14 +420,14 @@ function Live2DSection({
   return (
     <div>
       <div style={{ opacity: 0.7, marginBottom: 6 }}>
-        Avatar — Live2D model URL{" "}
+        {t("settings.live2d.label")}{" "}
         {settings?.live2d_model_url && (
-          <span style={{ color: "#a5d6a7" }}>• set</span>
+          <span style={{ color: "#a5d6a7" }}>{t("settings.status.set")}</span>
         )}
       </div>
       <input
         type="text"
-        placeholder="https://.../model.model3.json or /live2d/.../model.model3.json"
+        placeholder={t("settings.live2d.placeholder")}
         value={url}
         disabled={busy}
         onChange={(e) => setUrl(e.target.value)}
@@ -434,9 +437,7 @@ function Live2DSection({
         style={inputStyle}
       />
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
-        Supports Cubism 2 (<code>.model.json</code>) and 3/4 (
-        <code>.model3.json</code>). The runtime is auto-fetched from CDN on
-        first load. Try:{" "}
+        {t("settings.live2d.hint")}{" "}
         <ExternalLink href="https://guansss.github.io/pixi-live2d-display/">
           pixi-live2d-display demo
         </ExternalLink>
@@ -456,6 +457,7 @@ function AvatarLayoutSection({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const [zoom, setZoom] = useState<number>(settings?.avatar_zoom ?? 1);
   const [ox, setOx] = useState<number>(settings?.avatar_offset_x ?? 0);
   const [oy, setOy] = useState<number>(settings?.avatar_offset_y ?? 0);
@@ -480,10 +482,10 @@ function AvatarLayoutSection({
   return (
     <div style={{ marginTop: 10, padding: 8, background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
       <div style={{ opacity: 0.7, fontSize: 11, marginBottom: 4 }}>
-        Avatar size & position
+        {t("settings.avatar.title")}
       </div>
       <Slider
-        label={`Zoom ×${zoom.toFixed(2)} (model size, independent of window)`}
+        label={t("settings.avatar.zoom", { value: zoom.toFixed(2) })}
         min={0.3}
         max={2.5}
         step={0.05}
@@ -495,7 +497,7 @@ function AvatarLayoutSection({
         onCommit={() => void commitZoom(zoom)}
       />
       <Slider
-        label={`Horizontal nudge ${ox >= 0 ? "+" : ""}${ox.toFixed(2)}`}
+        label={t("settings.avatar.offset_x", { value: `${ox >= 0 ? "+" : ""}${ox.toFixed(2)}` })}
         min={-1}
         max={1}
         step={0.02}
@@ -507,7 +509,7 @@ function AvatarLayoutSection({
         onCommit={() => void commitOffset(ox, oy)}
       />
       <Slider
-        label={`Vertical nudge ${oy >= 0 ? "+" : ""}${oy.toFixed(2)} (positive = down)`}
+        label={t("settings.avatar.offset_y", { value: `${oy >= 0 ? "+" : ""}${oy.toFixed(2)}` })}
         min={-1}
         max={1}
         step={0.02}
@@ -537,11 +539,10 @@ function AvatarLayoutSection({
           cursor: "pointer",
         }}
       >
-        Reset to fit
+        {t("settings.avatar.reset")}
       </button>
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>
-        Resize the window from any edge — these values stay fixed, so the
-        model keeps its real-pixel size while the window shrinks.
+        {t("settings.avatar.reset_hint")}
       </div>
     </div>
   );
@@ -554,6 +555,7 @@ function TtsSection({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const [binary, setBinary] = useState("");
   const [voice, setVoice] = useState("");
   const [busy, setBusy] = useState(false);
@@ -589,8 +591,8 @@ function TtsSection({
         }}
       >
         <span style={{ opacity: 0.7 }}>
-          Voice output (Piper){" "}
-          {ready && <span style={{ color: "#a5d6a7" }}>• configured</span>}
+          {t("settings.tts.title")}{" "}
+          {ready && <span style={{ color: "#a5d6a7" }}>{t("settings.status.configured")}</span>}
         </span>
         <label
           style={{
@@ -600,7 +602,7 @@ function TtsSection({
             cursor: ready ? "pointer" : "not-allowed",
             opacity: ready ? 1 : 0.5,
           }}
-          title={ready ? "" : "Set binary and voice paths first"}
+          title={ready ? "" : t("settings.tts.tip_disabled")}
         >
           <input
             type="checkbox"
@@ -608,12 +610,12 @@ function TtsSection({
             disabled={!ready || busy}
             onChange={(e) => save(() => setTtsEnabled(e.target.checked))}
           />
-          <span>{enabled ? "On" : "Off"}</span>
+          <span>{enabled ? t("settings.tts.on") : t("settings.tts.off")}</span>
         </label>
       </div>
       <input
         type="text"
-        placeholder="Path to piper binary (optional — bundled by default)"
+        placeholder={t("settings.tts.binary.placeholder")}
         value={binary}
         onChange={(e) => setBinary(e.target.value)}
         onBlur={() =>
@@ -624,7 +626,7 @@ function TtsSection({
       />
       <input
         type="text"
-        placeholder="Path to <voice>.onnx"
+        placeholder={t("settings.tts.voice.placeholder")}
         value={voice}
         onChange={(e) => setVoice(e.target.value)}
         onBlur={() =>
@@ -634,9 +636,7 @@ function TtsSection({
         style={{ ...inputStyle, marginTop: 6 }}
       />
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
-        Download voices from the Models panel (⬇). A Piper binary is bundled
-        with the app; leave the first field empty to use it. Override with a
-        custom build from{" "}
+        {t("settings.tts.hint")}{" "}
         <ExternalLink href="https://github.com/OHF-Voice/piper1-gpl/releases">
           OHF-Voice/piper1-gpl
         </ExternalLink>
@@ -660,6 +660,7 @@ function ProsodySection({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const [length, setLength] = useState<number>(settings?.tts_length_scale ?? 1);
   const [noise, setNoise] = useState<number>(settings?.tts_noise_scale ?? 0.667);
   const [noiseW, setNoiseW] = useState<number>(settings?.tts_noise_w ?? 0.8);
@@ -695,10 +696,10 @@ function ProsodySection({
   return (
     <div style={{ marginTop: 10, padding: 8, background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
       <div style={{ opacity: 0.7, fontSize: 11, marginBottom: 4 }}>
-        Voice shape (Piper)
+        {t("settings.prosody.title")}
       </div>
       <Slider
-        label={`Speed / pitch (length × ${length.toFixed(2)}) · smaller = faster & higher`}
+        label={t("settings.prosody.speed", { value: length.toFixed(2) })}
         min={0.5}
         max={1.6}
         step={0.05}
@@ -708,7 +709,7 @@ function ProsodySection({
         disabled={busy}
       />
       <Slider
-        label={`Expressiveness (noise ${noise.toFixed(2)})`}
+        label={t("settings.prosody.expressive", { value: noise.toFixed(2) })}
         min={0.1}
         max={1.2}
         step={0.05}
@@ -718,7 +719,7 @@ function ProsodySection({
         disabled={busy}
       />
       <Slider
-        label={`Rhythm variability (noise_w ${noiseW.toFixed(2)})`}
+        label={t("settings.prosody.rhythm", { value: noiseW.toFixed(2) })}
         min={0.1}
         max={1.2}
         step={0.05}
@@ -728,7 +729,7 @@ function ProsodySection({
         disabled={busy}
       />
       <Slider
-        label={`Volume ${Math.round(volume * 100)}%`}
+        label={t("settings.prosody.volume", { value: String(Math.round(volume * 100)) })}
         min={0}
         max={1.5}
         step={0.05}
@@ -740,7 +741,7 @@ function ProsodySection({
         onCommit={() => {}}
       />
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>
-        Tip: for a brighter, anime-ish delivery try length ≈ 0.85, noise ≈ 0.8.
+        {t("settings.prosody.tip")}
       </div>
     </div>
   );
@@ -795,29 +796,30 @@ function ProviderSection({
 }) {
   const provider = (settings?.tts_provider ?? "piper") as "piper" | "sovits" | "openrouter";
   const hasKey = settings?.has_openrouter_key ?? false;
+  useLocale();
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{ opacity: 0.7, fontSize: 11, marginBottom: 4 }}>TTS provider</div>
+      <div style={{ opacity: 0.7, fontSize: 11, marginBottom: 4 }}>{t("settings.tts.provider")}</div>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {([
-          ["piper", "Piper (local, light)", true],
-          ["sovits", "GPT-SoVITS (external)", true],
-          ["openrouter", "OpenRouter (cloud)", hasKey],
+          ["piper", t("settings.tts.provider.piper"), true],
+          ["sovits", t("settings.tts.provider.sovits"), true],
+          ["openrouter", t("settings.tts.provider.openrouter"), hasKey],
         ] as const).map(([p, label, enabled]) => (
           <button
             key={p}
             disabled={!enabled}
-            title={!enabled ? "Set the OpenRouter API key first" : ""}
+            title={!enabled ? t("settings.tts.provider.tip_no_key") : ""}
             onClick={async () => {
-              await setTtsProvider(p);
+              await setTtsProvider(p as "piper" | "sovits" | "openrouter");
               await onChanged();
             }}
             style={{
               flex: "1 1 30%",
               padding: "6px 8px",
               borderRadius: 6,
-              border: provider === p ? "1px solid #8ab4f8" : "1px solid rgba(255,255,255,0.15)",
-              background: provider === p ? "rgba(138,180,248,0.12)" : "transparent",
+              border: provider === p ? "1px solid rgba(255,255,255,0.55)" : "1px solid rgba(255,255,255,0.15)",
+              background: provider === p ? "rgba(255,255,255,0.08)" : "transparent",
               color: enabled ? "#fff" : "rgba(255,255,255,0.4)",
               cursor: enabled ? "pointer" : "not-allowed",
               fontSize: 12,
@@ -887,7 +889,7 @@ function SoVitsSection({
   return (
     <div style={{ marginTop: 10, padding: 8, background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
       <div style={{ opacity: 0.7, fontSize: 11, marginBottom: 4 }}>
-        GPT-SoVITS endpoint (external inference server)
+        {t("settings.sovits.title")}
       </div>
       <input
         type="text"
@@ -899,7 +901,7 @@ function SoVitsSection({
       />
       <input
         type="text"
-        placeholder="Reference audio path (absolute path on the server)"
+        placeholder={t("settings.sovits.ref_audio.placeholder")}
         value={refAudio}
         onChange={(e) => setRefAudio(e.target.value)}
         onBlur={save}
@@ -907,7 +909,7 @@ function SoVitsSection({
       />
       <input
         type="text"
-        placeholder="Transcript of the reference clip"
+        placeholder={t("settings.sovits.prompt_text.placeholder")}
         value={promptText}
         onChange={(e) => setPromptText(e.target.value)}
         onBlur={save}
@@ -943,7 +945,7 @@ function SoVitsSection({
         </select>
       </div>
       <Slider
-        label={`Speed ×${speed.toFixed(2)}`}
+        label={t("settings.sovits.speed", { value: speed.toFixed(2) })}
         min={0.5}
         max={2}
         step={0.05}
@@ -953,14 +955,10 @@ function SoVitsSection({
         disabled={busy}
       />
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4, lineHeight: 1.4 }}>
-        Run GPT-SoVITS separately from{" "}
+        {t("settings.sovits.hint")}{" "}
         <ExternalLink href="https://github.com/RVC-Boss/GPT-SoVITS">
           RVC-Boss/GPT-SoVITS
         </ExternalLink>
-        {" "}(`python api_v2.py` starts the FastAPI server on :9880). Point the
-        reference-audio field at a 3–10 s anime/seiyuu clip and fill in its
-        transcript; Komorebi POSTs text to <code>/tts</code> and plays the
-        returned WAV.
       </div>
     </div>
   );
@@ -1020,6 +1018,7 @@ function OpenRouterVoiceSection({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const expanded = (settings?.tts_provider ?? "piper") === "openrouter";
   const hasKey = settings?.has_openrouter_key ?? false;
   const [enabled, setEnabled] = useState(settings?.openrouter_tts_enabled ?? false);
@@ -1074,7 +1073,7 @@ function OpenRouterVoiceSection({
     <div style={{ marginTop: 10, padding: 8, background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
       {!hasKey && (
         <div style={{ color: "#ffb74d", fontSize: 11, marginBottom: 6 }}>
-          Set your OpenRouter API key above to enable cloud TTS.
+          {t("settings.or_tts.no_key")}
         </div>
       )}
       <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
@@ -1084,10 +1083,10 @@ function OpenRouterVoiceSection({
           disabled={busy || !hasKey}
           onChange={(e) => commitEnabled(e.target.checked)}
         />
-        Enable OpenRouter TTS
+        {t("settings.or_tts.enable")}
       </label>
       <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
-        TTS model
+        {t("settings.or_tts.model")}
       </div>
       <input
         type="text"
@@ -1115,7 +1114,7 @@ function OpenRouterVoiceSection({
         )}
       </datalist>
       <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
-        Voice
+        {t("settings.or_tts.voice")}
       </div>
       <select
         value={voice}
@@ -1142,9 +1141,7 @@ function OpenRouterVoiceSection({
         ))}
       </select>
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6, lineHeight: 1.4 }}>
-        Routes synthesis through OpenRouter using an audio-output-capable
-        model. Piper still works as a local fallback when this provider is
-        switched off.
+        {t("settings.or_tts.hint")}
       </div>
     </div>
   );
@@ -1169,6 +1166,7 @@ function SttSection({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const [path, setPath] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -1204,19 +1202,19 @@ function SttSection({
   return (
     <div>
       <div style={{ opacity: 0.7, marginBottom: 6 }}>
-        Speech-to-text — Whisper model path{" "}
+        {t("settings.stt.label")}{" "}
         {settings?.whisper_model_path && (
-          <span style={{ color: "#a5d6a7" }}>• set</span>
+          <span style={{ color: "#a5d6a7" }}>{t("settings.status.set")}</span>
         )}
         {!available && (
           <span style={{ color: "#ffb74d", marginLeft: 6 }}>
-            • build without <code>stt</code> feature
+            {t("settings.stt.warn_feature")}
           </span>
         )}
       </div>
       <input
         type="text"
-        placeholder="ggml-base.en.bin path (or use the wizard)"
+        placeholder={t("settings.stt.placeholder")}
         value={path}
         disabled={busy}
         onChange={(e) => setPath(e.target.value)}
@@ -1226,14 +1224,13 @@ function SttSection({
         style={inputStyle}
       />
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
-        Download a Whisper ggml model via the wizard, then click "Use as STT
-        model". A 🎙 button will appear in the input field.
+        {t("settings.stt.hint")}
       </div>
 
       <div style={{ marginTop: 10, padding: 8, background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
         {!hasKey && (
           <div style={{ color: "#ffb74d", fontSize: 11, marginBottom: 6 }}>
-            Set your OpenRouter API key above to enable cloud STT.
+            {t("settings.stt.or.no_key")}
           </div>
         )}
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
@@ -1243,10 +1240,10 @@ function SttSection({
             disabled={!hasKey}
             onChange={(e) => toggleOr(e.target.checked)}
           />
-          Use OpenRouter STT (cloud) when enabled — falls back to Whisper if off
+          {t("settings.stt.or.enable")}
         </label>
         <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
-          STT model
+          {t("settings.stt.or.model")}
         </div>
         <input
           type="text"
@@ -1294,6 +1291,7 @@ function GameCoachSection({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const hasKey = settings?.has_openrouter_key ?? false;
   const enabled = settings?.game_coach_enabled ?? false;
   const model = settings?.game_coach_model ?? "openai/gpt-4o-mini";
@@ -1310,12 +1308,12 @@ function GameCoachSection({
   return (
     <div style={{ marginTop: 14 }}>
       <div style={{ opacity: 0.7, marginBottom: 6 }}>
-        Game Coach (vision)
+        {t("settings.coach.title")}
       </div>
       <div style={{ padding: 8, background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
         {!hasKey && (
           <div style={{ color: "#ffb74d", fontSize: 11, marginBottom: 6 }}>
-            Set your OpenRouter API key to use the vision-based coach.
+            {t("settings.coach.no_key")}
           </div>
         )}
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
@@ -1325,10 +1323,10 @@ function GameCoachSection({
             disabled={!hasKey}
             onChange={(e) => toggle(e.target.checked)}
           />
-          Watch the screen during games and whisper short tips
+          {t("settings.coach.enable")}
         </label>
         <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
-          Vision model
+          {t("settings.coach.model")}
         </div>
         <input
           type="text"
@@ -1347,8 +1345,7 @@ function GameCoachSection({
           <option value="anthropic/claude-3.5-sonnet" />
         </datalist>
         <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
-          A screenshot is captured every ~30s only when a game window is focused.
-          The image is downscaled to 960px before being sent.
+          {t("settings.coach.hint")}
         </div>
       </div>
     </div>
@@ -1362,6 +1359,7 @@ function WakeWordSection({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const [phrase, setPhrase] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -1382,14 +1380,14 @@ function WakeWordSection({
   return (
     <div>
       <div style={{ opacity: 0.7, marginBottom: 6 }}>
-        Wake word{" "}
+        {t("settings.wake.label")}{" "}
         {settings?.wake_word && (
-          <span style={{ color: "#a5d6a7" }}>• set</span>
+          <span style={{ color: "#a5d6a7" }}>{t("settings.status.set")}</span>
         )}
       </div>
       <input
         type="text"
-        placeholder='e.g. "Komorebi" (leave empty to disable)'
+        placeholder={t("settings.wake.placeholder")}
         value={phrase}
         disabled={busy}
         onChange={(e) => setPhrase(e.target.value)}
@@ -1397,9 +1395,7 @@ function WakeWordSection({
         style={inputStyle}
       />
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
-        In continuous-listen mode, transcripts must contain this phrase to be
-        sent. Leave empty to send every utterance. Simple case-insensitive
-        substring match — no ML model, just a gate.
+        {t("settings.wake.hint")}
       </div>
     </div>
   );
@@ -1412,6 +1408,7 @@ function SmartRoutingSection({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const [model, setModel] = useState("");
   const [busy, setBusy] = useState(false);
   const enabled = settings?.smart_routing ?? false;
@@ -1444,8 +1441,8 @@ function SmartRoutingSection({
   return (
     <div>
       <div style={{ opacity: 0.7, marginBottom: 6 }}>
-        Smart routing{" "}
-        {enabled && <span style={{ color: "#a5d6a7" }}>• on</span>}
+        {t("settings.smart.label")}{" "}
+        {enabled && <span style={{ color: "#a5d6a7" }}>{t("settings.status.on")}</span>}
       </div>
       <label
         style={{
@@ -1461,7 +1458,7 @@ function SmartRoutingSection({
           disabled={busy || !hasKey}
           onChange={(e) => toggle(e.target.checked)}
         />
-        Use a small cloud model to pick Local vs Cloud
+        {t("settings.smart.enable")}
       </label>
       <input
         type="text"
@@ -1475,9 +1472,7 @@ function SmartRoutingSection({
         style={inputStyle}
       />
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
-        {hasKey
-          ? "When Auto mode is active, a quick classifier call decides whether to use the local LLM or the cloud. Falls back to keyword rules on timeout. Skill detection stays keyword-based."
-          : "Requires an OpenRouter API key."}
+        {hasKey ? t("settings.smart.hint_on") : t("settings.smart.hint_off")}
       </div>
     </div>
   );
@@ -1490,6 +1485,7 @@ function RagSection({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const [folders, setFolders] = useState<FolderStats[]>([]);
   const [pathInput, setPathInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1566,8 +1562,8 @@ function RagSection({
   return (
     <div>
       <div style={{ opacity: 0.7, marginBottom: 6 }}>
-        Knowledge — local files (RAG){" "}
-        {enabled && <span style={{ color: "#a5d6a7" }}>• on</span>}
+        {t("settings.rag.label")}{" "}
+        {enabled && <span style={{ color: "#a5d6a7" }}>{t("settings.status.on")}</span>}
       </div>
       <label
         style={{
@@ -1583,7 +1579,7 @@ function RagSection({
           disabled={busy}
           onChange={(e) => toggle(e.target.checked)}
         />
-        Use indexed folders as context for answers
+        {t("settings.rag.enable")}
       </label>
 
       {folders.length > 0 && (
@@ -1620,7 +1616,7 @@ function RagSection({
                 {f.path}
               </span>
               <span style={{ opacity: 0.55, fontSize: 11 }}>
-                {f.doc_count} docs · {f.chunk_count} chunks
+                {t("settings.rag.folder_info", { docs: String(f.doc_count), chunks: String(f.chunk_count) })}
               </span>
               <button
                 onClick={() => removeFolder(f.path)}
@@ -1635,7 +1631,7 @@ function RagSection({
                   cursor: "pointer",
                 }}
               >
-                Remove
+                {t("settings.rag.remove")}
               </button>
             </div>
           ))}
@@ -1645,7 +1641,7 @@ function RagSection({
       <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
         <input
           type="text"
-          placeholder="C:\\path\\to\\folder"
+          placeholder={t("settings.rag.placeholder")}
           value={pathInput}
           disabled={busy}
           onChange={(e) => setPathInput(e.target.value)}
@@ -1664,7 +1660,7 @@ function RagSection({
             cursor: "pointer",
           }}
         >
-          Add
+          {t("settings.rag.add")}
         </button>
       </div>
 
@@ -1682,7 +1678,7 @@ function RagSection({
             cursor: folders.length === 0 ? "default" : "pointer",
           }}
         >
-          Reindex all
+          {t("settings.rag.reindex")}
         </button>
         {status && (
           <span style={{ opacity: 0.6, fontSize: 11 }}>{status}</span>
@@ -1690,9 +1686,7 @@ function RagSection({
       </div>
 
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
-        Text files are split into chunks and indexed locally with SQLite
-        FTS5. When enabled, the top matches for your prompt are prepended as
-        context. Nothing leaves your machine for indexing.
+        {t("settings.rag.hint")}
       </div>
     </div>
   );
@@ -1708,6 +1702,7 @@ function HardwareSection({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const [devices, setDevices] = useState<{
     inputs: string[];
     outputs: string[];
@@ -1746,7 +1741,7 @@ function HardwareSection({
 
   return (
     <div>
-      <div style={{ opacity: 0.7, marginBottom: 6 }}>Hardware & Audio devices</div>
+      <div style={{ opacity: 0.7, marginBottom: 6 }}>{t("settings.hw.title")}</div>
 
       <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 8 }}>
         {sys
@@ -1757,7 +1752,7 @@ function HardwareSection({
       </div>
 
       <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
-        <label style={{ opacity: 0.7, fontSize: 12 }}>Microphone input</label>
+        <label style={{ opacity: 0.7, fontSize: 12 }}>{t("settings.hw.mic")}</label>
         <select
           value={inVal}
           disabled={busy || !devices}
@@ -1773,8 +1768,7 @@ function HardwareSection({
           style={inputStyle}
         >
           <option value="">
-            System default
-            {devices?.default_input ? ` (${devices.default_input})` : ""}
+            {t("settings.hw.default", { info: devices?.default_input ? ` (${devices.default_input})` : "" })}
           </option>
           {devices?.inputs.map((d) => (
             <option key={d} value={d}>
@@ -1785,7 +1779,7 @@ function HardwareSection({
       </div>
 
       <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
-        <label style={{ opacity: 0.7, fontSize: 12 }}>Speaker output</label>
+        <label style={{ opacity: 0.7, fontSize: 12 }}>{t("settings.hw.speaker")}</label>
         <select
           value={outVal}
           disabled={busy || !devices}
@@ -1801,8 +1795,7 @@ function HardwareSection({
           style={inputStyle}
         >
           <option value="">
-            System default
-            {devices?.default_output ? ` (${devices.default_output})` : ""}
+            {t("settings.hw.default", { info: devices?.default_output ? ` (${devices.default_output})` : "" })}
           </option>
           {devices?.outputs.map((d) => (
             <option key={d} value={d}>
@@ -1814,7 +1807,7 @@ function HardwareSection({
 
       <div style={{ marginBottom: 10 }}>
         <label style={{ opacity: 0.7, fontSize: 12 }}>
-          Local LLM acceleration
+          {t("settings.hw.gpu.title")}
         </label>
         <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
           {(["auto", "cpu", "gpu"] as const).map((m) => {
@@ -1828,7 +1821,7 @@ function HardwareSection({
                 onClick={() => setGpu(m)}
                 title={
                   m === "gpu" && disabled
-                    ? "No NVIDIA GPU detected."
+                    ? t("settings.hw.gpu.disabled")
                     : undefined
                 }
                 style={{
@@ -1836,10 +1829,10 @@ function HardwareSection({
                   padding: "6px 8px",
                   borderRadius: 8,
                   border: active
-                    ? "1px solid #b39ddb"
+                    ? "1px solid rgba(255,255,255,0.55)"
                     : "1px solid rgba(255,255,255,0.1)",
                   background: active
-                    ? "rgba(179,157,219,0.2)"
+                    ? "rgba(255,255,255,0.08)"
                     : "transparent",
                   color: disabled ? "#666" : "#fff",
                   cursor: disabled ? "not-allowed" : "pointer",
@@ -1847,13 +1840,13 @@ function HardwareSection({
                   fontSize: 11,
                 }}
               >
-                {m === "auto" ? "Auto" : m === "cpu" ? "CPU" : "GPU"}
+                {m === "auto" ? t("settings.hw.gpu.auto") : m === "cpu" ? t("settings.hw.gpu.cpu") : t("settings.hw.gpu.gpu")}
               </button>
             );
           })}
         </div>
         <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
-          Auto picks GPU if an NVIDIA card is detected, otherwise runs on CPU.
+          {t("settings.hw.gpu.hint")}
         </div>
       </div>
 
@@ -1880,8 +1873,7 @@ function HardwareSection({
             }
           }}
         />
-        Auto-listen after replies (re-arms the mic when the assistant finishes
-        speaking)
+        {t("settings.hw.auto_listen")}
       </label>
     </div>
   );
@@ -1894,6 +1886,7 @@ function OpenRouterModelSection({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const [models, setModels] = useState<OpenRouterModel[] | null>(null);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1924,15 +1917,15 @@ function OpenRouterModelSection({
   return (
     <div>
       <div style={{ opacity: 0.7, marginBottom: 6 }}>
-        OpenRouter model picker{" "}
+        {t("settings.or_picker.title")}{" "}
         <span style={{ opacity: 0.5, fontSize: 11 }}>
-          (current: {settings?.openrouter_model ?? "—"})
+          {t("settings.or_picker.current", { model: settings?.openrouter_model ?? "—" })}
         </span>
       </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 6 }}>
         <input
           type="text"
-          placeholder="Search (e.g. llama, sonnet, free)"
+          placeholder={t("settings.or_picker.search")}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           style={{ ...inputStyle, flex: 1 }}
@@ -1949,7 +1942,7 @@ function OpenRouterModelSection({
             cursor: "pointer",
           }}
         >
-          {loading ? "…" : models ? "Refresh" : "Load"}
+          {loading ? "…" : models ? t("settings.or_picker.refresh") : t("settings.or_picker.load")}
         </button>
       </div>
       {err && (
@@ -1959,7 +1952,7 @@ function OpenRouterModelSection({
       )}
       {!settings?.has_openrouter_key && (
         <div style={{ opacity: 0.5, fontSize: 11 }}>
-          Save an OpenRouter API key above to browse available models.
+          {t("settings.or_picker.hint")}
         </div>
       )}
       {models && (
@@ -1986,7 +1979,7 @@ function OpenRouterModelSection({
                   textAlign: "left",
                   padding: "6px 8px",
                   background: active
-                    ? "rgba(179,157,219,0.18)"
+                    ? "rgba(255,255,255,0.08)"
                     : "transparent",
                   border: "none",
                   borderBottom: "1px solid rgba(255,255,255,0.04)",
@@ -2006,7 +1999,7 @@ function OpenRouterModelSection({
           })}
           {filtered.length === 0 && (
             <div style={{ opacity: 0.5, fontSize: 11, padding: 8 }}>
-              No matches.
+              {t("settings.or_picker.no_matches")}
             </div>
           )}
         </div>
@@ -2024,6 +2017,7 @@ function FasterWhisperBlock({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const [enabled, setEnabled] = useState(settings?.faster_whisper_enabled ?? false);
   const [url, setUrl] = useState(settings?.faster_whisper_url ?? "http://localhost:8000");
   const [model, setModel] = useState(
@@ -2098,22 +2092,17 @@ function FasterWhisperBlock({
           disabled={busy}
           onChange={(e) => toggle(e.target.checked)}
         />
-        Use Faster-Whisper (local server, ~4× faster than bundled Whisper)
+        {t("settings.fw.enable")}
       </label>
       <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>
-        Run{" "}
-        <ExternalLink href="https://github.com/speaches-ai/speaches">
-          speaches
-        </ExternalLink>{" "}
-        / faster-whisper-server locally (Docker or pip), then point Komorebi at
-        its URL. Free, fully offline once a model is pulled.
+        {t("settings.fw.hint")}
       </div>
       <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
-        Server URL
+        {t("settings.fw.url")}
       </div>
       <input
         type="text"
-        placeholder="http://localhost:8000"
+        placeholder={t("settings.fw.url.placeholder")}
         value={url}
         disabled={busy}
         onChange={(e) => setUrl(e.target.value)}
@@ -2121,12 +2110,12 @@ function FasterWhisperBlock({
         style={inputStyle}
       />
       <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
-        Model
+        {t("settings.fw.model")}
       </div>
       <input
         type="text"
         list="faster-whisper-models"
-        placeholder="Systran/faster-whisper-base"
+        placeholder={t("settings.fw.model.placeholder")}
         value={model}
         disabled={busy}
         onChange={(e) => setModel(e.target.value)}
@@ -2142,12 +2131,12 @@ function FasterWhisperBlock({
         <option value="Systran/faster-distil-whisper-large-v3" />
       </datalist>
       <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
-        Language (blank = autodetect)
+        {t("settings.fw.lang")}
       </div>
       <input
         type="text"
         list="faster-whisper-langs"
-        placeholder="auto"
+        placeholder={t("settings.fw.lang.placeholder")}
         value={language}
         disabled={busy}
         onChange={(e) => setLanguage(e.target.value)}
@@ -2173,7 +2162,7 @@ function FasterWhisperBlock({
             padding: "4px 10px",
           }}
         >
-          Test connection
+          {t("settings.fw.test")}
         </button>
         {status && (
           <span style={{ fontSize: 11, opacity: 0.85 }}>{status}</span>
@@ -2192,6 +2181,7 @@ function DeepgramBlock({
   settings: PublicSettings | null;
   onChanged: () => void | Promise<void>;
 }) {
+  useLocale();
   const hasKey = settings?.has_deepgram_key ?? false;
   const [enabled, setEnabled] = useState(settings?.deepgram_enabled ?? false);
   const [keyInput, setKeyInput] = useState("");
@@ -2315,23 +2305,19 @@ function DeepgramBlock({
           disabled={busy || !hasKey}
           onChange={(e) => toggle(e.target.checked)}
         />
-        Use Deepgram STT (cloud, ~$0.004/min — cheapest realtime tier)
+        {t("settings.dg.enable")}
       </label>
       <div style={{ opacity: 0.6, fontSize: 11, marginTop: 4 }}>
-        Get a key at{" "}
-        <ExternalLink href="https://console.deepgram.com/signup">
-          console.deepgram.com
-        </ExternalLink>{" "}
-        ($200 free credits on signup).
+        {t("settings.dg.hint")}
       </div>
 
       <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
-        API key {hasKey && <span style={{ color: "#a5d6a7" }}>• saved</span>}
+        {t("settings.dg.key")} {hasKey && <span style={{ color: "#a5d6a7" }}>{t("settings.status.saved")}</span>}
       </div>
       <div style={{ display: "flex", gap: 6 }}>
         <input
           type="password"
-          placeholder={hasKey ? "(stored — paste new key to replace)" : "Deepgram API key"}
+          placeholder={hasKey ? t("settings.dg.key.placeholder_saved") : t("settings.dg.key.placeholder_empty")}
           value={keyInput}
           disabled={busy}
           onChange={(e) => setKeyInput(e.target.value)}
@@ -2348,7 +2334,7 @@ function DeepgramBlock({
             padding: "4px 10px",
           }}
         >
-          Save & test
+          {t("settings.dg.save_test")}
         </button>
         {hasKey && (
           <button
@@ -2360,10 +2346,10 @@ function DeepgramBlock({
               cursor: busy ? "wait" : "pointer",
               width: "auto",
               padding: "4px 10px",
-              background: "rgba(226,74,74,0.25)",
+              background: "rgba(255,255,255,0.06)",
             }}
           >
-            Remove
+            {t("settings.dg.remove")}
           </button>
         )}
       </div>
@@ -2372,7 +2358,7 @@ function DeepgramBlock({
       )}
 
       <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
-        Model
+        {t("settings.dg.model")}
       </div>
       <select
         value={model}
@@ -2391,7 +2377,7 @@ function DeepgramBlock({
       </select>
 
       <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
-        Language
+        {t("settings.dg.lang")}
       </div>
       <select
         value={language}
@@ -2422,6 +2408,7 @@ function ImageGenBlock({
   settings: PublicSettings | null;
   onChanged: () => void;
 }) {
+  useLocale();
   const provider = (settings?.imagegen_provider ?? "openrouter") as
     | "openrouter"
     | "replicate"
@@ -2475,7 +2462,7 @@ function ImageGenBlock({
 
   return (
     <section style={sectionStyle}>
-      <h3 style={h3Style}>Image generation</h3>
+      <h3 style={h3Style}>{t("settings.imggen.title")}</h3>
       <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
         {(["openrouter", "replicate", "local"] as const).map((p) => (
           <button
@@ -2487,7 +2474,7 @@ function ImageGenBlock({
               borderRadius: 6,
               border: "1px solid rgba(255,255,255,0.15)",
               background:
-                provider === p ? "rgba(179,157,219,0.35)" : "rgba(255,255,255,0.05)",
+                provider === p ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.05)",
               color: "#fff",
               cursor: "pointer",
               fontSize: 12,
@@ -2500,31 +2487,30 @@ function ImageGenBlock({
 
       {provider === "openrouter" && (
         <>
-          <label style={lblStyle}>OpenRouter model</label>
+          <label style={lblStyle}>{t("settings.imggen.openrouter.model")}</label>
           <input
             value={orModel}
             onChange={(e) => setOrModel(e.target.value)}
             onBlur={() => change(() => setImagegenOpenrouterModel(orModel))}
-            placeholder="google/gemini-2.5-flash-image-preview"
+            placeholder={t("settings.imggen.openrouter.placeholder")}
             style={inpStyle}
           />
           <p style={hintStyle}>
-            Uses your OpenRouter API key. Try: google/gemini-2.5-flash-image-preview,
-            openai/dall-e-3.
+            {t("settings.imggen.openrouter.hint")}
           </p>
         </>
       )}
 
       {provider === "replicate" && (
         <>
-          <label style={lblStyle}>Replicate API token</label>
+          <label style={lblStyle}>{t("settings.imggen.replicate.token")}</label>
           <div style={{ display: "flex", gap: 6 }}>
             <input
               value={token}
               onChange={(e) => setToken(e.target.value)}
               type="password"
               placeholder={
-                settings?.has_replicate_token ? "(saved — leave blank)" : "r8_..."
+                settings?.has_replicate_token ? t("settings.imggen.replicate.token.placeholder_saved") : t("settings.imggen.replicate.token.placeholder_empty")
               }
               style={{ ...inpStyle, flex: 1 }}
             />
@@ -2538,20 +2524,20 @@ function ImageGenBlock({
               }
               style={btnStyle}
             >
-              Save
+              {t("common.save")}
             </button>
             {settings?.has_replicate_token && (
               <button onClick={() => change(() => clearReplicateToken())} style={btnStyle}>
-                Clear
+                {t("common.clear")}
               </button>
             )}
           </div>
-          <label style={lblStyle}>Replicate model (owner/name[:version])</label>
+          <label style={lblStyle}>{t("settings.imggen.replicate.model")}</label>
           <input
             value={repModel}
             onChange={(e) => setRepModel(e.target.value)}
             onBlur={() => change(() => setImagegenReplicateModel(repModel))}
-            placeholder="black-forest-labs/flux-schnell"
+            placeholder={t("settings.imggen.replicate.placeholder")}
             style={inpStyle}
           />
         </>
@@ -2559,23 +2545,23 @@ function ImageGenBlock({
 
       {provider === "local" && (
         <>
-          <label style={lblStyle}>stable-diffusion.cpp binary (sd.exe)</label>
+          <label style={lblStyle}>{t("settings.imggen.local.binary")}</label>
           <input
             value={bin}
             onChange={(e) => setBin(e.target.value)}
             onBlur={() => change(() => setImagegenLocalBinary(bin))}
-            placeholder="C:\\tools\\sd.exe"
+            placeholder={t("settings.imggen.local.binary.placeholder")}
             style={inpStyle}
           />
-          <label style={lblStyle}>Model file (.gguf / .safetensors)</label>
+          <label style={lblStyle}>{t("settings.imggen.local.model")}</label>
           <input
             value={model}
             onChange={(e) => setModel(e.target.value)}
             onBlur={() => change(() => setImagegenLocalModel(model))}
-            placeholder="C:\\models\\sd15.q4.gguf"
+            placeholder={t("settings.imggen.local.model.placeholder")}
             style={inpStyle}
           />
-          <label style={lblStyle}>Device</label>
+          <label style={lblStyle}>{t("settings.imggen.device")}</label>
           <select
             value={device}
             onChange={(e) => {
@@ -2585,23 +2571,19 @@ function ImageGenBlock({
             }}
             style={inpStyle}
           >
-            <option value="auto">Auto (CUDA if available)</option>
-            <option value="cpu">CPU only</option>
-            <option value="cuda">NVIDIA CUDA</option>
+            <option value="auto">{t("settings.imggen.device.auto")}</option>
+            <option value="cpu">{t("settings.imggen.device.cpu")}</option>
+            <option value="cuda">{t("settings.imggen.device.cuda")}</option>
           </select>
           <p style={hintStyle}>
-            Build sd.exe from{" "}
-            <ExternalLink href="https://github.com/leejet/stable-diffusion.cpp">
-              stable-diffusion.cpp
-            </ExternalLink>{" "}
-            with `-DSD_CUDA=ON` for GPU.
+            {t("settings.imggen.local.hint")}
           </p>
         </>
       )}
 
       <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
         <div style={{ flex: 1 }}>
-          <label style={lblStyle}>Width</label>
+          <label style={lblStyle}>{t("settings.imggen.width")}</label>
           <input
             type="number"
             value={width}
@@ -2611,7 +2593,7 @@ function ImageGenBlock({
           />
         </div>
         <div style={{ flex: 1 }}>
-          <label style={lblStyle}>Height</label>
+          <label style={lblStyle}>{t("settings.imggen.height")}</label>
           <input
             type="number"
             value={height}
@@ -2621,7 +2603,7 @@ function ImageGenBlock({
           />
         </div>
         <div style={{ flex: 1 }}>
-          <label style={lblStyle}>Steps</label>
+          <label style={lblStyle}>{t("settings.imggen.steps")}</label>
           <input
             type="number"
             value={steps}
@@ -2632,12 +2614,12 @@ function ImageGenBlock({
         </div>
       </div>
 
-      <label style={lblStyle}>Negative prompt (local / replicate)</label>
+      <label style={lblStyle}>{t("settings.imggen.negative")}</label>
       <input
         value={neg}
         onChange={(e) => setNeg(e.target.value)}
         onBlur={() => change(() => setImagegenNegativePrompt(neg))}
-        placeholder="blurry, low quality"
+        placeholder={t("settings.imggen.negative.placeholder")}
         style={inpStyle}
       />
     </section>

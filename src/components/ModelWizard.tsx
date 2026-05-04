@@ -17,6 +17,7 @@ import {
   setImagegenDevice,
   generateImage,
 } from "../api";
+import { t, useLocale } from "../i18n";
 
 interface Props {
   open: boolean;
@@ -39,6 +40,7 @@ export default function ModelWizard({
   onSettingsChanged,
   settings,
 }: Props) {
+  useLocale();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [progress, setProgress] = useState<Record<string, ProgressState>>({});
   const [toast, setToast] = useState<string | null>(null);
@@ -123,11 +125,11 @@ export default function ModelWizard({
   };
 
   const handleDelete = async (a: Asset) => {
-    const ok = window.confirm(`Delete "${a.title}"?\nThe file will be removed from your app-data folder.`);
+    const ok = window.confirm(t("wizard.confirm.delete", { title: a.title }));
     if (!ok) return;
     try {
       await deleteAsset(a.id);
-      flash(`Deleted: ${a.title}`);
+      flash(t("wizard.toast.deleted", { title: a.title }));
       setProgress((prev) => {
         const next = { ...prev };
         delete next[a.file_name];
@@ -137,48 +139,48 @@ export default function ModelWizard({
       onSettingsChanged();
     } catch (e) {
       console.error("[wizard] delete_asset failed", e);
-      flash(`Failed: ${e}`);
+      flash(t("wizard.toast.failed", { err: String(e) }));
     }
   };
 
   const handleUseAsLocal = async (a: Asset) => {
     try {
       await setLocalModel(a.id);
-      flash(`Local LLM set: ${a.title}`);
+      flash(t("wizard.toast.llm_set", { title: a.title }));
       onSettingsChanged();
     } catch (e) {
       console.error("[wizard] set_local_model failed", e);
-      flash(`Failed: ${e}`);
+      flash(t("wizard.toast.failed", { err: String(e) }));
     }
   };
 
   const handleUseAsVoice = async (a: Asset) => {
     if (!a.path) {
-      flash("Asset path is missing — re-download the model.");
+      flash(t("wizard.toast.asset_missing"));
       return;
     }
     try {
       await setPiperVoice(a.path);
-      flash(`Voice set: ${a.title}`);
+      flash(t("wizard.toast.voice_set", { title: a.title }));
       onSettingsChanged();
     } catch (e) {
       console.error("[wizard] set_piper_voice failed", e);
-      flash(`Failed: ${e}`);
+      flash(t("wizard.toast.failed", { err: String(e) }));
     }
   };
 
   const handleUseAsStt = async (a: Asset) => {
     if (!a.path) {
-      flash("Asset path is missing — re-download the model.");
+      flash(t("wizard.toast.asset_missing"));
       return;
     }
     try {
       await setWhisperModel(a.path);
-      flash(`STT model set: ${a.title}`);
+      flash(t("wizard.toast.stt_set", { title: a.title }));
       onSettingsChanged();
     } catch (e) {
       console.error("[wizard] set_whisper_model failed", e);
-      flash(`Failed: ${e}`);
+      flash(t("wizard.toast.failed", { err: String(e) }));
     }
   };
 
@@ -227,7 +229,7 @@ export default function ModelWizard({
               justifyContent: "space-between",
             }}
           >
-            <strong>Model downloads</strong>
+            <strong>{t("wizard.title")}</strong>
             <button
               onClick={onClose}
               style={{
@@ -237,30 +239,29 @@ export default function ModelWizard({
                 cursor: "pointer",
                 fontSize: 16,
               }}
-              aria-label="Close"
+              aria-label={t("common.close")}
             >
               ×
             </button>
           </div>
           <div style={{ opacity: 0.65, fontSize: 11 }}>
-            Files are downloaded to your app-data folder. You can close this
-            window — downloads continue in the background.
+            {t("wizard.info")}
           </div>
           <div style={{ display: "flex", gap: 6 }}>
             {([
-              ["models", "Models"],
-              ["imagegen", "Image generation"],
+              ["models", t("wizard.tab.models")],
+              ["imagegen", t("wizard.tab.imagegen")],
             ] as const).map(([k, label]) => (
               <button
                 key={k}
-                onClick={() => setTab(k)}
+                onClick={() => setTab(k as "models" | "imagegen")}
                 style={{
                   flex: 1,
                   padding: "6px 10px",
                   borderRadius: 8,
                   border: "1px solid rgba(255,255,255,0.12)",
                   background:
-                    tab === k ? "rgba(179,157,219,0.32)" : "rgba(255,255,255,0.04)",
+                    tab === k ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.04)",
                   color: "#fff",
                   cursor: "pointer",
                   fontSize: 12,
@@ -335,31 +336,31 @@ export default function ModelWizard({
                         }
                         style={btn()}
                       >
-                        Download
+                        {t("wizard.btn.download")}
                       </button>
                     )}
                     {a.installed && a.kind === "llm_gguf" && (
                       <button onClick={() => handleUseAsLocal(a)} style={btn()}>
-                        Use as local
+                        {t("wizard.btn.use_local")}
                       </button>
                     )}
                     {a.installed && a.kind === "piper_voice" && (
                       <button onClick={() => handleUseAsVoice(a)} style={btn()}>
-                        Use as voice
+                        {t("wizard.btn.use_voice")}
                       </button>
                     )}
                     {a.installed && a.kind === "whisper_ggml" && (
                       <button onClick={() => handleUseAsStt(a)} style={btn()}>
-                        Use as STT model
+                        {t("wizard.btn.use_stt")}
                       </button>
                     )}
                     {a.installed && (
                       <button
                         onClick={() => handleDelete(a)}
                         style={btn("danger")}
-                        title="Delete downloaded file"
+                        title={t("wizard.delete.tip")}
                       >
-                        Delete
+                        {t("wizard.btn.delete")}
                       </button>
                     )}
                   </div>
@@ -392,14 +393,14 @@ export default function ModelWizard({
                       </>
                     )}
                     {st.state === "verifying" && (
-                      <div style={{ opacity: 0.7, fontSize: 11 }}>Verifying…</div>
+                      <div style={{ opacity: 0.7, fontSize: 11 }}>{t("wizard.progress.verifying")}</div>
                     )}
                     {st.state === "finished" && (
-                      <div style={{ color: "#a5d6a7", fontSize: 11 }}>Done</div>
+                      <div style={{ color: "#a5d6a7", fontSize: 11 }}>{t("wizard.progress.done")}</div>
                     )}
                     {st.state === "failed" && (
                       <div style={{ color: "#ef9a9a", fontSize: 11 }}>
-                        Failed: {st.message}
+                        {t("wizard.progress.failed", { err: st.message ?? "" })}
                       </div>
                     )}
                   </div>
@@ -422,6 +423,7 @@ function ImageGenPanel({
   onSettingsChanged: () => void;
   flash: (msg: string) => void;
 }) {
+  useLocale();
   const provider = (settings?.imagegen_provider ?? "openrouter") as
     | "openrouter"
     | "replicate"
@@ -490,7 +492,7 @@ function ImageGenPanel({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
       <div style={card}>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>Provider</div>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>{t("wizard.imagegen.provider")}</div>
         <div style={{ display: "flex", gap: 6 }}>
           {(["openrouter", "replicate", "local"] as const).map((p) => (
             <button
@@ -506,7 +508,7 @@ function ImageGenPanel({
                 borderRadius: 6,
                 border: "1px solid rgba(255,255,255,0.15)",
                 background:
-                  provider === p ? "rgba(179,157,219,0.35)" : "rgba(255,255,255,0.05)",
+                  provider === p ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.05)",
                 color: "#fff",
                 cursor: "pointer",
                 fontSize: 12,
@@ -604,23 +606,22 @@ function ImageGenPanel({
             }}
             style={inp}
           >
-            <option value="auto">Auto (CUDA if available)</option>
-            <option value="cpu">CPU only</option>
-            <option value="cuda">NVIDIA CUDA</option>
+            <option value="auto">{t("wizard.imagegen.device.auto")}</option>
+            <option value="cpu">{t("wizard.imagegen.device.cpu")}</option>
+            <option value="cuda">{t("wizard.imagegen.device.cuda")}</option>
           </select>
           <div style={{ fontSize: 10, opacity: 0.55, marginTop: 6, lineHeight: 1.4 }}>
-            Tip: SD-model URLs are unstable across hosts, so download weights
-            manually (HuggingFace, Civitai) and point this dialog at the file.
+            {t("wizard.imagegen.tip")}
           </div>
         </div>
       )}
 
       <div style={card}>
-        <div style={{ fontWeight: 600, marginBottom: 4 }}>Quick test</div>
+        <div style={{ fontWeight: 600, marginBottom: 4 }}>{t("wizard.imagegen.test")}</div>
         <input
           value={testPrompt}
           onChange={(e) => setTestPrompt(e.target.value)}
-          placeholder="prompt"
+          placeholder={t("wizard.imagegen.test.placeholder")}
           style={inp}
         />
         <button
@@ -630,9 +631,9 @@ function ImageGenPanel({
             setBusy(true);
             try {
               await generateImage(p);
-              flash("Generation started — see chat bubble");
+              flash(t("wizard.imagegen.test.toast"));
             } catch (e) {
-              flash(`Failed: ${e}`);
+              flash(t("wizard.toast.failed", { err: String(e) }));
             } finally {
               setBusy(false);
             }
@@ -640,7 +641,7 @@ function ImageGenPanel({
           disabled={busy}
           style={{ ...btn(), marginTop: 6 }}
         >
-          {busy ? "Starting…" : "Generate"}
+          {busy ? t("wizard.imagegen.test.busy") : t("wizard.imagegen.test.btn")}
         </button>
       </div>
     </div>

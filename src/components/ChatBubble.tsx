@@ -1,12 +1,13 @@
 import { AnimatePresence, motion } from "framer-motion";
+import { t, useLocale } from "../i18n";
 
 const imgButtonStyle: React.CSSProperties = {
   fontSize: 11,
   padding: "3px 10px",
   borderRadius: 6,
-  background: "rgba(179,157,219,0.22)",
+  background: "rgba(20,20,28,0.7)",
   color: "#fff",
-  border: "1px solid rgba(179,157,219,0.45)",
+  border: "1px solid rgba(255,255,255,0.12)",
   cursor: "pointer",
 };
 
@@ -134,6 +135,7 @@ export default function ChatBubble({
   onCopyImage,
   onCancelImage,
 }: Props) {
+  useLocale();
   const show =
     !!text ||
     !!thinking ||
@@ -192,12 +194,12 @@ export default function ChatBubble({
                 opacity: 0.85,
                 padding: "4px 8px",
                 borderRadius: 8,
-                background: "rgba(179,157,219,0.18)",
-                border: "1px solid rgba(179,157,219,0.3)",
+                background: "rgba(255,255,255,0.06)",
+                border: "1px solid rgba(255,255,255,0.12)",
                 marginBottom: text || thinking ? 8 : 0,
               }}
             >
-              <span style={{ opacity: 0.6, marginRight: 4 }}>You:</span>
+              <span style={{ opacity: 0.6, marginRight: 4 }}>{t("bubble.user")}</span>
               {userEcho}
             </div>
           )}
@@ -208,7 +210,7 @@ export default function ChatBubble({
           ) : null}
           {imageStatus === "generating" && !imageBase64 && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: text ? 8 : 0 }}>
-              <span style={{ opacity: 0.75 }}>🎨 Generating image…</span>
+              <span style={{ opacity: 0.75 }}>{t("bubble.image.generating")}</span>
               {onCancelImage && (
                 <button
                   onClick={onCancelImage}
@@ -222,14 +224,14 @@ export default function ChatBubble({
                     cursor: "pointer",
                   }}
                 >
-                  Cancel
+                  {t("bubble.image.cancel")}
                 </button>
               )}
             </div>
           )}
           {imageStatus === "error" && imageError && (
             <div style={{ marginTop: 6, color: "#ff8080", fontSize: 12 }}>
-              Image error: {imageError}
+              {t("bubble.image.error")} {imageError}
             </div>
           )}
           {imageBase64 && (
@@ -247,17 +249,17 @@ export default function ChatBubble({
               <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
                 {onSaveImage && (
                   <button onClick={onSaveImage} style={imgButtonStyle}>
-                    Save as…
+                    {t("bubble.image.save_as")}
                   </button>
                 )}
                 {onCopyImage && (
                   <button onClick={onCopyImage} style={imgButtonStyle}>
-                    Copy
+                    {t("bubble.image.copy")}
                   </button>
                 )}
                 {imageSavePath && (
                   <span style={{ fontSize: 10, opacity: 0.55, alignSelf: "center" }}>
-                    saved: {imageSavePath}
+                    {t("bubble.image.saved")} {imageSavePath}
                   </span>
                 )}
               </div>
