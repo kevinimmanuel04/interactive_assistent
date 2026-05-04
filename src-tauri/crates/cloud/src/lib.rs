@@ -246,6 +246,69 @@ impl OpenRouterClient {
             .map(|c| c.message.content)
             .unwrap_or_default())
     }
+
+    /// Non-streaming text completion. Sibling of [`complete_vision`]
+    /// without the image part. Handy for short, one-shot calls where
+    /// streaming machinery is overkill (e.g. the game-coach text path,
+    /// telemetry classifiers). Uses moderate temperature (0.5) suitable
+    /// for friendly conversational replies; callers needing
+    /// determinism should use [`stream_chat`] with their own prompt
+    /// engineering, or wait for a future explicit-options overload.
+    pub async fn complete_text(
+        &self,
+        model: &str,
+        system: &str,
+        user_text: &str,
+        max_tokens: u32,
+    ) -> Result<String, CloudError> {
+        let body = serde_json::json!({
+            "model": model,
+            "stream": false,
+            "temperature": 0.5,
+            "max_tokens": max_tokens,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_text},
+            ]
+        });
+        let resp = self
+            .http
+            .post(OPENROUTER_URL)
+            .bearer_auth(&self.api_key)
+            .header("HTTP-Referer", &self.app_referer)
+            .header("X-Title", &self.app_title)
+            .json(&body)
+            .send()
+            .await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(CloudError::Api {
+                status: status.as_u16(),
+                body,
+            });
+        }
+        #[derive(serde::Deserialize)]
+        struct TResp {
+            choices: Vec<TRespChoice>,
+        }
+        #[derive(serde::Deserialize)]
+        struct TRespChoice {
+            message: TRespMessage,
+        }
+        #[derive(serde::Deserialize)]
+        struct TRespMessage {
+            #[serde(default)]
+            content: String,
+        }
+        let parsed: TResp = resp.json().await.map_err(CloudError::Http)?;
+        Ok(parsed
+            .choices
+            .into_iter()
+            .next()
+            .map(|c| c.message.content)
+            .unwrap_or_default())
+    }
 }
 
 // --- Intent classification -------------------------------------------------
@@ -433,17 +496,7 @@ impl CloudSkillClassifier {
     }
 
     pub async fn pick(&self, query: &str) -> Result<Option<SkillIntent>, CloudError> {
-        let system = ChatMessage::system(format!(
-            "You are an intent classifier for a desktop assistant. Pick the \
-single skill that best matches the user's request, or answer \"none\".\n\n\
-{}\n\
-Respond with strict JSON: {{\"skill\":\"NAME_OR_none\",\"command\":\"REPHRASED_INSTRUCTION\"}}.\n\
-The command field, if skill != none, should be a short imperative the skill \
-can parse (e.g. \"set volume to 50\", \"take a screenshot\", \"open https://github.com\"). \
-For \"none\", set command to an empty string.\n\
-Output ONLY the JSON, no markdown, no commentary.",
-            self.skills_doc
-        ));
+        let system = ChatMessage::system(build_skill_system_prompt(&self.skills_doc));
         let user = ChatMessage::user(query.to_string());
         let body = RequestBody {
             model: &self.model,
@@ -496,20 +549,50 @@ Output ONLY the JSON, no markdown, no commentary.",
 }
 
 fn parse_skill_reply(raw: &str) -> Option<SkillIntent> {
-    // Models occasionally wrap JSON in ``` fences. Strip them.
+    parse_skill_json(raw)
+}
+
+/// Build the system prompt the skill classifier sends to the LLM.
+///
+/// `skills_doc` is the rendered "Available skills:\n- name: desc\n..."
+/// block. Exposed `pub` so non-cloud classifiers (e.g. the local-LLM
+/// fallback) can reuse the exact same contract — the parser on the
+/// other end is shared too (see [`parse_skill_json`]).
+pub fn build_skill_system_prompt(skills_doc: &str) -> String {
+    format!(
+        "You are an intent classifier for a desktop assistant. Pick the \
+single skill that best matches the user's request, or answer \"none\".\n\n\
+{skills_doc}\n\
+Respond with strict JSON: {{\"skill\":\"NAME_OR_none\",\"command\":\"REPHRASED_INSTRUCTION\"}}.\n\
+The command field, if skill != none, should be a short imperative the skill \
+can parse (e.g. \"set volume to 50\", \"take a screenshot\", \"open https://github.com\"). \
+For \"none\", set command to an empty string.\n\
+Output ONLY the JSON, no markdown, no commentary."
+    )
+}
+
+/// Parse a classifier reply into a [`SkillIntent`]. Tolerates leading/
+/// trailing prose and ```json fences (which small local models like to
+/// emit). Shared between [`CloudSkillClassifier`] and the local-LLM
+/// classifier so the JSON contract stays in one place.
+pub fn parse_skill_json(raw: &str) -> Option<SkillIntent> {
     let trimmed = raw.trim();
-    let inner = trimmed
+    // Strip optional ```json ... ``` fences.
+    let unfenced = trimmed
         .strip_prefix("```json")
         .or_else(|| trimmed.strip_prefix("```"))
         .map(|s| s.trim_end_matches("```").trim())
         .unwrap_or(trimmed);
+    // If the model added prose around the JSON, locate the first
+    // balanced `{...}` chunk and try that.
+    let candidate = first_json_object(unfenced).unwrap_or(unfenced);
     #[derive(serde::Deserialize)]
     struct ReplyJson {
         skill: String,
         #[serde(default)]
         command: String,
     }
-    let v: ReplyJson = serde_json::from_str(inner).ok()?;
+    let v: ReplyJson = serde_json::from_str(candidate).ok()?;
     let skill = v.skill.trim().to_lowercase();
     if skill.is_empty() || skill == "none" || skill == "null" {
         return None;
@@ -517,12 +600,46 @@ fn parse_skill_reply(raw: &str) -> Option<SkillIntent> {
     Some(SkillIntent {
         skill,
         command: if v.command.trim().is_empty() {
-            // Some models echo the original; fine — let the skill parse it.
             String::new()
         } else {
             v.command
         },
     })
+}
+
+/// Return the first balanced `{...}` substring, or `None` if no
+/// matching pair exists. Naive but adequate for short classifier
+/// responses (max ~64 tokens).
+fn first_json_object(s: &str) -> Option<&str> {
+    let bytes = s.as_bytes();
+    let start = bytes.iter().position(|&b| b == b'{')?;
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut escape = false;
+    for (i, &b) in bytes.iter().enumerate().skip(start) {
+        if in_str {
+            if escape {
+                escape = false;
+            } else if b == b'\\' {
+                escape = true;
+            } else if b == b'"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match b {
+            b'"' => in_str = true,
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&s[start..=i]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn sse_to_events<S>(bytes: S) -> impl Stream<Item = Result<StreamEvent, CloudError>> + Send

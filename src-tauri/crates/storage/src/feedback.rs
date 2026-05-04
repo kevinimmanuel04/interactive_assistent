@@ -141,8 +141,7 @@ impl FeedbackStore {
         let conn = self.conn.lock().expect("poisoned");
         let tx = conn.unchecked_transaction()?;
         {
-            let mut stmt =
-                tx.prepare("UPDATE feedback SET uploaded_at = ?1 WHERE id = ?2")?;
+            let mut stmt = tx.prepare("UPDATE feedback SET uploaded_at = ?1 WHERE id = ?2")?;
             for id in ids {
                 stmt.execute(params![now, id])?;
             }

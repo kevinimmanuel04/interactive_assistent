@@ -1,32 +1,55 @@
-//! Game Coach mode (v1.1).
+//! Game Coach mode (v1.7.x).
 //!
 //! When the active foreground app classifies as `AppKind::Game` (or is
 //! fullscreen in general) AND the user has opted into coach mode, we
-//! periodically:
-//!   1. Capture the primary monitor as PNG.
-//!   2. Send it to a vision-capable OpenRouter model (default
-//!      `openai/gpt-4o-mini` — cheap, fast, decent at game UIs).
-//!   3. Ask for one short tactical hint based on what's on screen.
-//!   4. Emit a `chat:coach` event the frontend renders as a coach
-//!      bubble — separate channel from the regular chat so it never
-//!      interrupts an in-progress reply.
+//! periodically emit a short tactical hint via the `coach:tip` event.
+//! The frontend renders these as a separate bubble channel so they
+//! never interrupt an in-progress chat reply.
 //!
-//! Cooldown is intentionally generous (~75 s by default) so we don't
-//! spam the user or rack up vision-API spend.
+//! Two transports are supported:
+//!
+//! * **Vision** (default, `game_coach_use_vision = true`): captures the
+//!   primary monitor as PNG, downscales to ~960 px, and asks an
+//!   OpenRouter vision model for a hint based on what's on screen.
+//!   Costs OpenRouter credits and requires a key.
+//! * **Text** (local-friendly): only sees the active window title +
+//!   process name. Routes through the local LLM when available, then
+//!   falls back to OpenRouter (text completion) if no local model is
+//!   set. Tracked by [proposal 0002].
+//!
+//! Cooldown is intentionally generous (~75 s) so we don't spam the user
+//! or rack up vision-API spend.
+//!
+//! [proposal 0002]: ../../docs/proposals/0002-game-coach-text-vision-split.md
 
 use crate::settings;
 use komorebi_cloud::OpenRouterClient;
+use komorebi_desktop::procs::ActiveWindow;
 use komorebi_desktop::{capture, procs, AppKind};
+use komorebi_llm::CompletionOptions;
+use komorebi_router::ChatMessage;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Wry};
 
 const POLL_SECS: u64 = 30;
 const COOLDOWN_SECS: u64 = 75;
+const VISION_TIMEOUT_SECS: u64 = 15;
+const TEXT_TIMEOUT_SECS: u64 = 8;
+/// Both paths request short hints (~80 tokens). The text path uses the
+/// same budget so the local LLM doesn't ramble.
+const HINT_MAX_TOKENS: u32 = 80;
+
+const COACH_SYSTEM: &str = "You are a friendly co-op gaming coach. \
+You speak the user's language. You never lie about what you cannot see. \
+You keep hints short — one sentence.";
 
 #[derive(serde::Serialize, Clone)]
 pub struct CoachPayload {
     pub game: String,
     pub hint: String,
+    /// One of `"vision-cloud"`, `"text-cloud"`, `"text-local"`. Logged
+    /// in telemetry so we can see which path users actually take.
+    pub route: &'static str,
 }
 
 pub fn spawn(app: AppHandle<Wry>) {
@@ -42,7 +65,6 @@ pub fn spawn(app: AppHandle<Wry>) {
             if last_fired.elapsed() < Duration::from_secs(COOLDOWN_SECS) {
                 continue;
             }
-            // Only run when the user is in a game/fullscreen.
             let Some(active) = procs::active_window() else {
                 continue;
             };
@@ -50,78 +72,23 @@ pub fn spawn(app: AppHandle<Wry>) {
             if !in_game {
                 continue;
             }
-            let Some(key) = settings::get_openrouter_key(&app) else {
+
+            let use_vision = settings::get_game_coach_use_vision(&app);
+            let key = settings::get_openrouter_key(&app);
+
+            let outcome = if use_vision {
+                if let Some(k) = key.clone() {
+                    run_vision(&app, &active, k).await
+                } else {
+                    run_text(&app, &active, key).await
+                }
+            } else {
+                run_text(&app, &active, key).await
+            };
+
+            let Some((hint, route)) = outcome else {
                 continue;
             };
-            let model = settings::get_game_coach_model(&app);
-
-            // Capture screen on a blocking thread to avoid stalling the
-            // tokio worker (xcap is sync).
-            let png = match tokio::task::spawn_blocking(|| capture::capture_screen(0)).await {
-                Ok(Ok(b)) => b,
-                Ok(Err(e)) => {
-                    tracing::debug!(?e, "coach: capture failed");
-                    continue;
-                }
-                Err(e) => {
-                    tracing::debug!(?e, "coach: capture join failed");
-                    continue;
-                }
-            };
-
-            // Downsize the PNG before sending: we re-encode at ~960px wide
-            // to keep tokens cheap. xcap returns native resolution which
-            // can be 4K → 12 MB — way more than the model needs.
-            let small = match downscale_png(&png, 960) {
-                Some(p) => p,
-                None => png,
-            };
-
-            let client = match OpenRouterClient::new(key) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::debug!(?e, "coach: client init failed");
-                    continue;
-                }
-            };
-
-            let user_text = format!(
-                "Game: {} (window title: {}). Look at the screenshot and \
-                 give ONE concise, actionable tactical hint based on what \
-                 you see right now (low health, an enemy approaching, an \
-                 unread quest marker, a UI affordance the player is \
-                 missing, etc.). Keep it under 20 words. If nothing \
-                 noteworthy, reply with exactly: SKIP.",
-                active.process_name, active.title,
-            );
-
-            let raw = match tokio::time::timeout(
-                Duration::from_secs(15),
-                client.complete_vision(
-                    &model,
-                    "You are a friendly co-op gaming coach watching a single \
-                     screenshot of the player's screen. You speak the user's \
-                     language. You never lie about what you see. You keep \
-                     hints short — one sentence.",
-                    &user_text,
-                    &small,
-                    80,
-                ),
-            )
-            .await
-            {
-                Ok(Ok(s)) => s,
-                Ok(Err(e)) => {
-                    tracing::debug!(?e, "coach: vision call failed");
-                    continue;
-                }
-                Err(_) => {
-                    tracing::debug!("coach: vision call timed out");
-                    continue;
-                }
-            };
-
-            let hint = raw.trim().trim_matches('"').to_string();
             if hint.is_empty()
                 || hint.eq_ignore_ascii_case("skip")
                 || hint.eq_ignore_ascii_case("skip.")
@@ -134,12 +101,165 @@ pub fn spawn(app: AppHandle<Wry>) {
                 CoachPayload {
                     game: active.process_name.clone(),
                     hint: hint.clone(),
+                    route,
                 },
             );
             last_fired = Instant::now();
-            tracing::info!(game = %active.process_name, hint = %hint, "coach tip emitted");
+            tracing::info!(
+                game = %active.process_name,
+                route = route,
+                hint = %hint,
+                "coach tip emitted"
+            );
         }
     });
+}
+
+/// Vision path: capture screen → downscale → call OpenRouter vision
+/// model. Returns `None` on any error so the loop just waits for the
+/// next poll.
+async fn run_vision(
+    app: &AppHandle<Wry>,
+    active: &ActiveWindow,
+    key: String,
+) -> Option<(String, &'static str)> {
+    let model = settings::get_game_coach_model(app);
+
+    // Capture screen on a blocking thread to avoid stalling the tokio
+    // worker (xcap is sync).
+    let png = match tokio::task::spawn_blocking(|| capture::capture_screen(0)).await {
+        Ok(Ok(b)) => b,
+        Ok(Err(e)) => {
+            tracing::debug!(?e, "coach: capture failed");
+            return None;
+        }
+        Err(e) => {
+            tracing::debug!(?e, "coach: capture join failed");
+            return None;
+        }
+    };
+    let small = downscale_png(&png, 960).unwrap_or(png);
+
+    let client = match OpenRouterClient::new(key) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::debug!(?e, "coach: client init failed");
+            return None;
+        }
+    };
+
+    let user_text = format!(
+        "Game: {} (window title: {}). Look at the screenshot and \
+         give ONE concise, actionable tactical hint based on what \
+         you see right now (low health, an enemy approaching, an \
+         unread quest marker, a UI affordance the player is \
+         missing, etc.). Keep it under 20 words. If nothing \
+         noteworthy, reply with exactly: SKIP.",
+        active.process_name, active.title,
+    );
+
+    let raw = match tokio::time::timeout(
+        Duration::from_secs(VISION_TIMEOUT_SECS),
+        client.complete_vision(&model, COACH_SYSTEM, &user_text, &small, HINT_MAX_TOKENS),
+    )
+    .await
+    {
+        Ok(Ok(s)) => s,
+        Ok(Err(e)) => {
+            tracing::debug!(?e, "coach: vision call failed");
+            return None;
+        }
+        Err(_) => {
+            tracing::debug!("coach: vision call timed out");
+            return None;
+        }
+    };
+    Some((raw.trim().trim_matches('"').to_string(), "vision-cloud"))
+}
+
+/// Text-only path. Prefers the local LLM (free, offline) and falls back
+/// to a non-vision OpenRouter completion if no local model is set.
+/// Returns `None` if neither transport is available.
+async fn run_text(
+    app: &AppHandle<Wry>,
+    active: &ActiveWindow,
+    key: Option<String>,
+) -> Option<(String, &'static str)> {
+    let user_text = format!(
+        "The user is currently in `{}` (window title: \"{}\"). You can \
+         only see this metadata — you cannot see pixels. Give ONE \
+         concise, useful nudge based purely on what game/app this is \
+         (a reminder, a mechanic tip, a focus suggestion). Keep it under \
+         20 words. If you have nothing useful to add, reply: SKIP.",
+        active.process_name, active.title,
+    );
+    let messages = [
+        ChatMessage::system(COACH_SYSTEM.to_string()),
+        ChatMessage::user(user_text.clone()),
+    ];
+
+    // 1. Local LLM if available. Reuse the chat model — these requests
+    // are ~80 tokens, fast even on a 7B.
+    let engine = crate::chat::build_local_engine_public(app);
+    match tokio::time::timeout(
+        Duration::from_secs(TEXT_TIMEOUT_SECS * 2),
+        engine.complete(
+            &messages,
+            CompletionOptions {
+                max_tokens: Some(HINT_MAX_TOKENS),
+                temperature: Some(0.7),
+            },
+        ),
+    )
+    .await
+    {
+        Ok(Ok(raw)) if !raw.trim().is_empty() => {
+            return Some((raw.trim().trim_matches('"').to_string(), "text-local"));
+        }
+        Ok(Err(komorebi_llm::LlmError::NotAvailable)) => {
+            tracing::debug!("coach: local engine unavailable, trying cloud text fallback");
+        }
+        Ok(Err(e)) => {
+            tracing::debug!(
+                ?e,
+                "coach: local engine errored, trying cloud text fallback"
+            );
+        }
+        Ok(Ok(_)) => {
+            tracing::debug!("coach: local engine returned empty, trying cloud text fallback");
+        }
+        Err(_) => {
+            tracing::debug!("coach: local engine timed out, trying cloud text fallback");
+        }
+    }
+
+    // 2. Cloud text fallback (NO vision, just chat completion).
+    let key = key?;
+    let model = settings::get_game_coach_model(app);
+    let client = match OpenRouterClient::new(key) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::debug!(?e, "coach: cloud client init failed");
+            return None;
+        }
+    };
+    let raw = match tokio::time::timeout(
+        Duration::from_secs(TEXT_TIMEOUT_SECS),
+        client.complete_text(&model, COACH_SYSTEM, &user_text, HINT_MAX_TOKENS),
+    )
+    .await
+    {
+        Ok(Ok(s)) => s,
+        Ok(Err(e)) => {
+            tracing::debug!(?e, "coach: cloud text call failed");
+            return None;
+        }
+        Err(_) => {
+            tracing::debug!("coach: cloud text call timed out");
+            return None;
+        }
+    };
+    Some((raw.trim().trim_matches('"').to_string(), "text-cloud"))
 }
 
 fn downscale_png(png: &[u8], target_width: u32) -> Option<Vec<u8>> {

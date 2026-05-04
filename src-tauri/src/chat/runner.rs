@@ -1,0 +1,290 @@
+//! Main text-generation orchestrator: routing, history, tool loop wiring.
+
+use super::events::{emit, ChatEventOut};
+use super::prompts::{system_prompt, tools_system_prompt};
+use super::rag::build_rag_context;
+use super::skill_picker::pick_skill_intent;
+use super::speak::maybe_speak;
+use super::tool_loop::run_with_tools;
+use super::ChatService;
+use crate::settings;
+use komorebi_cloud::CloudIntentClassifier;
+use komorebi_router::{classify, classify_async, ChatMessage, Route};
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use tauri::{AppHandle, Manager, Wry};
+
+pub(super) async fn run_generation(
+    app: AppHandle<Wry>,
+    id: String,
+    prompt: String,
+) -> Result<(), String> {
+    let service: Arc<ChatService> = app
+        .try_state::<Arc<ChatService>>()
+        .ok_or_else(|| "chat service not initialized".to_string())?
+        .inner()
+        .clone();
+    service.cancel.store(false, Ordering::SeqCst);
+
+    // Relationship scoring: every user turn updates the affinity state
+    // BEFORE we route. Auto-extract a self-introduction when the user name
+    // isn't set yet so the persona can address them by name from message
+    // two onwards.
+    if settings::get_user_name(&app).is_none() {
+        if let Some(name) = crate::relationship::extract_self_introduction(&prompt) {
+            if let Err(e) = settings::set_user_name(&app, &name) {
+                tracing::warn!(?e, "failed to persist auto-extracted user name");
+            } else {
+                tracing::info!(?name, "auto-extracted user name");
+            }
+        }
+    }
+    let _ = crate::relationship::apply_user_message(&app, &prompt);
+
+    // Weather pre-check: bypass the LLM for direct weather questions when
+    // smart routing is enabled. Slash command (`/weather …`) goes through
+    // a dedicated frontend path and reaches `commands::get_weather`
+    // instead.
+    if settings::get_smart_routing(&app)
+        && komorebi_weather::is_weather_query(&prompt)
+        // Avoid hijacking conversational mentions (e.g. "обсудим погоду
+        // позже"). Require either a city extraction OR an explicit
+        // direct-question pattern.
+        && (komorebi_weather::extract_city_from_text(&prompt).is_some()
+            || prompt.contains('?')
+            || prompt.to_lowercase().starts_with("какая погода")
+            || prompt.to_lowercase().starts_with("what")
+            || prompt.to_lowercase().starts_with("how"))
+    {
+        emit(
+            &app,
+            ChatEventOut::Started {
+                id: id.clone(),
+                route: "skill".into(),
+            },
+        );
+        if let Some(reply) = crate::weather::maybe_handle(&app, &prompt).await {
+            // Wrap with a default mood tag so the avatar reacts.
+            let tagged = format!("<mood:happy>{reply}");
+            emit(
+                &app,
+                ChatEventOut::Token {
+                    id: id.clone(),
+                    text: tagged.clone(),
+                },
+            );
+            {
+                let mut hist = service.history.lock().await;
+                hist.push(ChatMessage::user(prompt.clone()));
+                hist.push(ChatMessage::assistant(tagged.clone()));
+            }
+            emit(
+                &app,
+                ChatEventOut::Done {
+                    id,
+                    full_text: tagged.clone(),
+                },
+            );
+            maybe_speak(&app, tagged).await;
+            return Ok(());
+        }
+    }
+
+    let mode = settings::get_mode(&app);
+    let smart = settings::get_smart_routing(&app);
+    tracing::info!(
+        prompt_len = prompt.chars().count(),
+        prompt_preview = %prompt.chars().take(80).collect::<String>(),
+        ?mode,
+        smart_routing = smart,
+        "chat: run_generation start"
+    );
+    let route = if smart {
+        // Smart-skill pre-pass: ask the best classifier we have access to
+        // whether this prompt is a skill invocation. Cloud (when keyed) is
+        // strictly more accurate; local LLM is the offline fallback;
+        // keyword router catches simple phrasings either model misses.
+        if let Some(intent) = pick_skill_intent(&app, &service, &prompt).await {
+            tracing::info!(skill = %intent.skill, "dispatching skill");
+            let cmd = if intent.command.trim().is_empty() {
+                prompt.clone()
+            } else {
+                intent.command
+            };
+            emit(
+                &app,
+                ChatEventOut::Started {
+                    id: id.clone(),
+                    route: "skill".into(),
+                },
+            );
+            let reply = match service.skills.dispatch_named(&intent.skill, &cmd).await {
+                Ok(r) => r.text,
+                Err(komorebi_skills::SkillError::NotApplicable) => {
+                    // The named skill couldn't parse the rephrased command;
+                    // fall back to the registry's own keyword dispatch.
+                    match service.skills.dispatch(&prompt).await {
+                        Ok(r) => r.text,
+                        Err(_) => "Skill couldn't run that. Try rephrasing.".into(),
+                    }
+                }
+                Err(komorebi_skills::SkillError::Exec(m)) => {
+                    format!("Skill failed: {m}")
+                }
+            };
+            emit(
+                &app,
+                ChatEventOut::Token {
+                    id: id.clone(),
+                    text: reply.clone(),
+                },
+            );
+            emit(
+                &app,
+                ChatEventOut::Done {
+                    id,
+                    full_text: reply.clone(),
+                },
+            );
+            maybe_speak(&app, reply).await;
+            return Ok(());
+        }
+        // Local/Cloud routing decision. Cloud classifier (when keyed) is
+        // more accurate for the "should this be heavy or light?" call;
+        // otherwise we use the deterministic keyword router that respects
+        // the user's mode preference.
+        match settings::get_openrouter_key(&app) {
+            Some(key) => {
+                let model = settings::get_classifier_model(&app);
+                match CloudIntentClassifier::new(key, model) {
+                    Ok(c) => classify_async(&prompt, mode, Some(&c)).await,
+                    Err(e) => {
+                        tracing::debug!(?e, "classifier init failed; using keyword router");
+                        classify(&prompt, mode)
+                    }
+                }
+            }
+            None => classify(&prompt, mode),
+        }
+    } else {
+        classify(&prompt, mode)
+    };
+    tracing::info!(?route, "chat: route decided");
+    emit(
+        &app,
+        ChatEventOut::Started {
+            id: id.clone(),
+            route: match route {
+                Route::Local => "local".into(),
+                Route::Cloud => "cloud".into(),
+                Route::Skill => "skill".into(),
+            },
+        },
+    );
+
+    {
+        let mut hist = service.history.lock().await;
+        hist.push(ChatMessage::user(prompt.clone()));
+    }
+
+    let messages: Vec<ChatMessage> = {
+        let hist = service.history.lock().await;
+        let mut m = Vec::with_capacity(hist.len() + 4);
+        let lang = crate::settings::resolve_language(&app);
+        m.push(system_prompt(lang));
+        // Relationship persona/context — drives tone, pet-names, and how
+        // closely the assistant treats the user. Always present.
+        m.push(ChatMessage::system(
+            crate::relationship::system_prompt_addition(&app),
+        ));
+        // Always include a fresh machine/time context so the LLM can
+        // answer simple environment questions ("what time is it", "how
+        // much RAM do I have") without a dedicated skill.
+        m.push(ChatMessage::system(crate::sysctx::render_context_message()));
+        // Tool-use protocol: only when chat tool calls are enabled.
+        if settings::get_chat_tool_calls_enabled(&app) {
+            m.push(tools_system_prompt(
+                settings::get_desktop_automation_enabled(&app),
+            ));
+        }
+        // RAG: retrieve top-k chunks for the current user prompt and
+        // prepend them as an additional system message.
+        if settings::get_rag_enabled(&app) {
+            if let Some(ctx) = build_rag_context(&app, &prompt) {
+                m.push(ChatMessage::system(ctx));
+            }
+        }
+        m.extend(hist.iter().cloned());
+        m
+    };
+
+    // Tool-call loop: each iteration streams a reply; if it contains a
+    // <tool_call>, execute it, append the result as a system message,
+    // and run another iteration. Skills bypass this entirely — *unless*
+    // the registry says NotApplicable, in which case we silently re-route
+    // to the LLM (the keyword router has wider recall than the skills'
+    // own parsers, so phrases like "почему у меня нет звука" can land on
+    // the volume skill but not parse).
+    let mut effective_route = route;
+    let full_text = if matches!(route, Route::Skill) {
+        match service.skills.dispatch(&prompt).await {
+            Ok(resp) => {
+                let reply = resp.text;
+                emit(
+                    &app,
+                    ChatEventOut::Token {
+                        id: id.clone(),
+                        text: reply.clone(),
+                    },
+                );
+                reply
+            }
+            Err(komorebi_skills::SkillError::NotApplicable) => {
+                tracing::info!("skill not applicable, falling back to LLM");
+                effective_route = match settings::get_mode(&app) {
+                    komorebi_router::Mode::Local => Route::Local,
+                    _ => Route::Cloud,
+                };
+                emit(
+                    &app,
+                    ChatEventOut::Started {
+                        id: id.clone(),
+                        route: match effective_route {
+                            Route::Local => "local".into(),
+                            _ => "cloud".into(),
+                        },
+                    },
+                );
+                run_with_tools(&app, &service, &id, effective_route, messages).await?
+            }
+            Err(komorebi_skills::SkillError::Exec(msg)) => {
+                let reply = format!("Skill failed: {msg}");
+                emit(
+                    &app,
+                    ChatEventOut::Token {
+                        id: id.clone(),
+                        text: reply.clone(),
+                    },
+                );
+                reply
+            }
+        }
+    } else {
+        run_with_tools(&app, &service, &id, route, messages).await?
+    };
+    let _ = effective_route;
+
+    {
+        let mut hist = service.history.lock().await;
+        hist.push(ChatMessage::assistant(full_text.clone()));
+    }
+    emit(
+        &app,
+        ChatEventOut::Done {
+            id,
+            full_text: full_text.clone(),
+        },
+    );
+    maybe_speak(&app, full_text).await;
+    Ok(())
+}

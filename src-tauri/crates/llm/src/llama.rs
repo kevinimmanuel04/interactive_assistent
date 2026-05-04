@@ -3,7 +3,7 @@
 //!
 //! Verified at build time in CI; local dev builds default to the stub engine.
 
-use crate::{LlmConfig, LlmEngine, LlmError, LlmEvent, LlmStream};
+use crate::{CompletionOptions, LlmConfig, LlmEngine, LlmError, LlmEvent, LlmStream};
 use async_trait::async_trait;
 use futures::stream::StreamExt;
 use komorebi_router::{ChatMessage, Role};
@@ -91,8 +91,13 @@ impl LlmEngine for LlamaEngine {
         let (tx, rx) = mpsc::channel::<Result<LlmEvent, LlmError>>(32);
 
         // Heavy blocking work goes on the blocking thread pool.
+        // Default chat sampling: temperature 0.7 / top-p 0.95 / unbounded
+        // length (`max_new` is bounded by `n_ctx - prompt`).
+        let params = SamplingParams::chat();
         tokio::task::spawn_blocking(move || {
-            if let Err(e) = generate_blocking(&backend, &model, &prompt, n_ctx, n_threads, &tx) {
+            if let Err(e) =
+                generate_blocking(&backend, &model, &prompt, n_ctx, n_threads, &params, &tx)
+            {
                 let _ = tx.blocking_send(Err(e));
             } else {
                 let _ = tx.blocking_send(Ok(LlmEvent::Done));
@@ -102,6 +107,82 @@ impl LlmEngine for LlamaEngine {
         let stream = tokio_stream::wrappers::ReceiverStream::new(rx);
         Ok(Box::pin(stream.map(|x| x)))
     }
+
+    /// Override the default trait impl so we can honor
+    /// [`CompletionOptions::temperature`] and [`CompletionOptions::max_tokens`]
+    /// at the sampler level instead of post-hoc truncating a streamed
+    /// chat reply. Critical for the skill classifier, which needs
+    /// deterministic JSON (temp = 0).
+    async fn complete(
+        &self,
+        messages: &[ChatMessage],
+        opts: CompletionOptions,
+    ) -> Result<String, LlmError> {
+        let model = self.ensure_loaded()?;
+        let prompt = render_llama3_prompt(messages);
+        let n_ctx = self.cfg.n_ctx;
+        let n_threads = self.cfg.n_threads;
+        let backend = self.backend.clone();
+        let params = SamplingParams::from_opts(&opts);
+
+        let (tx, rx) = mpsc::channel::<Result<LlmEvent, LlmError>>(32);
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) =
+                generate_blocking(&backend, &model, &prompt, n_ctx, n_threads, &params, &tx)
+            {
+                let _ = tx.blocking_send(Err(e));
+            } else {
+                let _ = tx.blocking_send(Ok(LlmEvent::Done));
+            }
+        });
+
+        let mut stream = Box::pin(tokio_stream::wrappers::ReceiverStream::new(rx)) as LlmStream;
+        let mut out = String::new();
+        while let Some(evt) = stream.next().await {
+            match evt? {
+                LlmEvent::Token(t) => out.push_str(&t),
+                LlmEvent::Done => break,
+            }
+        }
+        Ok(out)
+    }
+}
+
+/// Sampler configuration plumbed from [`CompletionOptions`] down to
+/// `generate_blocking`. Keeping this struct local avoids leaking the
+/// llama-cpp-specific `LlamaSampler` builder into the public crate API.
+#[derive(Debug, Clone)]
+struct SamplingParams {
+    temperature: f32,
+    top_p: f32,
+    /// Hard cap on newly generated tokens. `None` = let the context
+    /// size decide. The classifier uses ~64.
+    max_new_tokens: Option<i32>,
+}
+
+impl SamplingParams {
+    /// Defaults suitable for chat: enough randomness to feel natural,
+    /// no length cap beyond context size.
+    fn chat() -> Self {
+        Self {
+            temperature: 0.7,
+            top_p: 0.95,
+            max_new_tokens: None,
+        }
+    }
+
+    /// Map `CompletionOptions` to sampler parameters. Temperature falls
+    /// back to chat default when not specified; `max_tokens` is honored
+    /// verbatim. Temperature 0 (or very low) collapses to greedy
+    /// decoding via [`LlamaSampler::greedy`] — required by the skill
+    /// classifier for stable JSON output.
+    fn from_opts(opts: &CompletionOptions) -> Self {
+        Self {
+            temperature: opts.temperature.unwrap_or(0.7),
+            top_p: 0.95,
+            max_new_tokens: opts.max_tokens.map(|n| n.min(i32::MAX as u32) as i32),
+        }
+    }
 }
 
 fn generate_blocking(
@@ -110,6 +191,7 @@ fn generate_blocking(
     prompt: &str,
     n_ctx: u32,
     n_threads: i32,
+    sampling: &SamplingParams,
     tx: &mpsc::Sender<Result<LlmEvent, LlmError>>,
 ) -> Result<(), LlmError> {
     let mut ctx_params = LlamaContextParams::default().with_n_ctx(NonZeroU32::new(n_ctx.max(512)));
@@ -126,7 +208,13 @@ fn generate_blocking(
         .map_err(|e| LlmError::Other(format!("tokenize: {e}")))?;
 
     let n_ctx_i = ctx.n_ctx() as i32;
-    let max_new = (n_ctx_i - tokens.len() as i32).clamp(16, 1024);
+    // Honor the caller-provided cap when present, otherwise fall back
+    // to "fill the remaining context window, clamped to a sane range".
+    let ctx_room = (n_ctx_i - tokens.len() as i32).clamp(16, 1024);
+    let max_new = match sampling.max_new_tokens {
+        Some(n) if n > 0 => n.min(ctx_room),
+        _ => ctx_room,
+    };
     let n_len = tokens.len() as i32 + max_new;
 
     let mut batch = LlamaBatch::new(n_ctx_i as usize, 1);
@@ -142,11 +230,18 @@ fn generate_blocking(
 
     let mut n_cur = batch.n_tokens();
     let mut decoder = encoding_rs::UTF_8.new_decoder();
-    let mut sampler = LlamaSampler::chain_simple([
-        LlamaSampler::temp(0.7),
-        LlamaSampler::top_p(0.95, 1),
-        LlamaSampler::dist(1234),
-    ]);
+    // Temperature ~0 collapses to greedy decoding (deterministic argmax).
+    // Anything else uses temperature + top-p with a fixed seed so
+    // streaming chat replies are reproducible per-prompt.
+    let mut sampler = if sampling.temperature <= 0.01 {
+        LlamaSampler::chain_simple([LlamaSampler::greedy()])
+    } else {
+        LlamaSampler::chain_simple([
+            LlamaSampler::temp(sampling.temperature),
+            LlamaSampler::top_p(sampling.top_p, 1),
+            LlamaSampler::dist(1234),
+        ])
+    };
 
     while n_cur <= n_len {
         let token = sampler.sample(&ctx, batch.n_tokens() - 1);

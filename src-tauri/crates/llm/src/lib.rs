@@ -57,9 +57,62 @@ pub enum LlmEvent {
 
 pub type LlmStream = Pin<Box<dyn Stream<Item = Result<LlmEvent, LlmError>> + Send>>;
 
+/// Knobs for one-shot completions. The default `complete()` impl
+/// honors `max_tokens` only; backends that override `complete()`
+/// (notably [`llama::LlamaEngine`]) honor both `max_tokens` and
+/// `temperature` at the sampler level. Setting `temperature = Some(0.0)`
+/// requests greedy/deterministic decoding — required for the skill
+/// classifier's stable JSON output.
+#[derive(Debug, Clone, Default)]
+pub struct CompletionOptions {
+    /// Hard ceiling on response length. The default `complete()` impl
+    /// uses ~6 chars/token as a rough budget when the engine doesn't
+    /// expose token counting; overriding backends apply it directly to
+    /// the sampler's max-new-tokens cap.
+    pub max_tokens: Option<u32>,
+    /// Sampling temperature. Honored by backends that override
+    /// `complete()` (currently the bundled llama.cpp engine). The
+    /// default trait impl ignores it because draining a stream cannot
+    /// retroactively change how its tokens were sampled.
+    pub temperature: Option<f32>,
+}
+
 #[async_trait]
 pub trait LlmEngine: Send + Sync {
     async fn stream_chat(&self, messages: &[ChatMessage]) -> Result<LlmStream, LlmError>;
+
+    /// One-shot non-streaming completion. The default implementation
+    /// drains [`stream_chat`] and concatenates the tokens, which is
+    /// good enough for short structured outputs (intent classifiers,
+    /// JSON tags, single-word labels). Backends are free to override
+    /// for true non-streaming generation with explicit sampling control.
+    async fn complete(
+        &self,
+        messages: &[ChatMessage],
+        opts: CompletionOptions,
+    ) -> Result<String, LlmError> {
+        use futures::StreamExt;
+        let mut stream = self.stream_chat(messages).await?;
+        let mut out = String::new();
+        // Rough char budget: ~6 chars per token covers typical UTF-8
+        // output for the small classifier models we target. Generous
+        // enough that a complete `{...}` JSON object always fits.
+        let cap = opts.max_tokens.map(|n| (n as usize).saturating_mul(6));
+        while let Some(evt) = stream.next().await {
+            match evt? {
+                LlmEvent::Token(t) => {
+                    out.push_str(&t);
+                    if let Some(c) = cap {
+                        if out.len() >= c {
+                            break;
+                        }
+                    }
+                }
+                LlmEvent::Done => break,
+            }
+        }
+        Ok(out)
+    }
 }
 
 /// Stub engine used until the `local-llm` feature lands. Returns a clear
