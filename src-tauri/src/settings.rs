@@ -89,7 +89,27 @@ const KEY_RELATIONSHIP_DECAY_ENABLED: &str = "relationship_decay_enabled";
 
 const KEY_LANGUAGE: &str = "language";
 
+// --- Phase 1: feedback telemetry (👍/👎) -----------------------------------
+const KEY_TELEMETRY_ENABLED: &str = "telemetry_enabled";
+const KEY_TELEMETRY_ENDPOINT: &str = "telemetry_endpoint";
+const KEY_ANON_TOKEN: &str = "telemetry_anon_token";
+
+// --- Phase 2 stub: local personality LoRA training -------------------------
+// These keys are wired through the public snapshot so the UI can expose
+// them, but the actual sidecar trainer is delivered in a follow-up.
+const KEY_TRAINING_ENABLED: &str = "training_enabled";
+const KEY_TRAINING_MAX_CPU_PCT: &str = "training_max_cpu_pct";
+const KEY_TRAINING_BATTERY_FLOOR_PCT: &str = "training_battery_floor_pct";
+const KEY_TRAINING_MIN_EXAMPLES: &str = "training_min_examples";
+const KEY_TRAINING_SCHEDULE: &str = "training_schedule";
+
 pub const DEFAULT_LANGUAGE: &str = "auto";
+
+pub const DEFAULT_TELEMETRY_ENDPOINT: &str = "https://telemetry.komorebi.svitix.com/v1/feedback";
+pub const DEFAULT_TRAINING_MAX_CPU_PCT: i64 = 50;
+pub const DEFAULT_TRAINING_BATTERY_FLOOR_PCT: i64 = 40;
+pub const DEFAULT_TRAINING_MIN_EXAMPLES: i64 = 100;
+pub const DEFAULT_TRAINING_SCHEDULE: &str = "manual";
 
 pub const DEFAULT_WEATHER_PROVIDER: &str = "openmeteo";
 pub const DEFAULT_WEATHER_UNITS: &str = "metric";
@@ -186,6 +206,18 @@ pub struct PublicSettings {
     pub relationship_nsfw_allowed: bool,
     pub relationship_decay_enabled: bool,
     pub language: String,
+    // --- Phase 1: feedback telemetry --------------------------------------
+    pub telemetry_enabled: bool,
+    pub telemetry_endpoint: String,
+    /// Opaque per-install random token for rate-limiting at the server.
+    /// Not a user identifier; can be rotated by purging feedback history.
+    pub telemetry_anon_token: Option<String>,
+    // --- Phase 2 stub: local LoRA training --------------------------------
+    pub training_enabled: bool,
+    pub training_max_cpu_pct: i64,
+    pub training_battery_floor_pct: i64,
+    pub training_min_examples: i64,
+    pub training_schedule: String,
 }
 
 pub fn get_openrouter_key(app: &AppHandle<Wry>) -> Option<String> {
@@ -343,6 +375,18 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         relationship_nsfw_allowed: get_bool(app, KEY_RELATIONSHIP_NSFW_ALLOWED, false),
         relationship_decay_enabled: get_bool(app, KEY_RELATIONSHIP_DECAY_ENABLED, true),
         language: get_language(app),
+        telemetry_enabled: get_telemetry_enabled(app),
+        telemetry_endpoint: get_telemetry_endpoint(app),
+        telemetry_anon_token: get_anon_token(app),
+        training_enabled: get_training_enabled(app),
+        training_max_cpu_pct: get_i64(app, KEY_TRAINING_MAX_CPU_PCT)
+            .unwrap_or(DEFAULT_TRAINING_MAX_CPU_PCT),
+        training_battery_floor_pct: get_i64(app, KEY_TRAINING_BATTERY_FLOOR_PCT)
+            .unwrap_or(DEFAULT_TRAINING_BATTERY_FLOOR_PCT),
+        training_min_examples: get_i64(app, KEY_TRAINING_MIN_EXAMPLES)
+            .unwrap_or(DEFAULT_TRAINING_MIN_EXAMPLES),
+        training_schedule: read_string(app, KEY_TRAINING_SCHEDULE)
+            .unwrap_or_else(|| DEFAULT_TRAINING_SCHEDULE.to_string()),
     }
 }
 
@@ -1116,4 +1160,120 @@ pub fn clear_relationship_state<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
     store.delete(KEY_RELATIONSHIP_STATE);
     store.save()?;
     Ok(())
+}
+
+// ============================================================================
+//  Phase 1: feedback telemetry
+// ============================================================================
+
+pub fn get_telemetry_enabled(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_TELEMETRY_ENABLED, false)
+}
+
+pub fn set_telemetry_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_TELEMETRY_ENABLED, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+pub fn get_telemetry_endpoint(app: &AppHandle<Wry>) -> String {
+    read_string(app, KEY_TELEMETRY_ENDPOINT)
+        .unwrap_or_else(|| DEFAULT_TELEMETRY_ENDPOINT.to_string())
+}
+
+pub fn set_telemetry_endpoint<R: Runtime>(app: &AppHandle<R>, url: &str) -> Result<()> {
+    write_optional_string(app, KEY_TELEMETRY_ENDPOINT, url)
+}
+
+/// Returns the persisted anonymous install token, generating one on first
+/// use. The token is **not** an identifier — it exists so the server can
+/// rate-limit per install without seeing IPs (which it shouldn't store
+/// either). Rotated whenever the user purges feedback history.
+pub fn get_anon_token(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_ANON_TOKEN)
+}
+
+pub fn ensure_anon_token<R: Runtime>(app: &AppHandle<R>) -> Result<String> {
+    let store = app.store(STORE_FILE)?;
+    if let Some(v) = store.get(KEY_ANON_TOKEN).and_then(|v| v.as_str().map(String::from)) {
+        if !v.is_empty() {
+            return Ok(v);
+        }
+    }
+    let token = generate_anon_token();
+    store.set(KEY_ANON_TOKEN, serde_json::Value::String(token.clone()));
+    store.save()?;
+    Ok(token)
+}
+
+pub fn rotate_anon_token<R: Runtime>(app: &AppHandle<R>) -> Result<String> {
+    let store = app.store(STORE_FILE)?;
+    let token = generate_anon_token();
+    store.set(KEY_ANON_TOKEN, serde_json::Value::String(token.clone()));
+    store.save()?;
+    Ok(token)
+}
+
+fn generate_anon_token() -> String {
+    use sha2::Digest;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    // 128 bits of entropy from the OS RNG via reqwest's transitive `rand`?
+    // To stay dependency-free here, we hash high-resolution time + process id
+    // + a thread-local counter. Not cryptographically required (server is
+    // free to ignore weak tokens); just needs to be unique per install.
+    let mut h = sha2::Sha256::new();
+    sha2::Digest::update(
+        &mut h,
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+            .to_le_bytes(),
+    );
+    sha2::Digest::update(&mut h, std::process::id().to_le_bytes());
+    let bytes = sha2::Digest::finalize(h);
+    let mut s = String::with_capacity(32);
+    for b in bytes.iter().take(16) {
+        s.push_str(&format!("{:02x}", b));
+    }
+    s
+}
+
+// ============================================================================
+//  Phase 2 stub: local LoRA training
+// ============================================================================
+
+pub fn get_training_enabled(app: &AppHandle<Wry>) -> bool {
+    get_bool(app, KEY_TRAINING_ENABLED, false)
+}
+
+pub fn set_training_enabled<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()> {
+    let store = app.store(STORE_FILE)?;
+    store.set(KEY_TRAINING_ENABLED, serde_json::Value::Bool(on));
+    store.save()?;
+    Ok(())
+}
+
+pub fn set_training_max_cpu_pct<R: Runtime>(app: &AppHandle<R>, pct: i64) -> Result<()> {
+    let clamped = pct.clamp(1, 95);
+    write_i64(app, KEY_TRAINING_MAX_CPU_PCT, clamped)
+}
+
+pub fn set_training_battery_floor_pct<R: Runtime>(app: &AppHandle<R>, pct: i64) -> Result<()> {
+    let clamped = pct.clamp(0, 100);
+    write_i64(app, KEY_TRAINING_BATTERY_FLOOR_PCT, clamped)
+}
+
+pub fn set_training_min_examples<R: Runtime>(app: &AppHandle<R>, n: i64) -> Result<()> {
+    let clamped = n.clamp(10, 100_000);
+    write_i64(app, KEY_TRAINING_MIN_EXAMPLES, clamped)
+}
+
+pub fn set_training_schedule<R: Runtime>(app: &AppHandle<R>, schedule: &str) -> Result<()> {
+    let v = match schedule {
+        "manual" | "idle" | "scheduled" => schedule,
+        _ => "manual",
+    };
+    write_optional_string(app, KEY_TRAINING_SCHEDULE, v)
 }

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import ExternalLink from "./ExternalLink";
 import { t, useLocale } from "../i18n";
 import {
@@ -83,6 +83,16 @@ import {
   RelationshipState,
   STAGE_LABELS,
   setLanguage,
+  feedbackStats,
+  feedbackPurge,
+  setTelemetryEnabled,
+  setTelemetryEndpoint,
+  setTrainingEnabled,
+  setTrainingMaxCpuPct,
+  setTrainingBatteryFloorPct,
+  setTrainingMinExamples,
+  setTrainingSchedule,
+  type FeedbackStats,
 } from "../api";
 
 interface Props {
@@ -1280,6 +1290,8 @@ function SttSection({
       <LanguageBlock settings={settings} onChanged={onChanged} />
       <WeatherBlock settings={settings} onChanged={onChanged} />
       <RelationshipBlock settings={settings} onChanged={onChanged} />
+      <CommunityBlock settings={settings} onChanged={onChanged} />
+      <TrainingBlock settings={settings} onChanged={onChanged} />
     </div>
   );
 }
@@ -2963,6 +2975,242 @@ function RelationshipBlock({
       >
         {t("rel.reset.button")}
       </button>
+    </section>
+  );
+}
+
+// --- Community feedback (Phase 1) ----------------------------------------
+
+function CommunityBlock({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  useLocale();
+  const enabled = !!settings?.telemetry_enabled;
+  const endpoint = settings?.telemetry_endpoint ?? "";
+  const token = settings?.anon_token ?? null;
+  const [stats, setStats] = useState<FeedbackStats | null>(null);
+  const [endpointDraft, setEndpointDraft] = useState(endpoint);
+  useEffect(() => {
+    setEndpointDraft(endpoint);
+  }, [endpoint]);
+  const refreshStats = useCallback(() => {
+    feedbackStats()
+      .then(setStats)
+      .catch(() => setStats(null));
+  }, []);
+  useEffect(() => {
+    refreshStats();
+    const id = window.setInterval(refreshStats, 30_000);
+    return () => window.clearInterval(id);
+  }, [refreshStats]);
+  return (
+    <section style={sectionStyle}>
+      <h3 style={h3Style}>🤝 {t("settings.community.title")}</h3>
+      <p style={hintStyle}>{t("settings.community.hint")}</p>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 8,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={enabled}
+          onChange={async (e) => {
+            await setTelemetryEnabled(e.target.checked);
+            await onChanged();
+            refreshStats();
+          }}
+        />
+        <span>{t("settings.community.telemetry.enable")}</span>
+      </label>
+      <label
+        style={{ display: "block", fontSize: 12, opacity: 0.75, marginTop: 6 }}
+      >
+        {t("settings.community.telemetry.endpoint")}
+      </label>
+      <div style={{ display: "flex", gap: 6 }}>
+        <input
+          value={endpointDraft}
+          onChange={(e) => setEndpointDraft(e.target.value)}
+          onBlur={async () => {
+            if (endpointDraft !== endpoint) {
+              await setTelemetryEndpoint(endpointDraft);
+              await onChanged();
+            }
+          }}
+          style={{ ...inpStyle, flex: 1 }}
+          placeholder="https://..."
+        />
+      </div>
+      <p style={{ ...hintStyle, marginTop: 8 }}>
+        {t("settings.community.telemetry.stats", {
+          pending: String(stats?.pending ?? 0),
+          uploaded: String(stats?.uploaded ?? 0),
+        })}
+      </p>
+      {token && (
+        <p style={{ ...hintStyle, fontFamily: "ui-monospace, monospace" }}>
+          {t("settings.community.token.label")}: {token.slice(0, 8)}…
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={async () => {
+          if (!confirm(t("settings.community.purge_confirm"))) return;
+          await feedbackPurge();
+          await onChanged();
+          refreshStats();
+        }}
+        style={{ ...btnStyle, marginTop: 6 }}
+      >
+        {t("settings.community.purge")}
+      </button>
+    </section>
+  );
+}
+
+// --- Local LoRA training (Phase 2 stub) ----------------------------------
+
+function TrainingBlock({
+  settings,
+  onChanged,
+}: {
+  settings: PublicSettings | null;
+  onChanged: () => void | Promise<void>;
+}) {
+  useLocale();
+  const enabled = !!settings?.training_enabled;
+  const maxCpu = settings?.training_max_cpu_pct ?? 50;
+  const batteryFloor = settings?.training_battery_floor_pct ?? 40;
+  const minExamples = settings?.training_min_examples ?? 100;
+  const schedule = settings?.training_schedule ?? "manual";
+  // Hard gate: needs a local model. Until one is configured, the toggle
+  // is disabled and we surface "coming soon" text.
+  const hasLocalModel = !!settings?.local_model_path;
+  return (
+    <section style={sectionStyle}>
+      <h3 style={h3Style}>🧠 {t("settings.training.title")}</h3>
+      <p style={hintStyle}>{t("settings.training.hint")}</p>
+      <p style={{ ...hintStyle, opacity: 0.55 }}>
+        {t("settings.training.coming_soon")}
+      </p>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          marginBottom: 8,
+          opacity: hasLocalModel ? 1 : 0.55,
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={!hasLocalModel}
+          onChange={async (e) => {
+            await setTrainingEnabled(e.target.checked);
+            await onChanged();
+          }}
+        />
+        <span>{t("settings.training.enable")}</span>
+      </label>
+      <label style={{ display: "block", fontSize: 12, opacity: 0.75 }}>
+        {t("settings.training.max_cpu")}: {maxCpu}%
+      </label>
+      <input
+        type="range"
+        min={5}
+        max={95}
+        step={5}
+        value={maxCpu}
+        disabled={!hasLocalModel}
+        onChange={async (e) => {
+          await setTrainingMaxCpuPct(Number(e.target.value));
+          await onChanged();
+        }}
+        style={{ width: "100%" }}
+      />
+      <label
+        style={{
+          display: "block",
+          fontSize: 12,
+          opacity: 0.75,
+          marginTop: 6,
+        }}
+      >
+        {t("settings.training.battery_floor")}: {batteryFloor}%
+      </label>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        step={5}
+        value={batteryFloor}
+        disabled={!hasLocalModel}
+        onChange={async (e) => {
+          await setTrainingBatteryFloorPct(Number(e.target.value));
+          await onChanged();
+        }}
+        style={{ width: "100%" }}
+      />
+      <label
+        style={{
+          display: "block",
+          fontSize: 12,
+          opacity: 0.75,
+          marginTop: 6,
+        }}
+      >
+        {t("settings.training.min_examples")}
+      </label>
+      <input
+        type="number"
+        min={10}
+        max={100000}
+        step={10}
+        value={minExamples}
+        disabled={!hasLocalModel}
+        onChange={async (e) => {
+          const n = Number(e.target.value);
+          if (Number.isFinite(n)) {
+            await setTrainingMinExamples(n);
+            await onChanged();
+          }
+        }}
+        style={inpStyle}
+      />
+      <label
+        style={{
+          display: "block",
+          fontSize: 12,
+          opacity: 0.75,
+          marginTop: 6,
+        }}
+      >
+        {t("settings.training.schedule.label")}
+      </label>
+      <select
+        value={schedule}
+        disabled={!hasLocalModel}
+        onChange={async (e) => {
+          await setTrainingSchedule(e.target.value);
+          await onChanged();
+        }}
+        style={inpStyle}
+      >
+        <option value="manual">{t("settings.training.schedule.manual")}</option>
+        <option value="idle">{t("settings.training.schedule.idle")}</option>
+        <option value="scheduled">
+          {t("settings.training.schedule.scheduled")}
+        </option>
+      </select>
     </section>
   );
 }

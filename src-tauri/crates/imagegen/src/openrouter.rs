@@ -91,7 +91,7 @@ impl Generator for OpenRouterImage {
             .http
             .post(URL)
             .bearer_auth(&self.api_key)
-            .header("HTTP-Referer", "https://komorebi.app")
+            .header("HTTP-Referer", "https://komorebi.svitix.com")
             .header("X-Title", "Komorebi")
             .json(&body)
             .send()

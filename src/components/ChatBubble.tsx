@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import { t, useLocale } from "../i18n";
 
 const imgButtonStyle: React.CSSProperties = {
@@ -23,6 +24,18 @@ interface Props {
   onSaveImage?: () => void;
   onCopyImage?: () => void;
   onCancelImage?: () => void;
+  /**
+   * Phase-1 feedback hook. When provided and the bubble shows a final
+   * (non-thinking) assistant reply, two thumbs buttons appear underneath.
+   * The parent is responsible for calling [`feedbackRecord`] with the
+   * captured prompt/response pair — the bubble only emits +1 / -1.
+   */
+  onFeedback?: (rating: 1 | -1) => void;
+  /**
+   * Stable id for the current turn. When this changes, the local
+   * "already rated" lock resets so a new reply can be rated again.
+   */
+  feedbackKey?: string | number | null;
 }
 
 // Minimal markdown renderer: triple-backtick fenced code blocks (with
@@ -134,8 +147,27 @@ export default function ChatBubble({
   onSaveImage,
   onCopyImage,
   onCancelImage,
+  onFeedback,
+  feedbackKey,
 }: Props) {
   useLocale();
+  // Local lock: only allow one rating per turn (resets when feedbackKey
+  // changes \u2014 a new reply is a new chance to rate).
+  const [rated, setRated] = useState<1 | -1 | null>(null);
+  useEffect(() => {
+    setRated(null);
+  }, [feedbackKey]);
+  const handleRate = (r: 1 | -1) => {
+    if (rated || !onFeedback) return;
+    setRated(r);
+    try {
+      onFeedback(r);
+    } catch {
+      /* swallow */
+    }
+  };
+  const showFeedback =
+    !!onFeedback && !!text && !thinking && !!route && route !== "skill";
   const show =
     !!text ||
     !!thinking ||
@@ -208,6 +240,66 @@ export default function ChatBubble({
           ) : text ? (
             <div>{renderMarkdown(text)}</div>
           ) : null}
+          {showFeedback && (
+            <div
+              style={{
+                display: "flex",
+                gap: 6,
+                marginTop: 8,
+                alignItems: "center",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => handleRate(1)}
+                disabled={!!rated}
+                title={t("bubble.feedback.up")}
+                aria-label={t("bubble.feedback.up")}
+                style={{
+                  fontSize: 12,
+                  padding: "2px 8px",
+                  borderRadius: 6,
+                  background:
+                    rated === 1
+                      ? "rgba(120,200,140,0.25)"
+                      : "rgba(255,255,255,0.06)",
+                  color: "#fff",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  cursor: rated ? "default" : "pointer",
+                  opacity: rated && rated !== 1 ? 0.4 : 1,
+                }}
+              >
+                👍
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRate(-1)}
+                disabled={!!rated}
+                title={t("bubble.feedback.down")}
+                aria-label={t("bubble.feedback.down")}
+                style={{
+                  fontSize: 12,
+                  padding: "2px 8px",
+                  borderRadius: 6,
+                  background:
+                    rated === -1
+                      ? "rgba(220,140,140,0.25)"
+                      : "rgba(255,255,255,0.06)",
+                  color: "#fff",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  cursor: rated ? "default" : "pointer",
+                  opacity: rated && rated !== -1 ? 0.4 : 1,
+                }}
+              >
+                👎
+              </button>
+              {rated && (
+                <span style={{ fontSize: 11, opacity: 0.6 }}>
+                  {t("bubble.feedback.thanks")}
+                </span>
+              )}
+            </div>
+          )}
           {imageStatus === "generating" && !imageBase64 && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: text ? 8 : 0 }}>
               <span style={{ opacity: 0.75 }}>{t("bubble.image.generating")}</span>

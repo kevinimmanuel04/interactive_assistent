@@ -83,7 +83,7 @@ impl OpenRouterClient {
         Ok(Self {
             http,
             api_key,
-            app_referer: "https://komorebi.app".into(),
+            app_referer: "https://komorebi.svitix.com".into(),
             app_title: "Komorebi".into(),
         })
     }
@@ -298,7 +298,7 @@ impl CloudIntentClassifier {
             .http
             .post(OPENROUTER_URL)
             .bearer_auth(&self.api_key)
-            .header("HTTP-Referer", "https://komorebi.app")
+            .header("HTTP-Referer", "https://komorebi.svitix.com")
             .header("X-Title", "Komorebi")
             .json(&body)
             .send();
@@ -456,7 +456,7 @@ Output ONLY the JSON, no markdown, no commentary.",
             .http
             .post(OPENROUTER_URL)
             .bearer_auth(&self.api_key)
-            .header("HTTP-Referer", "https://komorebi.app")
+            .header("HTTP-Referer", "https://komorebi.svitix.com")
             .header("X-Title", "Komorebi")
             .json(&body)
             .send();

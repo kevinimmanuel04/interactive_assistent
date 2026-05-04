@@ -127,7 +127,7 @@ async fn synthesize(
     let resp = http_client()?
         .post(ENDPOINT)
         .bearer_auth(&cfg.api_key)
-        .header("HTTP-Referer", "https://komorebi.app")
+        .header("HTTP-Referer", "https://komorebi.svitix.com")
         .header("X-Title", "Komorebi")
         .header("Accept", "text/event-stream")
         .json(&body)
@@ -449,7 +449,7 @@ pub async fn transcribe(
     let resp = http_client()?
         .post(ENDPOINT)
         .bearer_auth(&cfg.api_key)
-        .header("HTTP-Referer", "https://komorebi.app")
+        .header("HTTP-Referer", "https://komorebi.svitix.com")
         .header("X-Title", "Komorebi")
         .json(&body)
         .send()

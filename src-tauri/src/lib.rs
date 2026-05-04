@@ -4,6 +4,7 @@ mod chat;
 mod coach;
 mod commands;
 mod desktop_cmds;
+mod feedback;
 mod imagegen;
 mod models;
 mod proactive;
@@ -202,12 +203,27 @@ pub fn run() {
             commands::set_relationship_decay_enabled,
             commands::set_language,
             commands::get_resolved_language,
+            commands::feedback_record,
+            commands::feedback_stats,
+            commands::feedback_purge,
+            commands::set_telemetry_enabled,
+            commands::set_telemetry_endpoint,
+            commands::set_training_enabled,
+            commands::set_training_max_cpu_pct,
+            commands::set_training_battery_floor_pct,
+            commands::set_training_min_examples,
+            commands::set_training_schedule,
         ])
         .setup(move |app| {
             app.global_shortcut().register(toggle_input)?;
             if let Err(e) = app.global_shortcut().register(vision_region) {
                 tracing::warn!(?e, "failed to register Alt+V hotkey");
             }
+
+            // Phase 1: spawn the feedback-telemetry uploader. Runs even
+            // when the user hasn't opted in — it's a no-op until the
+            // toggle is flipped, then drains the local queue periodically.
+            feedback::spawn_uploader(app.handle().clone());
 
             // System tray: left-click toggles the window, menu offers a
             // clean exit. Essential because the window is decorationless —

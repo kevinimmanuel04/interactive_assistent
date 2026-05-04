@@ -20,6 +20,7 @@ import {
   ChatEvent,
   enterRegionPickerMode,
   exitRegionPickerMode,
+  feedbackRecord,
   generateImage,
   getRelationshipState,
   getSettings,
@@ -72,6 +73,17 @@ export default function App() {
   const controllerRef = useRef<ListenController | null>(null);
   const settingsRef = useRef<PublicSettings | null>(null);
   const handleSubmitRef = useRef<((text: string) => void) | null>(null);
+  // Tracks the most recent assistant turn so the feedback buttons can
+  // attach the right prompt/response pair to a 👍/👎 click. Lives in a
+  // ref because the chat-event handler closure mustn't depend on it.
+  const lastTurnRef = useRef<{
+    id: string | number;
+    prompt: string;
+    response: string;
+    route: "local" | "cloud" | "skill";
+    modelLabel: string;
+  } | null>(null);
+  const [feedbackKey, setFeedbackKey] = useState<number>(0);
 
   // Load settings on mount.
   const refreshSettings = useCallback(() => {
@@ -298,6 +310,24 @@ export default function App() {
           setBubbleText("");
           rawTextRef.current = "";
           setThinking(true);
+          // Open a fresh feedback turn. Prompt was stashed in `lastTurnRef`
+          // by handleSubmit; record route + model_label here when known.
+          if (lastTurnRef.current) {
+            const s = settingsRef.current;
+            const modelLabel =
+              e.route === "cloud"
+                ? `openrouter:${s?.openrouter_model ?? "?"}`
+                : e.route === "local"
+                ? `local:${(s?.local_model_path ?? "").split(/[\\/]/).pop() || "?"}`
+                : `skill:${e.route}`;
+            lastTurnRef.current = {
+              ...lastTurnRef.current,
+              id: e.id,
+              route: e.route,
+              modelLabel,
+              response: "",
+            };
+          }
           break;
         case "token":
           setThinking(false);
@@ -308,6 +338,11 @@ export default function App() {
         case "done":
           setThinking(false);
           avatarState.onDone();
+          // Freeze the response text for feedback before scheduling hide.
+          if (lastTurnRef.current && lastTurnRef.current.id === e.id) {
+            lastTurnRef.current.response = stripMoodTags(rawTextRef.current);
+            setFeedbackKey((k) => k + 1);
+          }
           scheduleBubbleHide();
           activeIdRef.current = null;
           rawTextRef.current = "";
@@ -319,6 +354,8 @@ export default function App() {
           scheduleBubbleHide(6000);
           activeIdRef.current = null;
           rawTextRef.current = "";
+          // Cancel the pending feedback turn — no usable reply.
+          lastTurnRef.current = null;
           break;
       }
     });
@@ -538,6 +575,15 @@ export default function App() {
     setImageError(null);
     avatarState.setThinking();
     activeIdRef.current = "pending";
+    // Stash the prompt now; route + modelLabel are filled in once the
+    // backend emits "started" with the resolved route.
+    lastTurnRef.current = {
+      id: "pending",
+      prompt: text,
+      response: "",
+      route: "local",
+      modelLabel: "",
+    };
     try {
       // Auto screen-watch mode: every text turn implicitly attaches a
       // fresh screenshot, so the assistant is "looking" at the desktop
@@ -624,6 +670,20 @@ export default function App() {
         onSaveImage={handleSaveImage}
         onCopyImage={handleCopyImage}
         onCancelImage={handleCancelImage}
+        feedbackKey={feedbackKey}
+        onFeedback={(rating) => {
+          const turn = lastTurnRef.current;
+          if (!turn || !turn.response) return;
+          const lang = settingsRef.current?.language || "en";
+          void feedbackRecord({
+            modelLabel: turn.modelLabel,
+            route: turn.route,
+            prompt: turn.prompt,
+            response: turn.response,
+            rating,
+            lang,
+          }).catch(() => {});
+        }}
       />
       <InputField
         open={inputOpen && !settingsOpen && !wizardOpen}
