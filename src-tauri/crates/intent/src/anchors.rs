@@ -58,6 +58,19 @@ impl Intent {
         }
     }
 
+    /// Map an action-taking intent to the registered
+    /// [`komorebi_skills`] skill name. Non-skill intents return `None`.
+    pub fn skill_name(self) -> Option<&'static str> {
+        match self {
+            Intent::Volume => Some("volume"),
+            Intent::Screenshot => Some("screenshot"),
+            Intent::Clipboard => Some("clipboard"),
+            Intent::Open => Some("open"),
+            Intent::Media => Some("media"),
+            Intent::Chat | Intent::Weather | Intent::ImageGen => None,
+        }
+    }
+
     /// Anchor phrases used to define this intent in embedding space.
     /// Phrases are kept short and declarative; mix of RU/EN/UK to
     /// cover the trilingual UX. Add more freely — runtime cost is a

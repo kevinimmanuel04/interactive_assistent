@@ -67,10 +67,12 @@ export default function IntentSection() {
         )}
       </div>
       <div style={{ opacity: 0.5, fontSize: 11, marginBottom: 8 }}>
-        Replaces keyword matchers ("погода", "открой", …) with embedding-based
-        intent recognition. Multilingual MiniLM, ~120 MB ONNX downloaded once.
-        Currently used for the weather pre-check; falls back to keywords when
-        unavailable.
+        Replaces keyword matchers ("погода", "открой", "сделай скрин", …)
+        with embedding-based intent recognition. Multilingual MiniLM,
+        ~120 MB ONNX downloaded once. When installed, used as the fast
+        path for the weather pre-check AND for the skill picker
+        (volume / screenshot / clipboard / open / media). Falls back to
+        keywords when the model isn't loaded or scores below threshold.
       </div>
       <button
         type="button"

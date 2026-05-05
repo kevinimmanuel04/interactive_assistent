@@ -69,18 +69,38 @@ pub async fn detect_intent(
     app: &tauri::AppHandle<tauri::Wry>,
     query: &str,
 ) -> Option<IntentMatch> {
+    detect_intent_above(app, query, komorebi_intent::DEFAULT_ACCEPT_THRESHOLD).await
+}
+
+/// Same as [`detect_intent`] but with an explicit threshold. Used by
+/// the skill picker, which requires a stronger match before short-
+/// circuiting LLM-based classifiers (false positives that trigger
+/// volume/screenshot/clipboard skills are far more disruptive than a
+/// missed weather pre-check).
+pub async fn detect_intent_above(
+    app: &tauri::AppHandle<tauri::Wry>,
+    query: &str,
+    threshold: f32,
+) -> Option<IntentMatch> {
     let state = app.try_state::<Arc<IntentState>>()?.inner().clone();
     let engine = state.engine().await?;
     let q = query.to_string();
-    tokio::task::spawn_blocking(move || {
-        engine
-            .best_above(&q, komorebi_intent::DEFAULT_ACCEPT_THRESHOLD)
-            .ok()
-            .flatten()
-    })
-    .await
-    .ok()
-    .flatten()
+    tokio::task::spawn_blocking(move || engine.best_above(&q, threshold).ok().flatten())
+        .await
+        .ok()
+        .flatten()
+}
+
+/// Resolve the matching skill name (volume/screenshot/clipboard/open/
+/// media) when the embedding classifier reports an action-taking intent
+/// above [`komorebi_intent::SKILL_ACCEPT_THRESHOLD`]. Returns `None`
+/// when the model isn't loaded, the score is too low, or the matched
+/// intent isn't a skill (Chat / Weather / ImageGen).
+pub async fn detect_skill(app: &tauri::AppHandle<tauri::Wry>, query: &str) -> Option<&'static str> {
+    let m = detect_intent_above(app, query, komorebi_intent::SKILL_ACCEPT_THRESHOLD).await?;
+    let name = m.intent.skill_name()?;
+    tracing::info!(skill = name, score = m.score, "intent: skill chosen");
+    Some(name)
 }
 
 /// Convenience: did the classifier flag this exact intent?

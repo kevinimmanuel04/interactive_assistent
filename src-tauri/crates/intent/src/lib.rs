@@ -44,6 +44,13 @@ pub struct IntentMatch {
 /// false positives (hijacking normal chat) are far worse.
 pub const DEFAULT_ACCEPT_THRESHOLD: f32 = 0.55;
 
+/// Higher threshold for action-taking skills (volume / screenshot /
+/// clipboard / open / media). False positives here are user-visible
+/// — taking a screenshot when the user only said "i was looking at
+/// the screen" — so we require a stronger match before short-
+/// circuiting LLM-based classifiers.
+pub const SKILL_ACCEPT_THRESHOLD: f32 = 0.62;
+
 /// The engine. Holds the loaded model + pre-computed anchor embeddings
 /// for every non-`Chat` intent.
 pub struct IntentEngine {

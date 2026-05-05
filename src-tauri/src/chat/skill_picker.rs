@@ -11,8 +11,13 @@ use tauri::{AppHandle, Wry};
 /// available in the current configuration.
 ///
 /// Resolution order:
+/// 0. Local embedding classifier ([`crate::intent`]) — when the user
+///    has installed the local intent model. ~10 ms cosine match
+///    against per-skill anchor phrases. Requires a strong score
+///    ([`komorebi_intent::SKILL_ACCEPT_THRESHOLD`] = 0.62) to short-
+///    circuit, since false positives trigger real desktop actions.
 /// 1. Cloud classifier — if an OpenRouter key is set. Cheapest and most
-///    accurate path.
+///    accurate path when the embedding model isn't loaded.
 /// 2. Local classifier — if no cloud key but the local LLM is loadable.
 ///    Lets users on `Mode::Local` (or `Auto` without a key) keep smart
 ///    routing instead of falling straight to brittle keyword regexes.
@@ -27,6 +32,15 @@ pub(super) async fn pick_skill_intent(
     prompt: &str,
 ) -> Option<SkillIntent> {
     let catalog = SkillRegistry::catalog();
+
+    // 0. Local embedding classifier — fast path. Returns `None` when
+    // the model isn't loaded so we always fall through gracefully.
+    if let Some(name) = crate::intent::detect_skill(app, prompt).await {
+        return Some(SkillIntent {
+            skill: name.to_string(),
+            command: prompt.to_string(),
+        });
+    }
 
     // 1. Cloud — preferred when keyed.
     if let Some(key) = settings::get_openrouter_key(app) {
