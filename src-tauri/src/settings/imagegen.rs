@@ -29,7 +29,15 @@ pub fn set_imagegen_provider<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<
 }
 
 pub fn get_imagegen_openrouter_model(app: &AppHandle<Wry>) -> String {
-    read_string(app, KEY_IMAGEGEN_OR_MODEL).unwrap_or_else(|| DEFAULT_IMAGEGEN_OR_MODEL.to_string())
+    let v = read_string(app, KEY_IMAGEGEN_OR_MODEL)
+        .unwrap_or_else(|| DEFAULT_IMAGEGEN_OR_MODEL.to_string());
+    // Migration: OpenRouter renamed/removed the `-preview` alias for
+    // gemini-2.5-flash-image (it now 404s). Auto-rewrite to the GA name
+    // so existing installs don't keep failing.
+    if v == "google/gemini-2.5-flash-image-preview" {
+        return DEFAULT_IMAGEGEN_OR_MODEL.to_string();
+    }
+    v
 }
 pub fn set_imagegen_openrouter_model<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
     write_optional_string(app, KEY_IMAGEGEN_OR_MODEL, v)

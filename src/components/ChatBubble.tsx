@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { t, useLocale } from "../i18n";
+import { ThumbDownIcon, ThumbUpIcon } from "./icons";
 
 const imgButtonStyle: React.CSSProperties = {
   fontSize: 11,
@@ -10,6 +11,18 @@ const imgButtonStyle: React.CSSProperties = {
   color: "#fff",
   border: "1px solid rgba(255,255,255,0.12)",
   cursor: "pointer",
+};
+
+const feedbackBtn: React.CSSProperties = {
+  width: 26,
+  height: 24,
+  padding: 0,
+  borderRadius: 6,
+  color: "#fff",
+  border: "1px solid rgba(255,255,255,0.12)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
 };
 
 interface Props {
@@ -256,20 +269,20 @@ export default function ChatBubble({
                 title={t("bubble.feedback.up")}
                 aria-label={t("bubble.feedback.up")}
                 style={{
-                  fontSize: 12,
-                  padding: "2px 8px",
-                  borderRadius: 6,
+                  ...feedbackBtn,
                   background:
                     rated === 1
-                      ? "rgba(120,200,140,0.25)"
-                      : "rgba(255,255,255,0.06)",
-                  color: "#fff",
-                  border: "1px solid rgba(255,255,255,0.14)",
+                      ? "rgba(120,200,140,0.22)"
+                      : "rgba(255,255,255,0.05)",
+                  borderColor:
+                    rated === 1
+                      ? "rgba(160,220,170,0.45)"
+                      : "rgba(255,255,255,0.12)",
                   cursor: rated ? "default" : "pointer",
                   opacity: rated && rated !== 1 ? 0.4 : 1,
                 }}
               >
-                👍
+                <ThumbUpIcon size={13} />
               </button>
               <button
                 type="button"
@@ -278,20 +291,20 @@ export default function ChatBubble({
                 title={t("bubble.feedback.down")}
                 aria-label={t("bubble.feedback.down")}
                 style={{
-                  fontSize: 12,
-                  padding: "2px 8px",
-                  borderRadius: 6,
+                  ...feedbackBtn,
                   background:
                     rated === -1
-                      ? "rgba(220,140,140,0.25)"
-                      : "rgba(255,255,255,0.06)",
-                  color: "#fff",
-                  border: "1px solid rgba(255,255,255,0.14)",
+                      ? "rgba(220,140,140,0.22)"
+                      : "rgba(255,255,255,0.05)",
+                  borderColor:
+                    rated === -1
+                      ? "rgba(240,170,170,0.45)"
+                      : "rgba(255,255,255,0.12)",
                   cursor: rated ? "default" : "pointer",
                   opacity: rated && rated !== -1 ? 0.4 : 1,
                 }}
               >
-                👎
+                <ThumbDownIcon size={13} />
               </button>
               {rated && (
                 <span style={{ fontSize: 11, opacity: 0.6 }}>

@@ -5,6 +5,7 @@ import InputField from "./components/InputField";
 import ModelWizard from "./components/ModelWizard";
 import RegionPicker from "./components/RegionPicker";
 import SettingsPanel from "./components/SettingsPanel";
+import { ToastHost, toast } from "./components/Toast";
 import TopBar from "./components/TopBar";
 import { exit as tauriExit } from "@tauri-apps/plugin-process";
 import { invoke } from "@tauri-apps/api/core";
@@ -112,6 +113,10 @@ export default function App() {
       setBubbleText(null);
       setUserEcho(null);
       setRoute(null);
+      setImageBase64(null);
+      setImageSavePath(null);
+      setImageStatus(null);
+      setImageError(null);
     }, ms);
   }, []);
 
@@ -183,6 +188,7 @@ export default function App() {
     setImageBase64,
     setImageSavePath,
     setThinking,
+    scheduleBubbleHide,
   });
 
   const relationship = useRelationship({ setBubbleText, scheduleBubbleHide });
@@ -231,9 +237,11 @@ export default function App() {
       if (typeof target === "string" && target.trim()) {
         await saveGeneratedImage(imageBase64, target);
         setImageSavePath(target);
+        toast.success(`Saved to ${target}`);
       }
     } catch (err) {
       setImageError(String(err));
+      toast.error(`Save failed: ${String(err)}`);
     }
   }, [imageBase64]);
 
@@ -248,9 +256,11 @@ export default function App() {
       const CI: any = (window as any).ClipboardItem;
       if (CI && navigator.clipboard?.write) {
         await navigator.clipboard.write([new CI({ "image/png": blob })]);
+        toast.success("Copied to clipboard");
       }
     } catch (err) {
       setImageError(String(err));
+      toast.error(`Copy failed: ${String(err)}`);
     }
   }, [imageBase64]);
 
@@ -523,6 +533,7 @@ export default function App() {
           void handleImagePrompt(prompt, size);
         }}
       />
+      <ToastHost />
     </>
   );
 }

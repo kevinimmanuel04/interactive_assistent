@@ -28,7 +28,7 @@ pub const DEFAULT_FASTER_WHISPER_MODEL: &str = "Systran/faster-whisper-base";
 pub const DEFAULT_DEEPGRAM_MODEL: &str = "nova-3";
 
 pub const DEFAULT_IMAGEGEN_PROVIDER: &str = "openrouter";
-pub const DEFAULT_IMAGEGEN_OR_MODEL: &str = "google/gemini-2.5-flash-image-preview";
+pub const DEFAULT_IMAGEGEN_OR_MODEL: &str = "google/gemini-2.5-flash-image";
 pub const DEFAULT_IMAGEGEN_REPLICATE_MODEL: &str = "black-forest-labs/flux-schnell";
 pub const DEFAULT_IMAGEGEN_DEVICE: &str = "auto";
 pub const DEFAULT_IMAGEGEN_WIDTH: i64 = 768;

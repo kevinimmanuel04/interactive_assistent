@@ -25,3 +25,61 @@ body,
 .interactive {
   pointer-events: auto;
 }
+
+/* Subtle global affordances — hover/active/focus for inline-styled
+   buttons & inputs across SettingsPanel, dialogs, etc. We keep them
+   weight-light so per-component inline styles win. */
+.interactive button {
+  transition: background-color 120ms ease, border-color 120ms ease,
+    transform 120ms ease, box-shadow 120ms ease;
+}
+.interactive button:not(:disabled):hover {
+  filter: brightness(1.12);
+}
+.interactive button:not(:disabled):active {
+  transform: translateY(1px);
+}
+.interactive button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.interactive input,
+.interactive select,
+.interactive textarea {
+  transition: border-color 140ms ease, box-shadow 140ms ease,
+    background-color 140ms ease;
+}
+/* Soft focus glow only on keyboard navigation. We deliberately avoid
+   overriding `border-color` (some inputs use `border: none` and our old
+   override produced an ugly inline ring on the chat composer). */
+.interactive input:focus-visible,
+.interactive select:focus-visible,
+.interactive textarea:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(140, 180, 255, 0.22);
+}
+/* For inputs that DO carry a border, brighten it on hover/focus. */
+.interactive input:hover,
+.interactive select:hover,
+.interactive textarea:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* Pretty scrollbars inside the dark glass panels. */
+.interactive *::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.interactive *::-webkit-scrollbar-track {
+  background: transparent;
+}
+.interactive *::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.interactive *::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+  background-clip: padding-box;
+}

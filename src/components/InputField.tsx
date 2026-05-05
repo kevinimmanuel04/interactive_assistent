@@ -2,6 +2,13 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { cancelRecording, startRecording, stopRecording } from "../api";
 import { t, useLocale } from "../i18n";
+import {
+  EyeIcon,
+  MicIcon,
+  PaperclipIcon,
+  StopIcon,
+  WandIcon,
+} from "./icons";
 
 interface Props {
   open: boolean;
@@ -108,40 +115,29 @@ export default function InputField({
             left: 12,
             right: 12,
             zIndex: 10,
-            padding: "8px 10px",
-            borderRadius: 12,
-            background: "rgba(20, 20, 28, 0.88)",
-            backdropFilter: "blur(10px)",
-            WebkitBackdropFilter: "blur(10px)",
-            boxShadow: "0 6px 24px rgba(0,0,0,0.45)",
+            padding: "6px 8px",
+            borderRadius: 14,
+            background: "rgba(20, 20, 28, 0.86)",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
+            boxShadow:
+              "0 8px 28px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.06)",
             display: "flex",
             flexDirection: "column",
-            gap: 4,
+            gap: 2,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
             {sttEnabled && (
               <button
                 type="button"
                 onClick={toggleMic}
                 disabled={busy}
                 title={recording ? t("input.mic.stop") : t("input.mic.start")}
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 15,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  cursor: busy ? "wait" : "pointer",
-                  background: recording ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.08)",
-                  color: "#fff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 14,
-                  transition: "background 0.18s",
-                }}
+                aria-label={recording ? t("input.mic.stop") : t("input.mic.start")}
+                style={composerBtn(recording)}
               >
-                {recording ? "■" : "🎙"}
+                {recording ? <StopIcon size={13} /> : <MicIcon size={15} />}
               </button>
             )}
             <input
@@ -167,7 +163,8 @@ export default function InputField({
                 outline: "none",
                 color: "#fff",
                 fontSize: 14,
-                padding: "6px 6px",
+                padding: "8px 8px",
+                minWidth: 0,
               }}
             />
             {onImagePrompt && (
@@ -179,20 +176,12 @@ export default function InputField({
                   onImagePrompt(prompt);
                   setValue("");
                 }}
+                disabled={!value.trim()}
                 title={t("input.image_prompt")}
-                style={{
-                  width: 30,
-                  height: 30,
-                  borderRadius: 15,
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  cursor: "pointer",
-                  background: "rgba(20,20,28,0.7)",
-                  color: "#fff",
-                  fontSize: 14,
-                  marginRight: 4,
-                }}
+                aria-label={t("input.image_prompt")}
+                style={composerBtn(false)}
               >
-                🎨
+                <WandIcon size={15} />
               </button>
             )}
             {visionEnabled && (
@@ -201,36 +190,29 @@ export default function InputField({
                   type="button"
                   onClick={() => setVisionMenuOpen((v) => !v)}
                   title={t("input.vision.tooltip")}
-                  style={{
-                    width: 30,
-                    height: 30,
-                    borderRadius: 15,
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    cursor: "pointer",
-                    background: visionMenuOpen
-                      ? "rgba(255,255,255,0.18)"
-                      : "rgba(255,255,255,0.08)",
-                    color: "#fff",
-                    fontSize: 14,
-                  }}
+                  aria-label={t("input.vision.tooltip")}
+                  style={composerBtn(visionMenuOpen)}
                 >
-                  👁
+                  <EyeIcon size={15} />
                 </button>
                 {visionMenuOpen && (
                   <div
                     style={{
                       position: "absolute",
-                      bottom: 36,
+                      bottom: 38,
                       right: 0,
-                      minWidth: 180,
+                      minWidth: 200,
                       padding: 4,
-                      borderRadius: 8,
+                      borderRadius: 10,
                       background: "rgba(20,20,28,0.96)",
-                      boxShadow: "0 6px 24px rgba(0,0,0,0.5)",
+                      boxShadow:
+                        "0 10px 28px rgba(0,0,0,0.5), inset 0 0 0 1px rgba(255,255,255,0.06)",
                       display: "flex",
                       flexDirection: "column",
-                      gap: 2,
+                      gap: 1,
                       zIndex: 20,
+                      backdropFilter: "blur(10px)",
+                      WebkitBackdropFilter: "blur(10px)",
                     }}
                   >
                     <button
@@ -242,7 +224,8 @@ export default function InputField({
                         setValue("");
                       }}
                     >
-                      {t("input.vision.full_screen")}
+                      <EyeIcon size={13} style={{ opacity: 0.75 }} />
+                      <span>{t("input.vision.full_screen")}</span>
                     </button>
                     <button
                       type="button"
@@ -253,7 +236,17 @@ export default function InputField({
                         setValue("");
                       }}
                     >
-                      {t("input.vision.select_region")}
+                      <span
+                        style={{
+                          width: 13,
+                          height: 13,
+                          border: "1.4px dashed currentColor",
+                          borderRadius: 2,
+                          opacity: 0.75,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span>{t("input.vision.select_region")}</span>
                     </button>
                     <button
                       type="button"
@@ -263,7 +256,8 @@ export default function InputField({
                         fileRef.current?.click();
                       }}
                     >
-                      {t("input.vision.attach_image")}
+                      <PaperclipIcon size={13} style={{ opacity: 0.75 }} />
+                      <span>{t("input.vision.attach_image")}</span>
                     </button>
                   </div>
                 )}
@@ -305,7 +299,29 @@ const menuBtn: React.CSSProperties = {
   borderRadius: 6,
   cursor: "pointer",
   fontSize: 13,
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
 };
+
+/// Compact, icon-only composer button. `active` lights up the background
+/// (used for the recording mic + open vision menu).
+function composerBtn(active: boolean): React.CSSProperties {
+  return {
+    width: 30,
+    height: 30,
+    borderRadius: 9,
+    border: "1px solid rgba(255,255,255,0.10)",
+    background: active ? "rgba(255,255,255,0.16)" : "rgba(255,255,255,0.04)",
+    color: "#fff",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
+    padding: 0,
+  };
+}
 
 /// Re-encode an arbitrary uploaded image (jpeg/webp/etc.) to PNG base64.
 /// Keeps the backend pipeline simple — vision_with_image expects PNG bytes.

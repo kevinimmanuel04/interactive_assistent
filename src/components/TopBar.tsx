@@ -1,5 +1,14 @@
 import { useLocale, t } from "../i18n";
 import { STAGE_LABELS, type RelationshipState } from "../api";
+import {
+  CloseIcon,
+  DownloadIcon,
+  EarIcon,
+  EyeIcon,
+  GearIcon,
+  RefreshIcon,
+  WarningIcon,
+} from "./icons";
 
 export interface TopBarProps {
   mode: string;
@@ -32,7 +41,6 @@ export interface TopBarProps {
 export function TopBar(props: TopBarProps) {
   useLocale(); // re-render on language change
   void props.listenEnabled;
-  const listenIcon = props.heard ? "👂•" : "👂";
   return (
     <div
       className="interactive"
@@ -52,14 +60,19 @@ export function TopBar(props: TopBarProps) {
           padding: "3px 8px",
           borderRadius: 8,
           background: "rgba(20,20,28,0.7)",
-          opacity: 0.85,
+          opacity: 0.9,
           textTransform: "uppercase",
           letterSpacing: 0.5,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 6,
         }}
         title={props.hasKey ? t("topbar.key_saved") : t("topbar.no_key")}
       >
-        {props.mode}
-        {!props.hasKey && props.mode !== "local" && " ⚠"}
+        <span>{props.mode}</span>
+        {!props.hasKey && props.mode !== "local" && (
+          <WarningIcon size={11} style={{ opacity: 0.85 }} />
+        )}
       </span>
       {props.showRelationshipBadge && props.relationship && (
         <RelationshipBadge state={props.relationship} />
@@ -75,8 +88,23 @@ export function TopBar(props: TopBarProps) {
               ? t("topbar.listen.tip_listening")
               : t("topbar.listen.tip_idle")
         }
+        aria-label={t("topbar.listen.tip_idle")}
       >
-        {listenIcon}
+        <EarIcon size={14} />
+        {props.heard && (
+          <span
+            style={{
+              position: "absolute",
+              top: 3,
+              right: 3,
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: "#7ec6ff",
+              boxShadow: "0 0 6px rgba(126,198,255,0.85)",
+            }}
+          />
+        )}
       </button>
       <button
         onClick={props.onToggleAutoWatch}
@@ -89,28 +117,41 @@ export function TopBar(props: TopBarProps) {
               ? t("topbar.watch.tip_on")
               : t("topbar.watch.tip_off")
         }
+        aria-label={t("topbar.watch.tip_off")}
       >
-        👁
+        <EyeIcon size={14} />
       </button>
-      <button onClick={props.onReset} style={iconBtn} title={t("topbar.reset")}>
-        ↺
+      <button
+        onClick={props.onReset}
+        style={iconBtn}
+        title={t("topbar.reset")}
+        aria-label={t("topbar.reset")}
+      >
+        <RefreshIcon size={13} />
       </button>
       <button
         onClick={props.onToggleWizard}
         style={iconBtn}
         title={t("topbar.downloads")}
+        aria-label={t("topbar.downloads")}
       >
-        ⬇
+        <DownloadIcon size={13} />
       </button>
       <button
         onClick={props.onToggleSettings}
         style={iconBtn}
         title={t("topbar.settings")}
+        aria-label={t("topbar.settings")}
       >
-        ⚙
+        <GearIcon size={13} />
       </button>
-      <button onClick={props.onQuit} style={iconBtn} title={t("topbar.quit")}>
-        ✕
+      <button
+        onClick={props.onQuit}
+        style={iconBtn}
+        title={t("topbar.quit")}
+        aria-label={t("topbar.quit")}
+      >
+        <CloseIcon size={13} />
       </button>
     </div>
   );
@@ -166,10 +207,10 @@ function RelationshipBadge({ state }: { state: RelationshipState }) {
 }
 
 const iconBtn: React.CSSProperties = {
-  width: 24,
-  height: 24,
+  width: 26,
+  height: 26,
   borderRadius: 8,
-  border: "1px solid rgba(255,255,255,0.12)",
+  border: "1px solid rgba(255,255,255,0.10)",
   background: "rgba(20,20,28,0.7)",
   color: "#fff",
   cursor: "pointer",
@@ -178,13 +219,18 @@ const iconBtn: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  position: "relative",
+  padding: 0,
 };
 
 /** Same neutral icon button, with a subtle white border when "active". */
 function iconBtnStyle(active: boolean): React.CSSProperties {
   return {
     ...iconBtn,
-    border: active ? "1px solid rgba(255,255,255,0.55)" : iconBtn.border,
+    border: active
+      ? "1px solid rgba(255,255,255,0.45)"
+      : iconBtn.border,
+    background: active ? "rgba(255,255,255,0.10)" : iconBtn.background,
   };
 }
 

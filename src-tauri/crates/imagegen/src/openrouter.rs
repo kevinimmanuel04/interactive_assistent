@@ -1,6 +1,6 @@
 //! OpenRouter image generation via `/api/v1/chat/completions` with
 //! `modalities: ["image", "text"]`. Models like
-//! `google/gemini-2.5-flash-image-preview` return an inline image_url.
+//! `google/gemini-2.5-flash-image` return an inline image_url.
 
 use crate::{
     decode_data_uri_or_b64, GenerateOk, GenerateRequest, Generator, ImageGenError, Result,

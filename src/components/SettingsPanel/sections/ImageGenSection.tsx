@@ -19,6 +19,7 @@ import {
   type PublicSettings,
 } from "../../../api";
 import { t, useLocale } from "../../../i18n";
+import { toast } from "../../Toast";
 import {
   btnStyle,
   h3Style,
@@ -41,7 +42,7 @@ export default function ImageGenSection({ settings, refresh }: Props) {
     | "local";
   const [orModel, setOrModel] = useState(
     settings?.imagegen_openrouter_model ??
-      "google/gemini-2.5-flash-image-preview",
+      "google/gemini-2.5-flash-image",
   );
   const [repModel, setRepModel] = useState(
     settings?.imagegen_replicate_model ?? "black-forest-labs/flux-schnell",
@@ -60,7 +61,7 @@ export default function ImageGenSection({ settings, refresh }: Props) {
   useEffect(() => {
     setOrModel(
       settings?.imagegen_openrouter_model ??
-        "google/gemini-2.5-flash-image-preview",
+        "google/gemini-2.5-flash-image",
     );
     setRepModel(
       settings?.imagegen_replicate_model ?? "black-forest-labs/flux-schnell",
@@ -156,8 +157,13 @@ export default function ImageGenSection({ settings, refresh }: Props) {
               onClick={() =>
                 change(async () => {
                   if (!token.trim()) return;
-                  await setReplicateToken(token.trim());
-                  setToken("");
+                  try {
+                    await setReplicateToken(token.trim());
+                    setToken("");
+                    toast.success(t("settings.status.saved"));
+                  } catch (err) {
+                    toast.error(String(err));
+                  }
                 })
               }
               style={btnStyle}

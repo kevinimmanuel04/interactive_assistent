@@ -17,6 +17,7 @@ import {
   type RelationshipState,
 } from "../../../api";
 import { t, useLocale } from "../../../i18n";
+import { toast } from "../../Toast";
 import {
   btnStyle,
   h3Style,
@@ -96,8 +97,13 @@ export default function RelationshipSection({ settings, refresh }: Props) {
         />
         <button
           onClick={async () => {
-            await setUserName(name);
-            await refresh();
+            try {
+              await setUserName(name);
+              await refresh();
+              toast.success(t("settings.status.saved"));
+            } catch (err) {
+              toast.error(String(err));
+            }
           }}
           style={btnStyle}
         >

@@ -22,6 +22,10 @@ export function useImageStream(opts: {
   setImageBase64: (s: string | null) => void;
   setImageSavePath: (s: string | null) => void;
   setThinking: (v: boolean) => void;
+  /** Schedules the chat bubble (and image) to fade after `ms`. The user
+   * still has time to hit Save / Copy; the auto-hide just keeps the
+   * overlay from sitting on top of the avatar forever. */
+  scheduleBubbleHide?: (ms?: number) => void;
 }): void {
   const {
     activeImageIdRef,
@@ -31,6 +35,7 @@ export function useImageStream(opts: {
     setImageBase64,
     setImageSavePath,
     setThinking,
+    scheduleBubbleHide,
   } = opts;
 
   useEffect(() => {
@@ -51,6 +56,12 @@ export function useImageStream(opts: {
         setThinking(false);
         avatarState.onDone();
         activeIdRef.current = null;
+        // After 18s the bubble fades and the image preview is cleared.
+        // Long enough that the user can still tap Save / Copy if they
+        // want, short enough that the floating panel doesn't camp on
+        // top of the avatar indefinitely. Cleared eagerly when the user
+        // submits a new prompt (see App.tsx handleSubmit).
+        if (scheduleBubbleHide) scheduleBubbleHide(18000);
         // Auto-copy PNG to clipboard (best-effort).
         try {
           const bin = atob(e.png_base64);
@@ -73,6 +84,7 @@ export function useImageStream(opts: {
         avatarState.onDone(500);
         activeIdRef.current = null;
         activeImageIdRef.current = null;
+        if (scheduleBubbleHide) scheduleBubbleHide(8000);
       }
     });
     return () => {

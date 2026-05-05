@@ -41,20 +41,39 @@ pub(super) async fn run_generation(
     }
     let _ = crate::relationship::apply_user_message(&app, &prompt);
 
-    // Weather pre-check: bypass the LLM for direct weather questions when
-    // smart routing is enabled. Slash command (`/weather …`) goes through
-    // a dedicated frontend path and reaches `commands::get_weather`
-    // instead.
-    if settings::get_smart_routing(&app)
-        && komorebi_weather::is_weather_query(&prompt)
-        // Avoid hijacking conversational mentions (e.g. "обсудим погоду
-        // позже"). Require either a city extraction OR an explicit
-        // direct-question pattern.
+    // Weather pre-check. The LLM has no built-in weather tool, so we
+    // ALWAYS intercept weather queries — independent of smart routing —
+    // and answer them via `komorebi-weather` (Open-Meteo by default,
+    // keyless). We still avoid hijacking conversational mentions like
+    // "обсудим погоду позже": require either an explicit city in the
+    // prompt, an interrogative form, a leading weather noun, or a
+    // configured fallback location (default city or use-IP).
+    let lower_prompt = prompt.to_lowercase();
+    let starts_with_weather_word = [
+        "погода",
+        "погоду",
+        "погоды",
+        "температура",
+        "температуру",
+        "прогноз",
+        "weather",
+        "temperature",
+        "forecast",
+    ]
+    .iter()
+    .any(|w| lower_prompt.trim_start().starts_with(w));
+    let has_question_form = prompt.contains('?')
+        || lower_prompt.starts_with("какая погод")
+        || lower_prompt.starts_with("яка погод")
+        || lower_prompt.starts_with("what")
+        || lower_prompt.starts_with("how");
+    let weather_cfg = settings::weather_config(&app);
+    let has_weather_fallback = weather_cfg.default_city.is_some() || weather_cfg.use_ip;
+    if komorebi_weather::is_weather_query(&prompt)
         && (komorebi_weather::extract_city_from_text(&prompt).is_some()
-            || prompt.contains('?')
-            || prompt.to_lowercase().starts_with("какая погода")
-            || prompt.to_lowercase().starts_with("what")
-            || prompt.to_lowercase().starts_with("how"))
+            || starts_with_weather_word
+            || has_question_form
+            || has_weather_fallback)
     {
         emit(
             &app,

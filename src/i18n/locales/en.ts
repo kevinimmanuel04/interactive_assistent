@@ -315,8 +315,8 @@ export const EN = {
   // Image generation (settings)
   "settings.imggen.title": "Image generation",
   "settings.imggen.openrouter.model": "OpenRouter model",
-  "settings.imggen.openrouter.placeholder": "google/gemini-2.5-flash-image-preview",
-  "settings.imggen.openrouter.hint": "Uses your OpenRouter API key. Try: google/gemini-2.5-flash-image-preview, openai/dall-e-3.",
+  "settings.imggen.openrouter.placeholder": "google/gemini-2.5-flash-image",
+  "settings.imggen.openrouter.hint": "Uses your OpenRouter API key. Try: google/gemini-2.5-flash-image, openai/gpt-4o-image, openai/dall-e-3.",
   "settings.imggen.replicate.token": "Replicate API token",
   "settings.imggen.replicate.token.placeholder_empty": "r8_…",
   "settings.imggen.replicate.token.placeholder_saved": "(saved — leave blank)",

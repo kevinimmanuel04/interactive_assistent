@@ -14,6 +14,7 @@ import {
   type PublicSettings,
 } from "../../../../api";
 import { t, useLocale } from "../../../../i18n";
+import { toast } from "../../../Toast";
 import {
   btnStyle,
   h3Style,
@@ -79,9 +80,14 @@ export default function WeatherSection({ settings, refresh }: Props) {
             <button
               onClick={async () => {
                 if (!keyInput.trim()) return;
-                await setWeatherApiKey(keyInput.trim());
-                setKeyInput("");
-                await refresh();
+                try {
+                  await setWeatherApiKey(keyInput.trim());
+                  setKeyInput("");
+                  await refresh();
+                  toast.success(t("settings.status.saved"));
+                } catch (err) {
+                  toast.error(String(err));
+                }
               }}
               style={btnStyle}
             >
@@ -111,8 +117,13 @@ export default function WeatherSection({ settings, refresh }: Props) {
         />
         <button
           onClick={async () => {
-            await setWeatherDefaultCity(city);
-            await refresh();
+            try {
+              await setWeatherDefaultCity(city);
+              await refresh();
+              toast.success(t("settings.status.saved"));
+            } catch (err) {
+              toast.error(String(err));
+            }
           }}
           style={btnStyle}
         >

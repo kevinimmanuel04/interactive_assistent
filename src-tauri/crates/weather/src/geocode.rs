@@ -1,10 +1,32 @@
 //! Free Open-Meteo geocoding. No API key required.
 
+use crate::extract::strip_ru_inflection;
 use crate::{Location, WeatherError};
 
 const ENDPOINT: &str = "https://geocoding-api.open-meteo.com/v1/search";
 
+/// Resolve `city` to coordinates. Tries the literal form first; if there
+/// are no results, falls back to a stripped-inflection form (e.g.
+/// "Берлине" → "Берлин"). Both errors and ok-but-empty produce a single
+/// final `WeatherError::Location`.
 pub async fn geocode(city: &str) -> Result<Location, WeatherError> {
+    match try_geocode(city).await {
+        Ok(loc) => Ok(loc),
+        Err(WeatherError::Location(_)) => {
+            if let Some(stripped) = strip_ru_inflection(city) {
+                if stripped != city {
+                    if let Ok(loc) = try_geocode(&stripped).await {
+                        return Ok(loc);
+                    }
+                }
+            }
+            Err(WeatherError::Location(format!("no results for '{city}'")))
+        }
+        Err(e) => Err(e),
+    }
+}
+
+async fn try_geocode(city: &str) -> Result<Location, WeatherError> {
     let url = format!(
         "{ENDPOINT}?name={}&count=1&language=en&format=json",
         urlencoding(city)

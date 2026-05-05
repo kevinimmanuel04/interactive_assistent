@@ -10,6 +10,20 @@ import { relaunch } from "@tauri-apps/plugin-process";
  * the app.
  */
 export async function checkForUpdatesQuietly(): Promise<void> {
+  // Never run the auto-updater in dev mode: dev builds carry a fixed compiled
+  // version which can be older than the latest published release, causing the
+  // updater to reinstall the production binary on every launch (infinite
+  // reinstall loop). In dev, Vite serves the frontend over http(s); production
+  // Tauri bundles use the `tauri:` / `http://tauri.localhost` custom protocols.
+  const proto = window.location.protocol;
+  if (proto === "http:" || proto === "https:") {
+    if (
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+    ) {
+      return;
+    }
+  }
   try {
     const update = await check();
     if (!update) return;

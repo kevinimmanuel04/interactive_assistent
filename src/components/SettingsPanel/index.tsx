@@ -21,6 +21,7 @@ import {
   type PublicSettings,
 } from "../../api";
 import { t, useLocale } from "../../i18n";
+import { toast } from "../Toast";
 import AvatarLayoutSection from "./sections/AvatarLayoutSection";
 import GameCoachSection from "./sections/GameCoachSection";
 import HardwareSection from "./sections/HardwareSection";
@@ -77,14 +78,22 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
       await setOpenRouterKey(keyInput.trim());
       setKeyInput("");
       await refresh();
+      toast.success(t("settings.status.saved"));
+    } catch (err) {
+      toast.error(String(err));
     } finally {
       setSaving(false);
     }
   };
 
   const onClearKey = async () => {
-    await setOpenRouterKey("");
-    await refresh();
+    try {
+      await setOpenRouterKey("");
+      await refresh();
+      toast.info(t("common.clear"));
+    } catch (err) {
+      toast.error(String(err));
+    }
   };
 
   return (

@@ -14,6 +14,7 @@ import {
   type PublicSettings,
 } from "../../../../api";
 import { t, useLocale } from "../../../../i18n";
+import { toast } from "../../../Toast";
 import { inputStyle, subCardStyle } from "../../styles";
 
 const DEEPGRAM_MODELS: Array<{ value: string; label: string }> = [
@@ -101,8 +102,10 @@ export default function DeepgramSection({ settings, refresh }: Props) {
       setKeyInput("");
       setStatus("✅ Saved & verified");
       await refresh();
+      toast.success("Deepgram key verified & saved");
     } catch (err) {
       setStatus(`❌ ${String(err)}`);
+      toast.error(`Deepgram: ${String(err)}`);
     } finally {
       setBusy(false);
     }

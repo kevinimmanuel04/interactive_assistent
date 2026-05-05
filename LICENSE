@@ -1,0 +1,48 @@
+Komorebi is dual-licensed under either of:
+
+  * Apache License, Version 2.0
+    (LICENSE-APACHE or http://www.apache.org/licenses/LICENSE-2.0)
+
+  * MIT License
+    (LICENSE-MIT or http://opensource.org/licenses/MIT)
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in the work by you, as defined in the Apache-2.0
+license, shall be dual licensed as above, without any additional terms
+or conditions.
+
+================================================================================
+IMPORTANT — THIRD-PARTY COMPONENTS NOT COVERED BY THIS LICENSE
+================================================================================
+
+The dual Apache-2.0 / MIT license above applies ONLY to the original source
+code authored by the Komorebi project (everything in `src/`, `src-tauri/`,
+`scripts/`, `docs/`, configuration, and build files).
+
+The following third-party components have their OWN licenses and are NOT
+covered by Apache-2.0 or MIT. See the NOTICE file for the full list.
+
+  * Live2D Cubism Core for Web (live2dcubismcore.min.js)
+    -- Proprietary, (C) Live2D Inc. Governed by the
+       "Live2D Proprietary Software License Agreement" and the
+       "Live2D Cubism Editor / Cubism SDK Release License Agreement".
+       Komorebi does NOT bundle or redistribute the Cubism Core runtime.
+       It is loaded at runtime from the official CDN provided by Live2D
+       Inc., or it may be supplied locally by the end user, who is
+       responsible for accepting the applicable Live2D license terms.
+       See: https://www.live2d.com/en/sdk/license/
+
+  * Live2D Cubism sample model "mao_pro" (under public/live2d/mao_pro/)
+    -- (C) Live2D Inc. Distributed under the
+       "Free Material License Agreement" of Live2D Inc.
+       See: https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html
+
+  * Other third-party libraries and binaries (Piper TTS, whisper.cpp,
+    llama.cpp, pixi.js, pixi-live2d-display-lipsyncpatch, etc.) are
+    distributed under their own respective licenses. See NOTICE.
+
+The Komorebi project, its authors and contributors are NOT affiliated with,
+endorsed by, or sponsored by Live2D Inc. "Live2D" and "Cubism" are
+trademarks of Live2D Inc.

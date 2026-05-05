@@ -10,13 +10,19 @@ const RU_PREFIXES: &[&str] = &[
     "погода во ",
     "погоды в ",
     "погода на ",
+    "погода у ",
+    "погоду у ",
     "температура в ",
     "температуру в ",
     "температуры в ",
     "температура на ",
+    "температура у ",
     "осадки в ",
     "дождь в ",
     "снег в ",
+    "прогноз в ",
+    "прогноз для ",
+    "прогноз по ",
 ];
 
 const EN_PREFIXES: &[&str] = &[
@@ -43,6 +49,11 @@ pub fn is_weather_query(text: &str) -> bool {
 
 /// Extract a city name. Returns trimmed text after a known prefix until
 /// punctuation/end-of-sentence. Returns `None` if no prefix matches.
+///
+/// We deliberately keep the original (possibly declensed) form here —
+/// `geocode::geocode` handles morphological retries, and pre-stripping
+/// here turned "Запорожье" into "Запорожь" (a non-existent
+/// city), making the geocoder fail.
 pub fn extract_city_from_text(text: &str) -> Option<String> {
     let lower = text.to_lowercase();
     let prefixes = RU_PREFIXES.iter().chain(EN_PREFIXES.iter());
@@ -55,34 +66,32 @@ pub fn extract_city_from_text(text: &str) -> Option<String> {
                 .unwrap_or(rest.len());
             let candidate = rest[..stop_idx].trim();
             if !candidate.is_empty() && candidate.len() <= 60 {
-                return Some(strip_inflection(candidate));
+                return Some(candidate.to_string());
             }
         }
     }
     None
 }
 
-/// Best-effort un-declension for Russian dative/prepositional forms:
-/// "Берлине" → "Берлин", "Москве" → "Москв" → fallback "Москве".
-/// Geocoding APIs handle a lot of declensions natively, so we keep this
-/// conservative.
-fn strip_inflection(s: &str) -> String {
+/// Conservative un-declension fallback: if the original form returns no
+/// geocoding results, drop a likely Russian prep./dat. ending and retry.
+/// Used by `geocode::geocode` only.
+pub fn strip_ru_inflection(s: &str) -> Option<String> {
     let trimmed = s.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
     let lower = trimmed.to_lowercase();
-    // Common Russian endings to strip from prep. case nouns.
-    for end in &["е", "и", "у", "ю", "ой", "ом", "ах", "ях"] {
+    for end in &["ии", "е", "и", "у", "ю", "ой", "ом", "ах", "ях"] {
         if lower.ends_with(end) && trimmed.chars().count() > end.chars().count() + 2 {
-            // Keep the original cased prefix.
             let cut = trimmed.chars().count() - end.chars().count();
             let prefix: String = trimmed.chars().take(cut).collect();
-            // Heuristic: don't break short names.
             if prefix.chars().count() >= 3 {
-                // Try the stripped form; geocoder will tell us if it fails.
-                return prefix;
+                return Some(prefix);
             }
         }
     }
-    trimmed.to_string()
+    None
 }
 
 #[cfg(test)]
@@ -100,7 +109,7 @@ mod tests {
     fn extracts_ru_city() {
         assert_eq!(
             extract_city_from_text("Какая погода в Берлине?"),
-            Some("Берлин".to_string())
+            Some("Берлине".to_string())
         );
     }
 
@@ -115,5 +124,18 @@ mod tests {
     #[test]
     fn no_prefix_returns_none() {
         assert_eq!(extract_city_from_text("погода сегодня"), None);
+    }
+
+    #[test]
+    fn extracts_zaporizhzhia() {
+        // Real-world failing case from the chat: must not return None.
+        let got = extract_city_from_text("погода в Запорожье");
+        assert_eq!(got, Some("Запорожье".to_string()));
+    }
+
+    #[test]
+    fn extracts_ua_u_prefix() {
+        let got = extract_city_from_text("погода у Львові");
+        assert!(got.is_some());
     }
 }
