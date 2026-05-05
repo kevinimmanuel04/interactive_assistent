@@ -26,6 +26,7 @@ import AvatarLayoutSection from "./sections/AvatarLayoutSection";
 import GameCoachSection from "./sections/GameCoachSection";
 import HardwareSection from "./sections/HardwareSection";
 import ImageGenSection from "./sections/ImageGenSection";
+import IntentSection from "./sections/IntentSection";
 import Live2DSection from "./sections/Live2DSection";
 import OpenRouterModelSection from "./sections/OpenRouterModelSection";
 import RagSection from "./sections/RagSection";
@@ -154,6 +155,7 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
             <SttSection settings={settings} refresh={refresh} />
             <WakeWordSection settings={settings} refresh={refresh} />
             <SmartRoutingSection settings={settings} refresh={refresh} />
+            <IntentSection />
             <GameCoachSection settings={settings} refresh={refresh} />
             <RagSection settings={settings} refresh={refresh} />
             <HardwareSection settings={settings} refresh={refresh} />

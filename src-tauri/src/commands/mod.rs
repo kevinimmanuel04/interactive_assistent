@@ -41,6 +41,7 @@ pub mod chat;
 pub mod feedback;
 pub mod game_coach;
 pub mod imagegen;
+pub mod intent;
 pub mod models;
 pub mod rag;
 pub mod relationship;

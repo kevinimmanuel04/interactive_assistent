@@ -16,3 +16,4 @@ export * from "./imagegen";
 export * from "./weather";
 export * from "./relationship";
 export * from "./feedback";
+export * from "./intent";

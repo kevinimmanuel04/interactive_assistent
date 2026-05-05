@@ -69,11 +69,24 @@ pub(super) async fn run_generation(
         || lower_prompt.starts_with("how");
     let weather_cfg = settings::weather_config(&app);
     let has_weather_fallback = weather_cfg.default_city.is_some() || weather_cfg.use_ip;
-    if komorebi_weather::is_weather_query(&prompt)
+
+    // Optional embedding-based detector. Returns true when the local
+    // intent model is loaded AND the prompt embeds close to a weather
+    // anchor phrase. Lets free-form rephrases the keyword list misses
+    // (e.g. "сколько градусов на улице?", "is it raining tomorrow?")
+    // still route to the weather skill. When the model isn't loaded
+    // this is a cheap `false` and we fall through to keyword logic.
+    let intent_says_weather = matches!(
+        crate::intent::detect_intent(&app, &prompt).await,
+        Some(m) if m.intent == komorebi_intent::Intent::Weather
+    );
+
+    if (komorebi_weather::is_weather_query(&prompt)
         && (komorebi_weather::extract_city_from_text(&prompt).is_some()
             || starts_with_weather_word
             || has_question_form
-            || has_weather_fallback)
+            || has_weather_fallback))
+        || intent_says_weather
     {
         emit(
             &app,

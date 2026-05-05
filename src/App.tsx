@@ -16,6 +16,8 @@ import { bootstrapLocale, useLocale } from "./i18n";
 import {
   cancelGeneration,
   cancelImageGeneration,
+  desktopListScreens,
+  desktopScreenshot,
   enterRegionPickerMode,
   exitRegionPickerMode,
   feedbackRecord,
@@ -29,6 +31,7 @@ import {
   visionCaptureFull,
   visionWithImage,
   type PublicSettings,
+  type ScreenInfo,
 } from "./api";
 import { useHotkeys } from "./hooks/useHotkeys";
 import { useTtsAudio } from "./hooks/useTtsAudio";
@@ -45,6 +48,10 @@ export default function App() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerInitialPrompt, setPickerInitialPrompt] = useState("");
+  const [pickerPrebuilt, setPickerPrebuilt] = useState<{
+    bytes: Uint8Array;
+    screen: ScreenInfo | null;
+  } | null>(null);
 
   // ── Bubble / chat-turn state ───────────────────────────────────────
   const [bubbleText, setBubbleText] = useState<string | null>(null);
@@ -124,6 +131,16 @@ export default function App() {
     async (prompt: string) => {
       try {
         setPickerInitialPrompt(prompt);
+        // Capture the screenshot BEFORE we resize/raise the main window
+        // to fullscreen. Otherwise, when an external app is also
+        // capturing the desktop (e.g. Discord screen-share), DWM stops
+        // compositing through our transparent layered window and the
+        // monitor capture comes back as a black rectangle covering the
+        // desktop.
+        const screens = await desktopListScreens();
+        const primary = screens.find((s) => s.is_primary) ?? screens[0] ?? null;
+        const bytes = await desktopScreenshot(0);
+        setPickerPrebuilt({ bytes, screen: primary });
         await enterRegionPickerMode(prompt);
         setPickerOpen(true);
       } catch (err) {
@@ -136,6 +153,7 @@ export default function App() {
 
   const closePicker = useCallback(async () => {
     setPickerOpen(false);
+    setPickerPrebuilt(null);
     try {
       await exitRegionPickerMode();
     } catch {
@@ -518,6 +536,7 @@ export default function App() {
       <RegionPicker
         open={pickerOpen}
         initialPrompt={pickerInitialPrompt}
+        prebuilt={pickerPrebuilt ?? undefined}
         onCancel={() => {
           void closePicker();
         }}

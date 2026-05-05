@@ -6,6 +6,7 @@ mod commands;
 mod desktop_cmds;
 mod feedback;
 mod imagegen;
+mod intent;
 mod local_classifier;
 mod models;
 mod proactive;
@@ -70,6 +71,7 @@ pub fn run() {
         .manage(komorebi_voice::stt::Recorder::new())
         .manage::<commands::RegionPickerState>(std::sync::Mutex::new(None))
         .manage::<Arc<imagegen::ImageGenState>>(Arc::new(imagegen::ImageGenState::default()))
+        .manage::<Arc<intent::IntentState>>(Arc::new(intent::IntentState::default()))
         .invoke_handler(tauri::generate_handler![
             // chat
             commands::chat::send_message,
@@ -225,6 +227,10 @@ pub fn run() {
             desktop_cmds::desktop_vd_task_view,
             // Generic tool dispatcher
             tools::run_tool,
+            // Intent classifier
+            commands::intent::intent_status,
+            commands::intent::intent_load,
+            commands::intent::intent_classify_debug,
         ])
         .setup(move |app| startup::run(app, toggle_input, vision_region))
         .run(tauri::generate_context!())

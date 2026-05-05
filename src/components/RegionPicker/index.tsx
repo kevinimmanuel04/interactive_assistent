@@ -22,6 +22,15 @@ export type {
 interface Props {
   open: boolean;
   initialPrompt?: string;
+  /// When provided, the picker uses this screenshot/screen info directly
+  /// instead of capturing again from inside the (already-fullscreen)
+  /// overlay window. This is the recommended path — capturing while
+  /// the assistant covers the screen produces a black image whenever
+  /// another app (e.g. Discord) is also screen-sharing the desktop.
+  prebuilt?: {
+    bytes: Uint8Array;
+    screen: ScreenInfo | null;
+  };
   onCancel: () => void;
   onSubmit: (s: PickerSubmission) => void;
   onGenerateVariant?: (
@@ -37,6 +46,7 @@ interface Props {
 export default function RegionPicker({
   open,
   initialPrompt = "",
+  prebuilt,
   onCancel,
   onSubmit,
   onGenerateVariant,
@@ -84,10 +94,17 @@ export default function RegionPicker({
     setCopied(null);
     (async () => {
       try {
-        const screens = await desktopListScreens();
-        const primary = screens.find((s) => s.is_primary) ?? screens[0];
-        setScreen(primary ?? null);
-        const bytes = await desktopScreenshot(0);
+        let screen: ScreenInfo | null;
+        let bytes: Uint8Array;
+        if (prebuilt) {
+          screen = prebuilt.screen;
+          bytes = prebuilt.bytes;
+        } else {
+          const screens = await desktopListScreens();
+          screen = screens.find((s) => s.is_primary) ?? screens[0] ?? null;
+          bytes = await desktopScreenshot(0);
+        }
+        setScreen(screen);
         const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
         const url = URL.createObjectURL(blob);
         revoked = url;
@@ -103,6 +120,9 @@ export default function RegionPicker({
     return () => {
       if (revoked) URL.revokeObjectURL(revoked);
     };
+    // `prebuilt` is intentionally read from the closure at open-time only;
+    // re-running on prebuilt change would clobber any in-progress regions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialPrompt]);
 
   const recomputeScale = useCallback(() => {

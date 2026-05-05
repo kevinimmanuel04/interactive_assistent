@@ -11,6 +11,7 @@ members = [
     "crates/desktop",
     "crates/imagegen",
     "crates/weather",
+    "crates/intent",
 ]
 
 [workspace.package]
@@ -85,6 +86,7 @@ komorebi-storage = { path = "crates/storage" }
 komorebi-desktop = { path = "crates/desktop" }
 komorebi-imagegen = { path = "crates/imagegen" }
 komorebi-weather = { path = "crates/weather" }
+komorebi-intent = { path = "crates/intent" }
 
 [features]
 default = []

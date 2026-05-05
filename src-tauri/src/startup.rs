@@ -55,6 +55,26 @@ pub(crate) fn run(
     crate::proactive::spawn(app.handle().clone());
     crate::coach::spawn(app.handle().clone());
 
+    // Local intent classifier: if the user has previously downloaded
+    // the embedding model (cache dir exists), warm it up in the
+    // background. Otherwise stay dormant — the model is opt-in and
+    // only fetched when the user explicitly invokes `intent_load`.
+    if let Ok(data_dir) = app.path().app_data_dir() {
+        let intent_cache = data_dir.join("intent");
+        if intent_cache.exists() && std::fs::read_dir(&intent_cache).map(|mut d| d.next().is_some()).unwrap_or(false) {
+            if let Some(state) = app.try_state::<std::sync::Arc<crate::intent::IntentState>>() {
+                let state = state.inner().clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = state.load(intent_cache).await {
+                        tracing::warn!(?e, "intent classifier auto-load failed");
+                    } else {
+                        tracing::info!("intent classifier ready");
+                    }
+                });
+            }
+        }
+    }
+
     tracing::info!("Komorebi started");
     Ok(())
 }

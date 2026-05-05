@@ -3,6 +3,38 @@
 use super::util::uuid_like;
 use tauri::{AppHandle, Emitter, Manager, Wry};
 
+/// Toggle WDA_EXCLUDEFROMCAPTURE on the assistant window. While set, the
+/// window is excluded from external screen-capture sessions (Discord
+/// screen-share, OBS, Windows Game Bar, etc.). This is needed during the
+/// region picker because the picker resizes our window to cover the full
+/// monitor; if Discord is also capturing the desktop, DWM stops
+/// compositing through our transparent layered window and a screenshot
+/// of the monitor comes back as a black rectangle. Excluding ourselves
+/// from capture makes the desktop visible to xcap again.
+#[cfg(windows)]
+fn set_capture_excluded(window: &tauri::WebviewWindow<Wry>, excluded: bool) {
+    use std::ffi::c_void;
+    #[link(name = "user32")]
+    extern "system" {
+        fn SetWindowDisplayAffinity(hwnd: *mut c_void, affinity: u32) -> i32;
+    }
+    const WDA_NONE: u32 = 0;
+    const WDA_EXCLUDEFROMCAPTURE: u32 = 0x0000_0011;
+    if let Ok(hwnd) = window.hwnd() {
+        let raw: *mut c_void = hwnd.0 as *mut c_void;
+        let aff: u32 = if excluded { WDA_EXCLUDEFROMCAPTURE } else { WDA_NONE };
+        // SAFETY: SetWindowDisplayAffinity is safe to call on any valid
+        // HWND; the window outlives this synchronous call. A failure
+        // (returning 0) is non-fatal and silently ignored.
+        unsafe {
+            let _ = SetWindowDisplayAffinity(raw, aff);
+        }
+    }
+}
+
+#[cfg(not(windows))]
+fn set_capture_excluded(_window: &tauri::WebviewWindow<Wry>, _excluded: bool) {}
+
 /// Capture the primary monitor and ask the vision model about it. Streams
 /// the answer back via the normal `chat:*` event channel so the bubble,
 /// emotion tags, and TTS pipeline all work without changes.
@@ -91,6 +123,11 @@ pub fn enter_region_picker_mode(app: AppHandle<Wry>, prompt: String) -> Result<(
         let _ = main.set_size(LogicalSize::new(size.width, size.height));
     }
 
+    // Make the picker invisible to external screen-capture (Discord etc.)
+    // for both privacy and to keep WGC seeing the real desktop instead
+    // of our overlay.
+    set_capture_excluded(&main, true);
+
     let _ = main.set_always_on_top(true);
     let _ = main.show();
     let _ = main.set_focus();
@@ -114,6 +151,7 @@ pub fn exit_region_picker_mode(app: AppHandle<Wry>) -> Result<(), String> {
         let _ = main.set_size(LogicalSize::new(g.w, g.h));
         let _ = main.set_position(LogicalPosition::new(g.x, g.y));
     }
+    set_capture_excluded(&main, false);
     Ok(())
 }
 
