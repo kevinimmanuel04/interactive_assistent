@@ -22,7 +22,11 @@ fn set_capture_excluded(window: &tauri::WebviewWindow<Wry>, excluded: bool) {
     const WDA_EXCLUDEFROMCAPTURE: u32 = 0x0000_0011;
     if let Ok(hwnd) = window.hwnd() {
         let raw: *mut c_void = hwnd.0 as *mut c_void;
-        let aff: u32 = if excluded { WDA_EXCLUDEFROMCAPTURE } else { WDA_NONE };
+        let aff: u32 = if excluded {
+            WDA_EXCLUDEFROMCAPTURE
+        } else {
+            WDA_NONE
+        };
         // SAFETY: SetWindowDisplayAffinity is safe to call on any valid
         // HWND; the window outlives this synchronous call. A failure
         // (returning 0) is non-fatal and silently ignored.

@@ -83,7 +83,9 @@ pub fn capture_region(
     let y = y.max(0).min(mh.saturating_sub(1));
     let w = (width as i32).min(mw - x).max(1) as u32;
     let h = (height as i32).min(mh - y).max(1) as u32;
-    let img = mon.capture_region(x as u32, y as u32, w, h).map_err(cap_err)?;
+    let img = mon
+        .capture_region(x as u32, y as u32, w, h)
+        .map_err(cap_err)?;
     encode_png(img)
 }
 

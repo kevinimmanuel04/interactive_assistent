@@ -65,10 +65,7 @@ impl IntentState {
 /// Synchronous best-effort intent detection. Returns `None` when the
 /// engine isn't loaded yet, the query is empty, or no intent clears
 /// the default acceptance threshold.
-pub async fn detect_intent(
-    app: &tauri::AppHandle<tauri::Wry>,
-    query: &str,
-) -> Option<IntentMatch> {
+pub async fn detect_intent(app: &tauri::AppHandle<tauri::Wry>, query: &str) -> Option<IntentMatch> {
     detect_intent_above(app, query, komorebi_intent::DEFAULT_ACCEPT_THRESHOLD).await
 }
 

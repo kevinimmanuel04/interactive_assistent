@@ -61,7 +61,11 @@ pub(crate) fn run(
     // only fetched when the user explicitly invokes `intent_load`.
     if let Ok(data_dir) = app.path().app_data_dir() {
         let intent_cache = data_dir.join("intent");
-        if intent_cache.exists() && std::fs::read_dir(&intent_cache).map(|mut d| d.next().is_some()).unwrap_or(false) {
+        if intent_cache.exists()
+            && std::fs::read_dir(&intent_cache)
+                .map(|mut d| d.next().is_some())
+                .unwrap_or(false)
+        {
             if let Some(state) = app.try_state::<std::sync::Arc<crate::intent::IntentState>>() {
                 let state = state.inner().clone();
                 tauri::async_runtime::spawn(async move {
