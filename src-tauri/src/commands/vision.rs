@@ -21,7 +21,7 @@ fn set_capture_excluded(window: &tauri::WebviewWindow<Wry>, excluded: bool) {
     const WDA_NONE: u32 = 0;
     const WDA_EXCLUDEFROMCAPTURE: u32 = 0x0000_0011;
     if let Ok(hwnd) = window.hwnd() {
-        let raw: *mut c_void = hwnd.0 as *mut c_void;
+        let raw: *mut c_void = hwnd.0;
         let aff: u32 = if excluded {
             WDA_EXCLUDEFROMCAPTURE
         } else {

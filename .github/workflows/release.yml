@@ -90,18 +90,20 @@ jobs:
       - name: Verify Piper binary
         shell: bash
         run: |
+          set -eu
           dir="src-tauri/binaries/piper"
           if [ ! -d "$dir" ]; then
             echo "::error::Missing $dir after fetch:piper"
             exit 1
           fi
-          count=$(find "$dir" | wc -l)
-          if [ "$count" -le 1 ]; then
+          count=$(find "$dir" -mindepth 1 | wc -l)
+          if [ "$count" -lt 1 ]; then
             echo "::error::Empty $dir after fetch:piper"
             exit 1
           fi
-          echo "Piper contents:"
-          find "$dir" -maxdepth 3 | head -n 20
+          echo "Piper contents ($count entries, first 20):"
+          find "$dir" -maxdepth 3 -print > /tmp/piper-list.txt
+          head -n 20 /tmp/piper-list.txt
 
       - name: Build Tauri bundle
         env:
