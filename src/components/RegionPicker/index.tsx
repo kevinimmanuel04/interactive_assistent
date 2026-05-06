@@ -77,6 +77,12 @@ export default function RegionPicker({
     ey: number;
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Ref to the prompt input so we can yank focus back after the user
+  // finishes dragging a region — without this, focus stays on the
+  // overlay and Enter / typing does nothing until they manually click
+  // the input. That tripped users into hitting Send with an empty
+  // prompt, which is the whole point of the picker.
+  const promptRef = useRef<HTMLInputElement>(null);
 
   const scaleRef = useRef<{ sx: number; sy: number }>({ sx: 1, sy: 1 });
 
@@ -243,6 +249,11 @@ export default function RegionPicker({
     setRegions((rs) => [...rs, region]);
     setSelectedId(region.id);
     setDrawing(null);
+    // Hand focus back to the prompt input so the user can immediately
+    // type the question ("что тут видно?") without an extra click.
+    // requestAnimationFrame to let the bottom bar render the enabled
+    // state before we focus.
+    requestAnimationFrame(() => promptRef.current?.focus());
   };
 
   const updateSelected = (patch: Partial<PickerRegion>) => {
@@ -771,15 +782,39 @@ export default function RegionPicker({
           pointerEvents: "auto",
         }}
       >
+        <div
+          style={{
+            ...labelStyle,
+            marginBottom: 4,
+            color: regions.length === 0 ? "rgba(255,255,255,0.45)" : "#fff",
+          }}
+        >
+          {regions.length === 0
+            ? "1. Выдели регион(ы) на экране"
+            : "2. Опиши, что нужно увидеть на этих регионах"}
+        </div>
         <input
+          ref={promptRef}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           placeholder={
             regions.length === 0
-              ? "Drag a region first…"
-              : "What should I look at? (Enter to send)"
+              ? "Например: «что написано на этой кнопке?» — текст можно набрать заранее"
+              : "Например: «прочитай текст», «что не так с кодом?», «опиши скриншот» (Enter — отправить)"
           }
-          style={inputStyle}
+          style={{
+            ...inputStyle,
+            fontSize: 14,
+            padding: "10px 12px",
+            border:
+              regions.length > 0
+                ? "1px solid rgba(120,180,255,0.55)"
+                : "1px solid rgba(255,255,255,0.14)",
+            boxShadow:
+              regions.length > 0
+                ? "0 0 0 3px rgba(120,180,255,0.12)"
+                : "none",
+          }}
           autoFocus
         />
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

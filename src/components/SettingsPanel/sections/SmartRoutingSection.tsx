@@ -10,7 +10,7 @@ import {
   type PublicSettings,
 } from "../../../api";
 import { t, useLocale } from "../../../i18n";
-import { inputStyle } from "../styles";
+import ModelCombobox from "../lib/ModelCombobox";
 
 interface Props {
   settings: PublicSettings | null;
@@ -72,16 +72,22 @@ export default function SmartRoutingSection({ settings, refresh }: Props) {
         />
         {t("settings.smart.enable")}
       </label>
-      <input
-        type="text"
-        placeholder="meta-llama/llama-3.2-3b-instruct"
+      <ModelCombobox
         value={model}
-        disabled={busy || !enabled}
-        onChange={(e) => setModel(e.target.value)}
-        onBlur={() =>
-          model !== (settings?.classifier_model ?? "") && saveModel(model)
+        onChange={setModel}
+        onCommit={(v) =>
+          v !== (settings?.classifier_model ?? "") && saveModel(v)
         }
-        style={inputStyle}
+        kind="text"
+        enabled={hasKey && enabled}
+        disabled={busy || !enabled}
+        placeholder="meta-llama/llama-3.2-3b-instruct"
+        fallback={[
+          "meta-llama/llama-3.2-3b-instruct",
+          "openai/gpt-4o-mini",
+          "anthropic/claude-3-haiku",
+          "google/gemini-flash-1.5",
+        ]}
       />
       <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
         {hasKey ? t("settings.smart.hint_on") : t("settings.smart.hint_off")}

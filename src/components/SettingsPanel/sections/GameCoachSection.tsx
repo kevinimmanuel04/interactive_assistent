@@ -3,6 +3,7 @@
 // elsewhere). Disabled by default — only activates when an OpenRouter
 // key is configured.
 
+import { useEffect, useState } from "react";
 import {
   setGameCoachEnabled,
   setGameCoachModel,
@@ -10,7 +11,7 @@ import {
   type PublicSettings,
 } from "../../../api";
 import { t, useLocale } from "../../../i18n";
-import { inputStyle } from "../styles";
+import ModelCombobox from "../lib/ModelCombobox";
 
 interface Props {
   settings: PublicSettings | null;
@@ -21,8 +22,11 @@ export default function GameCoachSection({ settings, refresh }: Props) {
   useLocale();
   const hasKey = settings?.has_openrouter_key ?? false;
   const enabled = settings?.game_coach_enabled ?? false;
-  const model = settings?.game_coach_model ?? "openai/gpt-4o-mini";
   const useVision = settings?.game_coach_use_vision ?? true;
+  const persistedModel = settings?.game_coach_model ?? "openai/gpt-4o-mini";
+  // Local draft so typing doesn't fire a Tauri save on every keystroke.
+  const [model, setModel] = useState(persistedModel);
+  useEffect(() => setModel(persistedModel), [persistedModel]);
 
   const toggle = async (v: boolean) => {
     await setGameCoachEnabled(v);
@@ -87,22 +91,25 @@ export default function GameCoachSection({ settings, refresh }: Props) {
         <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
           {t("settings.coach.model")}
         </div>
-        <input
-          type="text"
-          list="game-coach-models"
-          defaultValue={model}
-          disabled={!hasKey}
-          onBlur={(e) => {
-            if (e.target.value !== model) commitModel(e.target.value);
+        <ModelCombobox
+          value={model}
+          onChange={setModel}
+          onCommit={(v) => {
+            if (v !== persistedModel) void commitModel(v);
           }}
-          style={inputStyle}
+          // Filter to vision-capable models when "use vision" is on,
+          // otherwise show every text-capable model. Some users disable
+          // vision to save tokens but still want a smarter coach.
+          kind={useVision ? "vision" : "text"}
+          enabled={hasKey}
+          disabled={!hasKey}
+          fallback={[
+            "openai/gpt-4o-mini",
+            "openai/gpt-4o",
+            "google/gemini-2.5-flash",
+            "anthropic/claude-3.5-sonnet",
+          ]}
         />
-        <datalist id="game-coach-models">
-          <option value="openai/gpt-4o-mini" />
-          <option value="openai/gpt-4o" />
-          <option value="google/gemini-2.5-flash" />
-          <option value="anthropic/claude-3.5-sonnet" />
-        </datalist>
         <div style={{ opacity: 0.5, fontSize: 11, marginTop: 6 }}>
           {t("settings.coach.hint")}
         </div>

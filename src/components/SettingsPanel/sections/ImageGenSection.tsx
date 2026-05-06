@@ -20,6 +20,7 @@ import {
 } from "../../../api";
 import { t, useLocale } from "../../../i18n";
 import { toast } from "../../Toast";
+import ModelCombobox from "../lib/ModelCombobox";
 import {
   btnStyle,
   h3Style,
@@ -127,12 +128,19 @@ export default function ImageGenSection({ settings, refresh }: Props) {
       {provider === "openrouter" && (
         <>
           <label style={lblStyle}>{t("settings.imggen.openrouter.model")}</label>
-          <input
+          <ModelCombobox
             value={orModel}
-            onChange={(e) => setOrModel(e.target.value)}
-            onBlur={() => change(() => setImagegenOpenrouterModel(orModel))}
+            onChange={setOrModel}
+            onCommit={(v) => change(() => setImagegenOpenrouterModel(v))}
+            kind="image"
+            enabled={settings?.has_openrouter_key ?? false}
             placeholder={t("settings.imggen.openrouter.placeholder")}
-            style={inputStyle}
+            fallback={[
+              "black-forest-labs/flux-1.1-pro",
+              "black-forest-labs/flux-schnell",
+              "black-forest-labs/flux-dev",
+              "stability-ai/sdxl",
+            ]}
           />
           <p style={hintStyle}>{t("settings.imggen.openrouter.hint")}</p>
         </>

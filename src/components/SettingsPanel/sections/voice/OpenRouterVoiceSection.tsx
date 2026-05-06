@@ -11,7 +11,7 @@ import {
   type PublicSettings,
 } from "../../../../api";
 import { t, useLocale } from "../../../../i18n";
-import { useFilteredOpenRouterModels } from "../../lib/useFilteredOpenRouterModels";
+import ModelCombobox from "../../lib/ModelCombobox";
 import { inputStyle, subCardStyle } from "../../styles";
 
 const OPENAI_VOICES = [
@@ -45,7 +45,6 @@ export default function OpenRouterVoiceSection({ settings, refresh }: Props) {
   );
   const [voice, setVoice] = useState(settings?.openrouter_tts_voice ?? "shimmer");
   const [busy, setBusy] = useState(false);
-  const ttsModels = useFilteredOpenRouterModels(hasKey && expanded, "tts");
 
   useEffect(() => {
     setEnabled(settings?.openrouter_tts_enabled ?? false);
@@ -110,31 +109,20 @@ export default function OpenRouterVoiceSection({ settings, refresh }: Props) {
       <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
         {t("settings.or_tts.model")}
       </div>
-      <input
-        type="text"
-        list="openrouter-tts-models"
-        placeholder="openai/gpt-4o-audio-preview"
+      <ModelCombobox
         value={model}
+        onChange={setModel}
+        onCommit={() => void commitModel()}
+        kind="tts"
+        enabled={hasKey && expanded}
         disabled={busy || !hasKey}
-        onChange={(e) => setModel(e.target.value)}
-        onBlur={commitModel}
-        style={inputStyle}
+        placeholder="openai/gpt-4o-audio-preview"
+        fallback={[
+          "openai/gpt-4o-audio-preview",
+          "openai/gpt-audio",
+          "openai/gpt-audio-mini",
+        ]}
       />
-      <datalist id="openrouter-tts-models">
-        {ttsModels.length === 0 ? (
-          <>
-            <option value="openai/gpt-4o-audio-preview" />
-            <option value="openai/gpt-audio" />
-            <option value="openai/gpt-audio-mini" />
-          </>
-        ) : (
-          ttsModels.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name ?? m.id}
-            </option>
-          ))
-        )}
-      </datalist>
       <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
         {t("settings.or_tts.voice")}
       </div>

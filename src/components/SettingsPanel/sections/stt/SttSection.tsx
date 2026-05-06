@@ -17,7 +17,7 @@ import {
   type PublicSettings,
 } from "../../../../api";
 import { t, useLocale } from "../../../../i18n";
-import { useFilteredOpenRouterModels } from "../../lib/useFilteredOpenRouterModels";
+import ModelCombobox from "../../lib/ModelCombobox";
 import { inputStyle, subCardStyle } from "../../styles";
 import DeepgramSection from "./DeepgramSection";
 import FasterWhisperSection from "./FasterWhisperSection";
@@ -49,9 +49,11 @@ export default function SttSection({ settings, refresh }: Props) {
   const available = settings?.stt_available ?? false;
   const hasKey = settings?.has_openrouter_key ?? false;
   const orEnabled = settings?.openrouter_stt_enabled ?? false;
-  const orModel =
+  const persistedOrModel =
     settings?.openrouter_stt_model ?? "openai/gpt-4o-audio-preview";
-  const sttModels = useFilteredOpenRouterModels(hasKey, "stt");
+  // Local draft so typing in the combobox doesn't persist on every key.
+  const [orModel, setOrModel] = useState(persistedOrModel);
+  useEffect(() => setOrModel(persistedOrModel), [persistedOrModel]);
 
   const toggleOr = async (v: boolean) => {
     await setOpenRouterSttEnabled(v);
@@ -110,33 +112,23 @@ export default function SttSection({ settings, refresh }: Props) {
         <div style={{ opacity: 0.7, fontSize: 11, marginTop: 8, marginBottom: 4 }}>
           {t("settings.stt.or.model")}
         </div>
-        <input
-          type="text"
-          list="openrouter-stt-models"
-          defaultValue={orModel}
-          disabled={!hasKey}
-          onBlur={(e) => {
-            if (e.target.value !== orModel) commitOrModel(e.target.value);
+        <ModelCombobox
+          value={orModel}
+          onChange={setOrModel}
+          onCommit={(v) => {
+            if (v !== persistedOrModel) void commitOrModel(v);
           }}
-          style={inputStyle}
+          kind="stt"
+          enabled={hasKey}
+          disabled={!hasKey}
+          fallback={[
+            "openai/gpt-4o-audio-preview",
+            "openai/gpt-audio",
+            "openai/gpt-audio-mini",
+            "google/gemini-2.5-flash",
+            "google/gemini-2.0-flash-001",
+          ]}
         />
-        <datalist id="openrouter-stt-models">
-          {sttModels.length === 0 ? (
-            <>
-              <option value="openai/gpt-4o-audio-preview" />
-              <option value="openai/gpt-audio" />
-              <option value="openai/gpt-audio-mini" />
-              <option value="google/gemini-2.5-flash" />
-              <option value="google/gemini-2.0-flash-001" />
-            </>
-          ) : (
-            sttModels.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name ?? m.id}
-              </option>
-            ))
-          )}
-        </datalist>
       </div>
 
       <FasterWhisperSection settings={settings} refresh={refresh} />
