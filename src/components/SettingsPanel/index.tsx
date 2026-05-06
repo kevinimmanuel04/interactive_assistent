@@ -22,6 +22,8 @@ import {
 } from "../../api";
 import { t, useLocale } from "../../i18n";
 import { toast } from "../Toast";
+import SectionCard from "./lib/SectionCard";
+import { btnStyle, cardTitleStyle, inputStyle } from "./styles";
 import AvatarLayoutSection from "./sections/AvatarLayoutSection";
 import GameCoachSection from "./sections/GameCoachSection";
 import HardwareSection from "./sections/HardwareSection";
@@ -46,11 +48,31 @@ interface Props {
   onChanged: () => void;
 }
 
+/// Two-level disclosure: most users only need a small subset of
+/// settings ("enter API key, toggle game coach, pick avatar"), while
+/// advanced users want fine-grained controls (local model paths, RAG
+/// chunking, hardware overrides). Splitting them into tabs keeps the
+/// novice path uncluttered without hiding power features behind a
+/// dev-mode toggle. Persisted in localStorage so the user lands on
+/// whichever tab they last used.
+type Tab = "basic" | "advanced";
+const TAB_STORAGE_KEY = "settings.tab";
+
+function loadTab(): Tab {
+  try {
+    const v = localStorage.getItem(TAB_STORAGE_KEY);
+    return v === "advanced" ? "advanced" : "basic";
+  } catch {
+    return "basic";
+  }
+}
+
 export default function SettingsPanel({ open, onClose, onChanged }: Props) {
   useLocale();
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<Tab>(loadTab);
 
   useEffect(() => {
     if (open) {
@@ -58,6 +80,14 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
       setKeyInput("");
     }
   }, [open]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(TAB_STORAGE_KEY, tab);
+    } catch {
+      /* localStorage unavailable — fine, just don't persist */
+    }
+  }, [tab]);
 
   // Single refresh callback shared by every section. Replaces the 11 inline
   // copies of this same closure that lived in the legacy monolith.
@@ -129,43 +159,105 @@ export default function SettingsPanel({ open, onClose, onChanged }: Props) {
           }}
         >
           <Header onClose={onClose} />
+          <Tabs tab={tab} setTab={setTab} />
           <div
             style={{
               overflowY: "auto",
               padding: 14,
               display: "flex",
               flexDirection: "column",
-              gap: 14,
+              gap: 10,
               flex: 1,
               minHeight: 0,
             }}
           >
-            <ModeSection mode={settings?.mode as Mode | undefined} onChange={onModeChange} />
-            <ApiKeySection
-              settings={settings}
-              keyInput={keyInput}
-              setKeyInput={setKeyInput}
-              saving={saving}
-              onSaveKey={onSaveKey}
-              onClearKey={onClearKey}
-            />
-            <TtsSection settings={settings} refresh={refresh} />
-            <Live2DSection settings={settings} refresh={refresh} />
-            <AvatarLayoutSection settings={settings} refresh={refresh} />
-            <SttSection settings={settings} refresh={refresh} />
-            <WakeWordSection settings={settings} refresh={refresh} />
-            <SmartRoutingSection settings={settings} refresh={refresh} />
-            <IntentSection />
-            <GameCoachSection settings={settings} refresh={refresh} />
-            <RagSection settings={settings} refresh={refresh} />
-            <HardwareSection settings={settings} refresh={refresh} />
-            <OpenRouterModelSection settings={settings} refresh={refresh} />
-            <ImageGenSection settings={settings} refresh={refresh} />
-            <LanguageSection settings={settings} refresh={refresh} />
-            <WeatherSection settings={settings} refresh={refresh} />
-            <RelationshipSection settings={settings} refresh={refresh} />
-            <CommunitySection settings={settings} refresh={refresh} />
-            <TrainingSection settings={settings} refresh={refresh} />
+            {/* Mode + API key always visible at the top of either tab —
+                they're the prerequisite for everything else and should
+                never be hidden behind a "switch to advanced" click. */}
+            <SectionCard>
+              <ModeSection
+                mode={settings?.mode as Mode | undefined}
+                onChange={onModeChange}
+              />
+            </SectionCard>
+            <SectionCard>
+              <ApiKeySection
+                settings={settings}
+                keyInput={keyInput}
+                setKeyInput={setKeyInput}
+                saving={saving}
+                onSaveKey={onSaveKey}
+                onClearKey={onClearKey}
+              />
+            </SectionCard>
+
+            {tab === "basic" ? (
+              <>
+                {/* Pick a model the OpenRouter key applies to. */}
+                <SectionCard>
+                  <OpenRouterModelSection settings={settings} refresh={refresh} />
+                </SectionCard>
+                {/* Voice in/out — these have user-facing provider toggles
+                    so they belong in basic even though local options
+                    exist (Piper, faster-whisper). */}
+                <SectionCard>
+                  <TtsSection settings={settings} refresh={refresh} />
+                </SectionCard>
+                <SectionCard>
+                  <SttSection settings={settings} refresh={refresh} />
+                </SectionCard>
+                {/* Cloud routing controls. */}
+                <SectionCard>
+                  <SmartRoutingSection settings={settings} refresh={refresh} />
+                </SectionCard>
+                <SectionCard>
+                  <GameCoachSection settings={settings} refresh={refresh} />
+                </SectionCard>
+                <SectionCard>
+                  <ImageGenSection settings={settings} refresh={refresh} />
+                </SectionCard>
+                {/* Avatar customisation. */}
+                <SectionCard>
+                  <Live2DSection settings={settings} refresh={refresh} />
+                </SectionCard>
+                <SectionCard>
+                  <AvatarLayoutSection settings={settings} refresh={refresh} />
+                </SectionCard>
+                {/* Personalisation. */}
+                <SectionCard>
+                  <LanguageSection settings={settings} refresh={refresh} />
+                </SectionCard>
+                <SectionCard>
+                  <WeatherSection settings={settings} refresh={refresh} />
+                </SectionCard>
+                <SectionCard>
+                  <RelationshipSection settings={settings} refresh={refresh} />
+                </SectionCard>
+              </>
+            ) : (
+              <>
+                {/* Power-user features: local models, hardware tuning,
+                    retrieval-augmented generation, training tools. */}
+                <SectionCard>
+                  <HardwareSection settings={settings} refresh={refresh} />
+                </SectionCard>
+                <SectionCard>
+                  <IntentSection />
+                </SectionCard>
+                <SectionCard>
+                  <RagSection settings={settings} refresh={refresh} />
+                </SectionCard>
+                <SectionCard>
+                  <WakeWordSection settings={settings} refresh={refresh} />
+                </SectionCard>
+                <SectionCard>
+                  <CommunitySection settings={settings} refresh={refresh} />
+                </SectionCard>
+                <SectionCard>
+                  <TrainingSection settings={settings} refresh={refresh} />
+                </SectionCard>
+              </>
+            )}
           </div>
         </motion.div>
       )}
@@ -208,6 +300,59 @@ function Header({ onClose }: { onClose: () => void }) {
   );
 }
 
+function Tabs({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
+  const tabs: ReadonlyArray<{ id: Tab; label: string; hint: string }> = [
+    {
+      id: "basic",
+      label: t("settings.tab.basic"),
+      hint: t("settings.tab.basic.hint"),
+    },
+    {
+      id: "advanced",
+      label: t("settings.tab.advanced"),
+      hint: t("settings.tab.advanced.hint"),
+    },
+  ];
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 4,
+        padding: "8px 14px 0 14px",
+        borderBottom: "1px solid rgba(255,255,255,0.06)",
+        flexShrink: 0,
+      }}
+    >
+      {tabs.map((tDef) => {
+        const active = tab === tDef.id;
+        return (
+          <button
+            key={tDef.id}
+            onClick={() => setTab(tDef.id)}
+            title={tDef.hint}
+            style={{
+              padding: "8px 14px",
+              borderRadius: "8px 8px 0 0",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderBottom: active
+                ? "1px solid rgba(18,18,26,0.92)"
+                : "1px solid rgba(255,255,255,0.06)",
+              background: active ? "rgba(40,40,52,0.85)" : "transparent",
+              color: active ? "#fff" : "#bbb",
+              cursor: "pointer",
+              fontSize: 12,
+              fontWeight: active ? 600 : 400,
+              marginBottom: -1,
+            }}
+          >
+            {tDef.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ModeSection({
   mode,
   onChange,
@@ -218,9 +363,7 @@ function ModeSection({
   const modes: readonly Mode[] = ["auto", "local", "cloud"] as const;
   return (
     <div>
-      <div style={{ opacity: 0.7, marginBottom: 6 }}>
-        {t("settings.routing.title")}
-      </div>
+      <div style={cardTitleStyle}>{t("settings.routing.title")}</div>
       <div style={{ display: "flex", gap: 6 }}>
         {modes.map((m) => {
           const active = mode === m;
@@ -229,15 +372,13 @@ function ModeSection({
               key={m}
               onClick={() => onChange(m)}
               style={{
+                ...btnStyle,
                 flex: 1,
                 padding: "6px 10px",
-                borderRadius: 8,
                 border: active
                   ? "1px solid rgba(255,255,255,0.55)"
                   : "1px solid rgba(255,255,255,0.1)",
                 background: active ? "rgba(20,20,28,0.7)" : "transparent",
-                color: "#fff",
-                cursor: "pointer",
               }}
             >
               {t(`settings.routing.${m}` as const)}
@@ -266,10 +407,12 @@ function ApiKeySection({
 }) {
   return (
     <div>
-      <div style={{ opacity: 0.7, marginBottom: 6 }}>
+      <div style={cardTitleStyle}>
         {t("settings.openrouter.key")}{" "}
         {settings?.has_openrouter_key && (
-          <span style={{ color: "#a5d6a7" }}>{t("settings.status.saved")}</span>
+          <span style={{ color: "#a5d6a7", fontWeight: 400 }}>
+            {t("settings.status.saved")}
+          </span>
         )}
       </div>
       <div style={{ display: "flex", gap: 6 }}>
@@ -282,27 +425,12 @@ function ApiKeySection({
           }
           value={keyInput}
           onChange={(e) => setKeyInput(e.target.value)}
-          style={{
-            flex: 1,
-            padding: "6px 8px",
-            borderRadius: 8,
-            border: "1px solid rgba(255,255,255,0.1)",
-            background: "rgba(0,0,0,0.25)",
-            color: "#fff",
-            outline: "none",
-          }}
+          style={{ ...inputStyle, flex: 1 }}
         />
         <button
           disabled={saving || !keyInput.trim()}
           onClick={onSaveKey}
-          style={{
-            padding: "6px 10px",
-            borderRadius: 8,
-            border: "1px solid rgba(255,255,255,0.12)",
-            background: "rgba(20,20,28,0.7)",
-            color: "#fff",
-            cursor: "pointer",
-          }}
+          style={btnStyle}
         >
           {t("common.save")}
         </button>
@@ -310,12 +438,9 @@ function ApiKeySection({
           <button
             onClick={onClearKey}
             style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: "1px solid rgba(255,255,255,0.1)",
+              ...btnStyle,
               background: "transparent",
               color: "#e57373",
-              cursor: "pointer",
             }}
           >
             {t("common.clear")}

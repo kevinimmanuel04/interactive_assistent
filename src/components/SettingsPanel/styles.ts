@@ -69,3 +69,27 @@ export const subCardStyle: CSSProperties = {
   background: "rgba(255,255,255,0.03)",
   borderRadius: 6,
 };
+
+/// Outer card around each top-level section. Replaces the previous
+/// pattern where every section painted its own title strip with
+/// inline {opacity:0.7,marginBottom:6} — the panel now looks
+/// uniform regardless of which section is rendered.
+export const cardStyle: CSSProperties = {
+  padding: 12,
+  borderRadius: 10,
+  background: "rgba(255,255,255,0.025)",
+  border: "1px solid rgba(255,255,255,0.06)",
+};
+
+/// Canonical title used inside cards. Same visual weight as the
+/// inline `<div style={{opacity:0.7,marginBottom:6}}>` that 9+
+/// sections shipped before unification — sections still using the
+/// inline form continue to look correct, but new code should use this.
+export const cardTitleStyle: CSSProperties = {
+  opacity: 0.85,
+  marginBottom: 8,
+  fontSize: 12,
+  fontWeight: 600,
+  letterSpacing: 0.3,
+  textTransform: "uppercase",
+};

@@ -27,6 +27,10 @@ export const EN = {
   "common.disable": "Disable",
   // Settings — sections
   "settings.title": "Settings",
+  "settings.tab.basic": "Basic",
+  "settings.tab.basic.hint": "Keys, model picks, voice and visual preferences",
+  "settings.tab.advanced": "Advanced",
+  "settings.tab.advanced.hint": "Local models, hardware, RAG, training and other power-user knobs",
   "settings.language.title": "Language",
   "settings.language.hint": "Pick the language Komorebi answers in. Auto follows your OS locale.",
   "settings.language.auto": "Auto (system)",
