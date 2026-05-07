@@ -82,6 +82,8 @@ jobs:
             libasound2-dev \
             libpipewire-0.3-dev \
             libspa-0.2-dev \
+            libgbm-dev \
+            libxdo-dev \
             pkg-config
 
       - name: Install frontend deps
