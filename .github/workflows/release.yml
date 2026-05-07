@@ -114,6 +114,11 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # whisper-rs-sys and llama-cpp-sys-2 both statically vendor ggml/gguf.cpp.
+          # On Linux (ELF) rust-lld errors on duplicate symbols; MSVC dedupes via COMDAT.
+          # The duplicated objects come from the same upstream sources, so allowing
+          # multiple definitions is safe and lets the linker pick the first.
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: ${{ matrix.platform.name == 'linux' && '-C link-arg=-Wl,--allow-multiple-definition' || '' }}
         run: pnpm tauri build --target ${{ matrix.platform.rust-target }} -- --features full
 
       - name: Verify Windows bundle output
