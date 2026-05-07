@@ -420,7 +420,7 @@ sequenceDiagram
 ```mermaid
 flowchart TD
     A[Incoming prompt] --> B{Smart routing<br/>enabled?}
-    B -- no --> M[Use forced mode<br/>local | cloud]
+    B -- no --> M["Use forced mode<br/>local | cloud"]
     B -- yes --> C{Classifier model<br/>configured?}
     C -- yes, separate GGUF --> D[Run pinned<br/>tiny classifier]
     C -- no --> E[Run a tiny<br/>fallback classifier]
@@ -468,15 +468,15 @@ sequenceDiagram
 flowchart LR
     subgraph idx[Indexing]
         F[(folder)] --> W[walkdir]
-        W --> R[read_indexable<br/>.txt .md .pdf .docx …]
-        R --> C[chunk_text<br/>~1.2k chars · 200 overlap]
+        W --> R["read_indexable<br/>.txt .md .pdf .docx …"]
+        R --> C["chunk_text<br/>~1.2k chars · 200 overlap"]
         C --> S[(SQLite + FTS5<br/>app_data_dir/rag.db)]
     end
     subgraph qry[Query]
         Q[user prompt] --> SAN[sanitize_query]
         SAN --> SR[FTS5 search]
-        SR --> RANK[rank + dedup<br/>per-doc cap]
-        RANK --> CTX[assemble context<br/>with [source:line] citations]
+        SR --> RANK["rank + dedup<br/>per-doc cap"]
+        RANK --> CTX["assemble context<br/>with [source:line] citations"]
         CTX --> CHAT[chat runner]
     end
     S --> SR
@@ -514,19 +514,19 @@ flowchart TD
 ```mermaid
 stateDiagram-v2
     [*] --> Idle
-    Idle --> Polling: every ~30 s\n(if enabled)
-    Polling --> Snapshot: sysctx::context_snapshot()
+    Idle --> Polling: "every ~30 s\n(if enabled)"
+    Polling --> Snapshot: "sysctx::context_snapshot()"
     Snapshot --> ClassifyActivity
-    ClassifyActivity --> GameSession: is_gaming = true
-    ClassifyActivity --> CodingSession: ide active long
-    ClassifyActivity --> Browsing: browser active long
-    ClassifyActivity --> LongIdle: idle ≥ 3 min
-    ClassifyActivity --> Polling: nothing notable
-    GameSession --> Cooldown: emit "take a break"
-    CodingSession --> Cooldown: emit "need a hand?"
-    Browsing --> Cooldown: emit "want a summary?"
-    LongIdle --> Cooldown: emit "still here"
-    Cooldown --> Polling: 10 min lockout
+    ClassifyActivity --> GameSession: "is_gaming = true"
+    ClassifyActivity --> CodingSession: "ide active long"
+    ClassifyActivity --> Browsing: "browser active long"
+    ClassifyActivity --> LongIdle: "idle ≥ 3 min"
+    ClassifyActivity --> Polling: "nothing notable"
+    GameSession --> Cooldown: "emit 'take a break'"
+    CodingSession --> Cooldown: "emit 'need a hand?'"
+    Browsing --> Cooldown: "emit 'want a summary?'"
+    LongIdle --> Cooldown: "emit 'still here'"
+    Cooldown --> Polling: "10 min lockout"
 ```
 
 ### Feedback telemetry queue
@@ -585,7 +585,7 @@ flowchart TD
     Y -- yes --> FWH[(self-hosted Faster-Whisper)]
     Y -- no --> X{OpenRouter STT enabled?}
     X -- yes --> OR[(OpenRouter audio model)]
-    X -- no --> W[whisper.cpp bundled<br/>(feature: stt)]
+    X -- no --> W["whisper.cpp bundled<br/>(feature: stt)"]
     DG --> T[transcript]
     FWH --> T
     OR --> T
