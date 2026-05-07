@@ -155,7 +155,7 @@ fn build_stream(
         .default_input_config()
         .map_err(|e| SttError::Capture(e.to_string()))?;
     let channels = config.channels() as usize;
-    let sample_rate = config.sample_rate().0;
+    let sample_rate = config.sample_rate();
 
     let buf = Arc::new(Mutex::new(Recording {
         samples: Vec::with_capacity(sample_rate as usize * 8),
@@ -226,6 +226,7 @@ fn append_mono_f32(dst: &mut Vec<f32>, src: &[f32], channels: usize) {
     }
 }
 
+#[allow(deprecated)]
 fn pick_input_device(host: &cpal::Host, preferred: Option<&str>) -> Option<cpal::Device> {
     if let Some(want) = preferred {
         if let Ok(devices) = host.input_devices() {
@@ -243,6 +244,7 @@ fn pick_input_device(host: &cpal::Host, preferred: Option<&str>) -> Option<cpal:
 /// Enumerate audio devices so the UI can offer a picker.
 /// Returned tuple: (input_device_names, output_device_names, default_input,
 /// default_output).
+#[allow(deprecated)]
 pub fn list_devices() -> (Vec<String>, Vec<String>, Option<String>, Option<String>) {
     let host = cpal::default_host();
     let inputs: Vec<String> = host

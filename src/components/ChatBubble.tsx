@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type JSX } from "react";
 import { t, useLocale } from "../i18n";
 import { ThumbDownIcon, ThumbUpIcon } from "./icons";
 

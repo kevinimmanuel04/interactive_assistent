@@ -295,13 +295,14 @@ async fn play_wav_blocking(wav: Vec<u8>) -> Result<(), TtsError> {
     // rodio's OutputStream is `!Send`, so run the whole playback on a
     // dedicated blocking thread and await completion.
     tokio::task::spawn_blocking(move || -> Result<(), TtsError> {
-        use rodio::{Decoder, OutputStream, Sink};
+        use rodio::{Decoder, DeviceSinkBuilder, Player};
         use std::io::Cursor;
 
-        let (_stream, handle) =
-            OutputStream::try_default().map_err(|e| TtsError::Audio(e.to_string()))?;
-        let sink = Sink::try_new(&handle).map_err(|e| TtsError::Audio(e.to_string()))?;
-        let decoder = Decoder::new(Cursor::new(wav)).map_err(|e| TtsError::Audio(e.to_string()))?;
+        let stream_handle = DeviceSinkBuilder::open_default_sink()
+            .map_err(|e| TtsError::Audio(e.to_string()))?;
+        let sink = Player::connect_new(stream_handle.mixer());
+        let decoder = Decoder::try_from(Cursor::new(wav))
+            .map_err(|e| TtsError::Audio(e.to_string()))?;
         sink.append(decoder);
         sink.sleep_until_end();
         Ok(())
