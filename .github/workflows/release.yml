@@ -128,20 +128,19 @@ jobs:
           # The duplicated objects come from the same upstream sources, so allowing
           # multiple definitions is safe and lets the linker pick the first.
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: ${{ matrix.platform.name == 'linux' && '-C link-arg=-Wl,--allow-multiple-definition' || '' }}
-          # Belt-and-suspenders for linuxdeploy on ubuntu-24.04: even with libfuse2t64
-          # installed, this env tells AppImages to self-extract instead of mounting,
-          # which avoids any residual FUSE issues inside GitHub Actions runners.
+          # Tell AppImage launchers (linuxdeploy + plugins) to self-extract
+          # instead of mounting via FUSE, which is unreliable on ubuntu-24.04.
           APPIMAGE_EXTRACT_AND_RUN: "1"
-          NO_STRIP: "true"
-          # Verbose output from linuxdeploy so any future failure surfaces a real
-          # error message instead of the generic `failed to run linuxdeploy`.
-          DEBUG: "1"
+          # Suppress linuxdeploy's noisy "Could not find copyright files ...
+          # using dpkg-query" warnings. They are emitted because linuxdeploy
+          # queries dpkg with paths inside AppDir, which dpkg cannot resolve.
+          DISABLE_COPYRIGHT_FILES_DEPLOYMENT: "1"
           # linuxdeploy resolves transitive ELF deps via ld.so search path.
           # The Piper binary `espeak-ng` links against `libespeak-ng.so.1` that
           # ships next to it under src-tauri/binaries/piper/, so make linuxdeploy
           # see it. Empty on Windows; only set on Linux runs.
           LD_LIBRARY_PATH: ${{ matrix.platform.name == 'linux' && format('{0}/src-tauri/binaries/piper:{0}/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/Komorebi.AppDir/usr/lib/Komorebi/binaries/piper', github.workspace) || '' }}
-        run: pnpm tauri build --target ${{ matrix.platform.rust-target }} --verbose -- --features full
+        run: pnpm tauri build --target ${{ matrix.platform.rust-target }} -- --features full
 
       - name: Verify Windows bundle output
         if: matrix.platform.name == 'windows'
