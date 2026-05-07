@@ -119,6 +119,10 @@ jobs:
           # The duplicated objects come from the same upstream sources, so allowing
           # multiple definitions is safe and lets the linker pick the first.
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: ${{ matrix.platform.name == 'linux' && '-C link-arg=-Wl,--allow-multiple-definition' || '' }}
+          # ubuntu-24.04 ships without libfuse2; linuxdeploy AppImages need this
+          # env var to extract themselves instead of mounting via FUSE.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          NO_STRIP: "true"
         run: pnpm tauri build --target ${{ matrix.platform.rust-target }} -- --features full
 
       - name: Verify Windows bundle output
