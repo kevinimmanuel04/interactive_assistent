@@ -3027,7 +3027,7 @@ checksum = "e2db585e1d738fc771bf08a151420d3ed193d9d895a36df7f6f8a9456b911ddc"
 
 [[package]]
 name = "komorebi"
-version = "2.0.8"
+version = "2.0.9"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -3071,7 +3071,7 @@ dependencies = [
 
 [[package]]
 name = "komorebi-cloud"
-version = "2.0.8"
+version = "2.0.9"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -3089,7 +3089,7 @@ dependencies = [
 
 [[package]]
 name = "komorebi-desktop"
-version = "2.0.8"
+version = "2.0.9"
 dependencies = [
  "anyhow",
  "enigo",
@@ -3105,7 +3105,7 @@ dependencies = [
 
 [[package]]
 name = "komorebi-imagegen"
-version = "2.0.8"
+version = "2.0.9"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -3119,7 +3119,7 @@ dependencies = [
 
 [[package]]
 name = "komorebi-intent"
-version = "2.0.8"
+version = "2.0.9"
 dependencies = [
  "anyhow",
  "fastembed",
@@ -3132,7 +3132,7 @@ dependencies = [
 
 [[package]]
 name = "komorebi-llm"
-version = "2.0.8"
+version = "2.0.9"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -3149,7 +3149,7 @@ dependencies = [
 
 [[package]]
 name = "komorebi-router"
-version = "2.0.8"
+version = "2.0.9"
 dependencies = [
  "async-trait",
  "serde",
@@ -3159,7 +3159,7 @@ dependencies = [
 
 [[package]]
 name = "komorebi-skills"
-version = "2.0.8"
+version = "2.0.9"
 dependencies = [
  "arboard",
  "async-trait",
@@ -3175,7 +3175,7 @@ dependencies = [
 
 [[package]]
 name = "komorebi-storage"
-version = "2.0.8"
+version = "2.0.9"
 dependencies = [
  "anyhow",
  "futures",
@@ -3194,7 +3194,7 @@ dependencies = [
 
 [[package]]
 name = "komorebi-voice"
-version = "2.0.8"
+version = "2.0.9"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3213,7 +3213,7 @@ dependencies = [
 
 [[package]]
 name = "komorebi-weather"
-version = "2.0.8"
+version = "2.0.9"
 dependencies = [
  "async-trait",
  "reqwest 0.12.28",
