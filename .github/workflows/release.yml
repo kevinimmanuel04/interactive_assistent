@@ -69,6 +69,9 @@ jobs:
         if: matrix.platform.name == 'linux'
         run: |
           sudo apt-get update
+          # libfuse2t64 is required by linuxdeploy AppImages on ubuntu-24.04.
+          # appstream + desktop-file-utils + zsync are needed by
+          # linuxdeploy-plugin-appimage and linuxdeploy-plugin-gtk.
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
             librsvg2-dev \
@@ -84,6 +87,12 @@ jobs:
             libspa-0.2-dev \
             libgbm-dev \
             libxdo-dev \
+            libfuse2t64 \
+            fuse \
+            desktop-file-utils \
+            appstream \
+            zsync \
+            file \
             pkg-config
 
       - name: Install frontend deps
@@ -119,11 +128,15 @@ jobs:
           # The duplicated objects come from the same upstream sources, so allowing
           # multiple definitions is safe and lets the linker pick the first.
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUSTFLAGS: ${{ matrix.platform.name == 'linux' && '-C link-arg=-Wl,--allow-multiple-definition' || '' }}
-          # ubuntu-24.04 ships without libfuse2; linuxdeploy AppImages need this
-          # env var to extract themselves instead of mounting via FUSE.
+          # Belt-and-suspenders for linuxdeploy on ubuntu-24.04: even with libfuse2t64
+          # installed, this env tells AppImages to self-extract instead of mounting,
+          # which avoids any residual FUSE issues inside GitHub Actions runners.
           APPIMAGE_EXTRACT_AND_RUN: "1"
           NO_STRIP: "true"
-        run: pnpm tauri build --target ${{ matrix.platform.rust-target }} -- --features full
+          # Verbose output from linuxdeploy so any future failure surfaces a real
+          # error message instead of the generic `failed to run linuxdeploy`.
+          DEBUG: "1"
+        run: pnpm tauri build --target ${{ matrix.platform.rust-target }} --verbose -- --features full
 
       - name: Verify Windows bundle output
         if: matrix.platform.name == 'windows'
