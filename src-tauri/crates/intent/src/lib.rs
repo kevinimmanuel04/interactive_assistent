@@ -85,7 +85,7 @@ impl IntentEngine {
                 continue;
             }
             let embeds = model
-                .embed(phrases.to_vec(), None)
+                .embed(phrases, None)
                 .with_context(|| format!("embedding anchors for {:?}", intent))?;
             intents.push(intent);
             anchor_embeds.push(embeds);
