@@ -69,7 +69,7 @@ impl IntentEngine {
     pub fn new(cache_dir: PathBuf) -> Result<Self> {
         std::fs::create_dir_all(&cache_dir).ok();
 
-        let model = TextEmbedding::try_new(
+        let mut model = TextEmbedding::try_new(
             InitOptions::new(EmbeddingModel::ParaphraseMLMiniLML12V2Q)
                 .with_cache_dir(cache_dir)
                 .with_show_download_progress(true),
@@ -107,7 +107,7 @@ impl IntentEngine {
             return Ok(Vec::new());
         }
         let qvec = {
-            let model = self.model.lock();
+            let mut model = self.model.lock();
             model
                 .embed(vec![q.to_string()], None)
                 .context("query embedding failed")?
