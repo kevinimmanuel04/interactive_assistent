@@ -180,5 +180,11 @@ async fn sha256_of(path: &Path) -> Result<String, std::io::Error> {
         }
         hasher.update(&buf[..n]);
     }
-    Ok(format!("{:x}", hasher.finalize()))
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for byte in digest.iter() {
+        use std::fmt::Write as _;
+        let _ = write!(&mut hex, "{:02x}", byte);
+    }
+    Ok(hex)
 }
