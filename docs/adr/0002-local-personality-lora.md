@@ -13,7 +13,7 @@ preferred tone without retraining the base model.
 
 Constraints:
 
-* Komorebi's hot path is Rust + a `llama.cpp`-backed local model. We
+* April's hot path is Rust + a `llama.cpp`-backed local model. We
   don't want to embed a Python runtime in the main process.
 * Users on laptops will not tolerate a fan-spinning trainer running
   while they work.
@@ -23,7 +23,7 @@ Constraints:
 ## Decision
 
 * **Sidecar process.** Training runs in a separate child process
-  (`komorebi-trainer`) shipped as an opt-in extra. Communication is
+  (`april-trainer`) shipped as an opt-in extra. Communication is
   JSON-over-stdio — no IPC tooling, no shared memory, just a line
   protocol both sides can debug with `cat`:
 
@@ -80,7 +80,7 @@ Constraints:
 
 ## Consequences
 
-* The first time the user enables training, Komorebi downloads the
+* The first time the user enables training, April downloads the
   trainer extra (~250 MB compressed). We accept the bandwidth in
   exchange for not bloating the default install.
 * Cloud-only users (no `local_model_path`) cannot train. The training

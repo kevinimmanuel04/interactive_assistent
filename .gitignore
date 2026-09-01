@@ -42,3 +42,7 @@ Thumbs.db
 .vscode/
 !.vscode/extensions.json
 .idea/
+
+# Scratch & Temporary
+scratch/
+

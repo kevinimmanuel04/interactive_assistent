@@ -69,7 +69,7 @@ impl Recorder {
         let recording_w = recording.clone();
 
         std::thread::Builder::new()
-            .name("komorebi-audio".into())
+            .name("april-audio".into())
             .spawn(move || worker_loop(rx, recording_w))
             .expect("spawn audio worker");
 

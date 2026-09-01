@@ -59,7 +59,7 @@ impl Intent {
     }
 
     /// Map an action-taking intent to the registered
-    /// [`komorebi_skills`] skill name. Non-skill intents return `None`.
+    /// [`april_skills`] skill name. Non-skill intents return `None`.
     pub fn skill_name(self) -> Option<&'static str> {
         match self {
             Intent::Volume => Some("volume"),

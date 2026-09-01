@@ -3,8 +3,8 @@
 use super::engines::build_local_engine_at;
 use super::ChatService;
 use crate::settings;
-use komorebi_cloud::{CloudSkillClassifier, SkillIntent};
-use komorebi_skills::SkillRegistry;
+use april_cloud::{CloudSkillClassifier, SkillIntent};
+use april_skills::SkillRegistry;
 use tauri::{AppHandle, Wry};
 
 /// Resolve a [`SkillIntent`] for `prompt` using the best classifier
@@ -14,7 +14,7 @@ use tauri::{AppHandle, Wry};
 /// 0. Local embedding classifier ([`crate::intent`]) — when the user
 ///    has installed the local intent model. ~10 ms cosine match
 ///    against per-skill anchor phrases. Requires a strong score
-///    ([`komorebi_intent::SKILL_ACCEPT_THRESHOLD`] = 0.62) to short-
+///    ([`april_intent::SKILL_ACCEPT_THRESHOLD`] = 0.62) to short-
 ///    circuit, since false positives trigger real desktop actions.
 /// 1. Cloud classifier — if an OpenRouter key is set. Cheapest and most
 ///    accurate path when the embedding model isn't loaded.
@@ -86,7 +86,7 @@ pub(super) async fn pick_skill_intent(
             Ok(None) => {
                 tracing::debug!("skill picker: local returned none");
             }
-            Err(komorebi_llm::LlmError::NotAvailable) => {
+            Err(april_llm::LlmError::NotAvailable) => {
                 tracing::debug!("skill picker: local engine unavailable, using keywords");
             }
             Err(e) => {

@@ -1,4 +1,4 @@
-//! Image generation backends for Komorebi.
+//! Image generation backends for April.
 //!
 //! Three providers behind a single `Generator` trait:
 //! - `openrouter` — multimodal chat completions with `modalities: ["image"]`.

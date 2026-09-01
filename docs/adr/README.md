@@ -1,6 +1,6 @@
 # Architectural Decision Records
 
-This directory tracks the high-level design choices behind Komorebi's
+This directory tracks the high-level design choices behind April's
 **federated personality** roadmap — the multi-stage plan for letting an
 opt-in community of users improve default model behavior without ever
 sharing raw conversation text.

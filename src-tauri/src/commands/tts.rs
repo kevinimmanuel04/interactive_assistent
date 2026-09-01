@@ -86,6 +86,26 @@ pub fn set_openrouter_tts_voice(app: AppHandle<Wry>, voice: String) -> Result<()
 }
 
 #[tauri::command]
+pub fn get_elevenlabs_key(app: AppHandle<Wry>) -> Option<String> {
+    settings::get_elevenlabs_key(&app)
+}
+
+#[tauri::command]
+pub fn set_elevenlabs_key(app: AppHandle<Wry>, key: String) -> Result<(), String> {
+    settings::set_elevenlabs_key(&app, &key).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_elevenlabs_voice_id(app: AppHandle<Wry>) -> Option<String> {
+    settings::get_elevenlabs_voice_id(&app)
+}
+
+#[tauri::command]
+pub fn set_elevenlabs_voice_id(app: AppHandle<Wry>, voice_id: String) -> Result<(), String> {
+    settings::set_elevenlabs_voice_id(&app, &voice_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub async fn speak_text(app: AppHandle<Wry>, text: String) -> Result<(), String> {
     if text.trim().is_empty() {
         return Ok(());
@@ -137,7 +157,7 @@ pub async fn react_event(app: AppHandle<Wry>, kind: String) -> Result<(), String
 #[tauri::command]
 pub async fn read_tts_bytes(path: String) -> Result<tauri::ipc::Response, String> {
     // Only allow reading from our own temp dir.
-    let expected_root = std::env::temp_dir().join("komorebi-tts");
+    let expected_root = std::env::temp_dir().join("april-tts");
     let p = std::path::PathBuf::from(&path);
     if !p.starts_with(&expected_root) {
         return Err("path outside tts temp dir".into());
@@ -161,26 +181,11 @@ pub async fn synthesize_via_provider(
     let provider = settings::get_tts_provider(app);
     match provider.as_str() {
         "openrouter" => {
-            if !settings::get_openrouter_tts_enabled(app) {
-                return Ok(None);
-            }
-            let Some(key) = settings::get_openrouter_key(app) else {
-                return Ok(None);
-            };
-            let cfg = komorebi_voice::openrouter::OpenRouterTtsConfig {
-                api_key: key,
-                model: settings::get_openrouter_tts_model(app),
-                voice: settings::get_openrouter_tts_voice(app),
-            };
-            let tts = komorebi_voice::openrouter::OpenRouterTts::new();
-            tts.configure(Some(cfg)).await;
-            tts.synthesize(text)
-                .await
-                .map(Some)
-                .map_err(|e| e.to_string())
+            // OpenRouter audio model endpoint is deprecated/unsupported; frontend handles ElevenLabs natively.
+            Ok(None)
         }
         "sovits" => {
-            let Some(sovits) = app.try_state::<komorebi_voice::sovits::SoVitsTts>() else {
+            let Some(sovits) = app.try_state::<april_voice::sovits::SoVitsTts>() else {
                 return Ok(None);
             };
             if !sovits.is_configured().await {
@@ -193,7 +198,7 @@ pub async fn synthesize_via_provider(
                 .map_err(|e| e.to_string())
         }
         _ => {
-            let Some(tts) = app.try_state::<komorebi_voice::tts::PiperTts>() else {
+            let Some(tts) = app.try_state::<april_voice::tts::PiperTts>() else {
                 return Ok(None);
             };
             if !tts.is_configured().await {
@@ -213,7 +218,7 @@ pub async fn synthesize_via_provider(
 /// through the native media pipeline (no base64 data URL, no asset: proto).
 pub fn emit_tts_wav(app: &AppHandle<Wry>, wav: &[u8]) {
     use tauri::Emitter;
-    let dir = std::env::temp_dir().join("komorebi-tts");
+    let dir = std::env::temp_dir().join("april-tts");
     if let Err(e) = std::fs::create_dir_all(&dir) {
         tracing::warn!(?e, "failed to create tts temp dir");
         return;
@@ -260,7 +265,7 @@ fn bundled_piper(app: &AppHandle<Wry>) -> Option<std::path::PathBuf> {
 /// Re-reads persisted TTS settings and applies them to the shared handle.
 /// Called on startup and whenever any TTS-related setting changes.
 pub async fn reload_tts(app: &AppHandle<Wry>) {
-    use komorebi_voice::tts::{PiperConfig, PiperTts};
+    use april_voice::tts::{PiperConfig, PiperTts};
     let Some(tts) = app.try_state::<PiperTts>() else {
         return;
     };
@@ -291,7 +296,7 @@ pub async fn reload_tts(app: &AppHandle<Wry>) {
     // SoVITS provider — independent of the Piper path. Only enabled when
     // TTS is on and an endpoint URL is configured; the provider selector
     // (`tts_provider`) decides which one is actually used at synth time.
-    if let Some(sovits) = app.try_state::<komorebi_voice::sovits::SoVitsTts>() {
+    if let Some(sovits) = app.try_state::<april_voice::sovits::SoVitsTts>() {
         let sv_cfg = if enabled {
             settings::get_sovits_config(app)
         } else {

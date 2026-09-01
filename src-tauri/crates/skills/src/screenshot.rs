@@ -3,7 +3,7 @@
 //! dependencies (xcap, CoreGraphics bindings, etc).
 //!
 //! The file is written into the user's pictures directory (or the system
-//! temp dir as fallback) under `Komorebi/screenshot-<ts>.png`. The reply
+//! temp dir as fallback) under `April/screenshot-<ts>.png`. The reply
 //! contains the absolute path so the user (and, later, the assistant) can
 //! reference it.
 //!
@@ -34,7 +34,7 @@ fn triggers(query: &str) -> bool {
 
 fn output_dir() -> PathBuf {
     let base = dirs::picture_dir().unwrap_or_else(std::env::temp_dir);
-    base.join("Komorebi")
+    base.join("April")
 }
 
 #[cfg(target_os = "macos")]

@@ -106,12 +106,27 @@ export class ListenController {
 /** Returns the message stripped of the wake-word prefix, or `null` if the
  *  wake word is required but not present. Empty/absent wake word passes through. */
 export function applyWakeWord(text: string, wakeWord: string | null): string | null {
-  if (!wakeWord || !wakeWord.trim()) return text;
-  const needle = wakeWord.trim().toLowerCase();
+  const targetWakeWord = wakeWord && wakeWord.trim() ? wakeWord.trim() : "Hey April";
   const lower = text.toLowerCase();
-  const idx = lower.indexOf(needle);
-  if (idx === -1) return null;
-  // Strip everything up to and including the wake word + common punctuation.
-  const after = text.slice(idx + needle.length).replace(/^[\s,.\-!?:;]+/, "");
-  return after.length > 0 ? after : text;
+
+  // Support variations of April wake word
+  const wakeVariants = [
+    targetWakeWord.toLowerCase(),
+    "hey april",
+    "hi april",
+    "okay april",
+    "ok april",
+    "april",
+  ];
+
+  for (const variant of wakeVariants) {
+    const idx = lower.indexOf(variant);
+    if (idx !== -1) {
+      const after = text.slice(idx + variant.length).replace(/^[\s,.\-!?:;]+/, "");
+      return after.length > 0 ? after : text;
+    }
+  }
+
+  // If wake word is required but not found in user speech, ignore background talk
+  return null;
 }

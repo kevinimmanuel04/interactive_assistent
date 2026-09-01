@@ -7,7 +7,7 @@
 //! as the underlying Whisper model.
 //!
 //! The user is expected to run the server locally (Docker or `pip install
-//! speaches`) and point Komorebi at the URL via Settings. We don't bundle
+//! speaches`) and point April at the URL via Settings. We don't bundle
 //! it because the binary is large and platform-specific (Python wheel +
 //! CUDA toolkits when GPU acceleration is requested).
 //!
@@ -41,7 +41,7 @@ pub struct FasterWhisperConfig {
 fn http_client() -> Result<reqwest::Client, FasterWhisperError> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
-        .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("april/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| FasterWhisperError::Request(e.to_string()))
 }

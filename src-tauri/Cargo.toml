@@ -18,7 +18,7 @@ members = [
 version = "2.0.10"
 edition = "2021"
 license = "Apache-2.0 OR MIT"
-authors = ["Komorebi contributors"]
+authors = ["April contributors"]
 
 [workspace.dependencies]
 tokio = { version = "1.52", features = ["full"] }
@@ -33,15 +33,15 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 futures = "0.3"
 
 [package]
-name = "komorebi"
+name = "april"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Komorebi — anime-avatar virtual assistant"
+description = "April — anime-avatar virtual assistant"
 
 [lib]
-name = "komorebi_lib"
+name = "april_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -54,6 +54,7 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-shell = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 sys-locale = "0.3"
@@ -77,21 +78,22 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg"]
 sha2 = "0.10"
 
 # Internal crates (stub for now, wired in next phases).
-komorebi-llm = { path = "crates/llm" }
-komorebi-cloud = { path = "crates/cloud" }
-komorebi-router = { path = "crates/router" }
-komorebi-voice = { path = "crates/voice" }
-komorebi-skills = { path = "crates/skills" }
-komorebi-storage = { path = "crates/storage" }
-komorebi-desktop = { path = "crates/desktop" }
-komorebi-imagegen = { path = "crates/imagegen" }
-komorebi-weather = { path = "crates/weather" }
-komorebi-intent = { path = "crates/intent" }
+april-llm = { path = "crates/llm" }
+april-cloud = { path = "crates/cloud" }
+april-router = { path = "crates/router" }
+april-voice = { path = "crates/voice" }
+april-skills = { path = "crates/skills" }
+april-storage = { path = "crates/storage" }
+april-desktop = { path = "crates/desktop" }
+april-imagegen = { path = "crates/imagegen" }
+april-weather = { path = "crates/weather" }
+april-intent = { path = "crates/intent" }
+tauri-plugin-localhost = "2.3.2"
 
 [features]
 default = []
-local-llm = ["komorebi-llm/local-llm"]
-stt = ["komorebi-voice/stt"]
+local-llm = ["april-llm/local-llm"]
+stt = ["april-voice/stt"]
 # Convenience umbrella: everything that ships in the full release binary.
 full = ["local-llm", "stt"]
 

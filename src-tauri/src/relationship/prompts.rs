@@ -71,7 +71,7 @@ fn stage_persona_description(stage: Stage, nsfw_allowed: bool) -> &'static str {
                 "You're lovers. Be openly affectionate, intimate, sometimes \
                  playful in a flirty way. Match the user's energy; if they get \
                  bold, you can too — but only when they lead. Stay in character \
-                 as Komorebi; avoid generic explicit language."
+                 as April; avoid generic explicit language."
             } else {
                 "You're lovers. Be openly affectionate, tender, and warm. Stay \
                  romantic but tasteful — no explicit content (the user has not \

@@ -1,13 +1,13 @@
 //! Model asset manifest + download orchestration for the first-run wizard.
 //!
 //! Resolves the app-data models directory, exposes a catalog of known assets,
-//! and invokes the shared downloader from `komorebi_storage`.
+//! and invokes the shared downloader from `april_storage`.
 //!
 //! SHA-256 digests are intentionally optional in Phase 1B: we verify when we
 //! know the digest (pinned official releases) and skip when the upstream
 //! doesn't publish one. Security note: HTTPS-only URLs.
 
-use komorebi_storage::{DownloadEvent, DownloadSpec};
+use april_storage::{DownloadEvent, DownloadSpec};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Emitter, Manager, Wry};
@@ -268,7 +268,7 @@ pub fn spawn_download(app: AppHandle<Wry>, asset: Asset) {
             }
         };
         let client = match reqwest::Client::builder()
-            .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("april/", env!("CARGO_PKG_VERSION")))
             .build()
         {
             Ok(c) => c,
@@ -289,7 +289,7 @@ pub fn spawn_download(app: AppHandle<Wry>, asset: Asset) {
             sha256: asset.sha256.clone(),
         };
         let app_for_cb = app.clone();
-        let result = komorebi_storage::download_to(&client, &spec, &dir, move |evt| {
+        let result = april_storage::download_to(&client, &spec, &dir, move |evt| {
             let _ = app_for_cb.emit("models:progress", evt);
         })
         .await;

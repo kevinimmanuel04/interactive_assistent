@@ -15,6 +15,7 @@ interface SliderProps {
   onChange: (v: number) => void;
   onCommit: () => void;
   disabled?: boolean;
+  gradientClass?: string;
 }
 
 export default function Slider({
@@ -26,22 +27,27 @@ export default function Slider({
   onChange,
   onCommit,
   disabled,
+  gradientClass = "slider-gradient-1",
 }: SliderProps) {
   return (
-    <label style={{ display: "block", fontSize: 11, marginTop: 6 }}>
-      <div style={{ opacity: 0.8, marginBottom: 2 }}>{label}</div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => onChange(parseFloat(e.target.value))}
-        onPointerUp={onCommit}
-        onKeyUp={onCommit}
-        style={{ width: "100%" }}
-      />
-    </label>
+    <div style={{ margin: "10px 0" }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.85)", marginBottom: 4 }}>
+        {label}
+      </div>
+      <div className="slider-wrapper">
+        <input
+          type="range"
+          className={`slider ${gradientClass}`}
+          min={min}
+          max={max}
+          step={step}
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          onPointerUp={onCommit}
+          onKeyUp={onCommit}
+        />
+      </div>
+    </div>
   );
 }

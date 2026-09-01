@@ -42,7 +42,7 @@ pub trait IntentClassifier: Send + Sync {
 /// Keyword skill detector extracted so it can be reused by [`classify_async`].
 ///
 /// Kept in sync (loosely) with the per-skill matchers in
-/// `komorebi_skills` — those are authoritative; this list just decides
+/// `april_skills` — those are authoritative; this list just decides
 /// whether the request *looks* like a skill so we route to the registry
 /// at all. Err on the side of recall: a false positive here just means
 /// `SkillRegistry::dispatch` returns `NotApplicable` and we fall back to

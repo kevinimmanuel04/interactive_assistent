@@ -7,7 +7,7 @@ use crate::{
 };
 use serde::Deserialize;
 
-const URL: &str = "https://openrouter.ai/api/v1/chat/completions";
+const URL: &str = "https://opencode.ai/zen/v1/chat/completions";
 
 pub struct OpenRouterImage {
     http: reqwest::Client,
@@ -22,7 +22,7 @@ impl OpenRouterImage {
             return Err(ImageGenError::MissingCredential("openrouter_api_key"));
         }
         let http = reqwest::Client::builder()
-            .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("april/", env!("CARGO_PKG_VERSION")))
             .build()?;
         Ok(Self {
             http,
@@ -91,8 +91,8 @@ impl Generator for OpenRouterImage {
             .http
             .post(URL)
             .bearer_auth(&self.api_key)
-            .header("HTTP-Referer", "https://komorebi.svitix.com")
-            .header("X-Title", "Komorebi")
+            .header("HTTP-Referer", "https://april.svitix.com")
+            .header("X-Title", "April")
             .json(&body)
             .send()
             .await?;

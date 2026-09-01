@@ -39,7 +39,7 @@ pub async fn intent_load(app: AppHandle<Wry>) -> Result<(), String> {
 pub async fn intent_classify_debug(
     app: AppHandle<Wry>,
     query: String,
-) -> Result<Vec<komorebi_intent::IntentMatch>, String> {
+) -> Result<Vec<april_intent::IntentMatch>, String> {
     let state = app
         .try_state::<Arc<IntentState>>()
         .ok_or_else(|| "intent state not initialized".to_string())?

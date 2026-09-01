@@ -2,6 +2,9 @@ import { useEffect, type MutableRefObject } from "react";
 import { avatarState } from "../avatarState";
 import { stripMoodTags } from "../emotion";
 import { onChat, type ChatEvent, type PublicSettings } from "../api";
+import { saveMessage } from "../services/chatStorage";
+import { synthesizeElevenLabs } from "../services/elevenlabs";
+import { lipSync } from "../lipsync";
 
 export type Route = "local" | "cloud" | "skill";
 
@@ -11,6 +14,31 @@ export interface LastTurn {
   response: string;
   route: Route;
   modelLabel: string;
+}
+
+function fallbackWebSpeech(text: string) {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+  try {
+    window.speechSynthesis.cancel();
+    const clean = text.replace(/<mood:[^>]+>/g, "").replace(/<[^>]+>/g, "").trim();
+    if (!clean) return;
+    const utterance = new SpeechSynthesisUtterance(clean);
+    utterance.pitch = 1.1;
+    utterance.rate = 1.05;
+    const voices = window.speechSynthesis.getVoices();
+    const femaleVoice = voices.find(
+      (v) =>
+        v.name.includes("Jenny") ||
+        v.name.includes("Zira") ||
+        v.name.includes("Female") ||
+        v.name.includes("Samantha") ||
+        v.lang.startsWith("en")
+    );
+    if (femaleVoice) utterance.voice = femaleVoice;
+    window.speechSynthesis.speak(utterance);
+  } catch (e) {
+    console.warn("[tts] Web Speech API failed:", e);
+  }
 }
 
 /**
@@ -28,10 +56,12 @@ export function useChatStream(opts: {
   settingsRef: MutableRefObject<PublicSettings | null>;
   rawTextRef: MutableRefObject<string>;
   setRoute: (r: Route | null) => void;
+  setModelLabel?: (label: string | null) => void;
   setBubbleText: (text: string | null) => void;
   setThinking: (v: boolean) => void;
   setFeedbackKey: (updater: (k: number) => number) => void;
   scheduleBubbleHide: (ms?: number) => void;
+  onGenerateImage?: (prompt: string) => void;
 }): void {
   const {
     activeIdRef,
@@ -39,10 +69,12 @@ export function useChatStream(opts: {
     settingsRef,
     rawTextRef,
     setRoute,
+    setModelLabel,
     setBubbleText,
     setThinking,
     setFeedbackKey,
     scheduleBubbleHide,
+    onGenerateImage,
   } = opts;
 
   useEffect(() => {
@@ -56,6 +88,9 @@ export function useChatStream(opts: {
       switch (e.kind) {
         case "started":
           setRoute(e.route);
+          if (e.model_label && setModelLabel) {
+            setModelLabel(e.model_label);
+          }
           setBubbleText("");
           rawTextRef.current = "";
           setThinking(true);
@@ -87,12 +122,51 @@ export function useChatStream(opts: {
         case "done":
           setThinking(false);
           avatarState.onDone();
+          let rawFull = rawTextRef.current;
+          const imgMatch = rawFull.match(/\[GENERATE_IMAGE:\s*(.*?)\]/i);
+          if (imgMatch && imgMatch[1]) {
+            const imagePrompt = imgMatch[1].trim();
+            rawFull = rawFull.replace(/\[GENERATE_IMAGE:\s*(.*?)\]/i, "").trim();
+            if (onGenerateImage) {
+              onGenerateImage(imagePrompt);
+            }
+          }
+          const cleanResp = stripMoodTags(rawFull);
           // Freeze the response text for feedback before scheduling hide.
           if (lastTurnRef.current && lastTurnRef.current.id === e.id) {
-            lastTurnRef.current.response = stripMoodTags(rawTextRef.current);
+            lastTurnRef.current.response = cleanResp;
             setFeedbackKey((k) => k + 1);
           }
-          scheduleBubbleHide();
+          // Save assistant message into persistent chat memory
+          if (cleanResp) {
+            saveMessage("assistant", cleanResp);
+
+            // Guaranteed Speech Synthesis: ElevenLabs -> EdgeTTS -> Web Speech API fallback
+            synthesizeElevenLabs(cleanResp)
+              .then(async (audioBytes) => {
+                try {
+                  await lipSync.playBytes(audioBytes, "audio/mp3");
+                } catch (playErr) {
+                  try {
+                    const blob = new Blob([audioBytes], { type: "audio/mp3" });
+                    const audio = new Audio(URL.createObjectURL(blob));
+                    await audio.play();
+                  } catch (audioErr) {
+                    console.warn("[tts] Direct audio playback failed, falling back to Web Speech:", audioErr);
+                    fallbackWebSpeech(cleanResp);
+                  }
+                }
+                // Schedule subtitle hide 12 seconds AFTER speech audio finishes!
+                scheduleBubbleHide(12000);
+              })
+              .catch((err) => {
+                console.warn("[elevenlabs] Synthesis failed, falling back to Web Speech API:", err);
+                fallbackWebSpeech(cleanResp);
+                scheduleBubbleHide(14000);
+              });
+          } else {
+            scheduleBubbleHide(10000);
+          }
           activeIdRef.current = null;
           rawTextRef.current = "";
           break;

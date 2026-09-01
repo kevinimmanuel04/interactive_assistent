@@ -4,7 +4,7 @@ use super::engines::{stream_cloud, stream_local};
 use super::events::{emit, ChatEventOut};
 use super::ChatService;
 use crate::settings;
-use komorebi_router::{ChatMessage, Route};
+use april_router::{ChatMessage, Route};
 use tauri::{AppHandle, Wry};
 
 #[derive(Debug)]
@@ -20,8 +20,11 @@ pub(super) fn extract_tool_call(text: &str) -> Option<ParsedToolCall> {
     const CLOSE: &str = "</tool_call>";
     let start = text.find(OPEN)?;
     let after = start + OPEN.len();
-    let end_rel = text[after..].find(CLOSE)?;
-    let json = text[after..after + end_rel].trim();
+    let json = if let Some(end_rel) = text[after..].find(CLOSE) {
+        text[after..after + end_rel].trim()
+    } else {
+        text[after..].trim().trim_end_matches('>').trim()
+    };
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
     let name = v.get("tool")?.as_str()?.to_string();
     let args = v.get("args").cloned().unwrap_or(serde_json::Value::Null);
@@ -33,8 +36,7 @@ pub(super) fn extract_tool_call(text: &str) -> Option<ParsedToolCall> {
 fn is_readonly_tool(name: &str) -> bool {
     matches!(
         name,
-        "screen_vision"
-            | "active_window"
+        "active_window"
             | "context_snapshot"
             | "list_screens"
             | "top_processes"

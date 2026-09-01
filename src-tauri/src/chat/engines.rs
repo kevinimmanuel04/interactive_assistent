@@ -4,25 +4,25 @@ use super::events::{emit, ChatEventOut};
 use super::ChatService;
 use crate::settings;
 use futures::StreamExt;
-use komorebi_cloud::{OpenRouterClient, StreamEvent};
-use komorebi_router::ChatMessage;
+use april_cloud::{OpenRouterClient, StreamEvent};
+use april_router::ChatMessage;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tauri::{AppHandle, Wry};
 
 /// Build the bundled llama.cpp engine from the user's settings. Returns
-/// the [`StubEngine`](komorebi_llm::StubEngine) when the model path is
+/// the [`StubEngine`](april_llm::StubEngine) when the model path is
 /// not configured or the `local-llm` Cargo feature is off — in either
 /// case calls into the engine return [`LlmError::NotAvailable`] which
 /// the caller turns into a graceful degradation.
-fn build_local_engine(app: &AppHandle<Wry>) -> Arc<dyn komorebi_llm::LlmEngine> {
+fn build_local_engine(app: &AppHandle<Wry>) -> Arc<dyn april_llm::LlmEngine> {
     build_local_engine_at(app, settings::get_local_model_path(app))
 }
 
 /// Public re-export of [`build_local_engine`] for sibling modules
 /// (currently `coach::run_text`). Sharing one builder keeps GPU-layer
 /// and model-path resolution in one place.
-pub(crate) fn build_local_engine_public(app: &AppHandle<Wry>) -> Arc<dyn komorebi_llm::LlmEngine> {
+pub(crate) fn build_local_engine_public(app: &AppHandle<Wry>) -> Arc<dyn april_llm::LlmEngine> {
     build_local_engine(app)
 }
 
@@ -32,8 +32,8 @@ pub(crate) fn build_local_engine_public(app: &AppHandle<Wry>) -> Arc<dyn komoreb
 pub(super) fn build_local_engine_at(
     app: &AppHandle<Wry>,
     model_path: Option<String>,
-) -> Arc<dyn komorebi_llm::LlmEngine> {
-    use komorebi_llm::{default_engine, LlmConfig};
+) -> Arc<dyn april_llm::LlmEngine> {
+    use april_llm::{default_engine, LlmConfig};
     let mut cfg = LlmConfig::default();
     if let Some(p) = model_path {
         cfg.model_path = Some(std::path::PathBuf::from(p));
@@ -52,35 +52,97 @@ pub(super) async fn stream_cloud(
 ) -> Result<String, String> {
     let api_key = settings::get_openrouter_key(app)
         .ok_or_else(|| "OpenRouter API key is not set. Open settings and add one.".to_string())?;
-    let model = settings::get_openrouter_model(app);
+    let configured_model = settings::get_openrouter_model(app);
+    // Extract the latest user prompt for domain classification & explicit override parsing
+    let last_user_prompt = messages
+        .iter()
+        .rev()
+        .find(|m| m.role == april_router::Role::User)
+        .map(|m| m.content.as_str())
+        .unwrap_or("");
+
+    let route = april_cloud::router::resolve_smart_route(last_user_prompt, &configured_model, &api_key);
     let client = OpenRouterClient::new(api_key).map_err(|e| e.to_string())?;
 
-    let mut stream = client
-        .stream_chat(&model, messages)
-        .await
-        .map_err(|e| e.to_string())?;
+    let mut last_error = String::from("All cloud models failed to respond");
 
-    let mut acc = String::new();
-    while let Some(evt) = stream.next().await {
-        if service.cancel.load(Ordering::SeqCst) {
-            break;
-        }
-        match evt {
-            Ok(StreamEvent::Token(t)) => {
-                acc.push_str(&t);
-                emit(
-                    app,
-                    ChatEventOut::Token {
-                        id: id.into(),
-                        text: t,
-                    },
-                );
+    for (idx, spec) in route.chain.iter().enumerate() {
+        let model_label = if idx == 0 {
+            route.initial_label.clone()
+        } else {
+            format!("🔁 Switched to {}", spec.display_name)
+        };
+
+        tracing::info!(
+            model = %spec.endpoint_id,
+            attempt = idx + 1,
+            label = %model_label,
+            "stream_cloud: attempting model"
+        );
+
+        let stream_result = client.stream_chat(spec.endpoint_id, messages).await;
+        let mut stream = match stream_result {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(model = %spec.endpoint_id, ?e, "Failed to connect to model, trying next");
+                last_error = e.to_string();
+                continue;
             }
-            Ok(StreamEvent::Done) => break,
-            Err(e) => return Err(e.to_string()),
+        };
+
+        emit(
+            app,
+            ChatEventOut::Started {
+                id: id.into(),
+                route: "cloud".into(),
+                model_label: Some(model_label.clone()),
+            },
+        );
+
+        let mut acc = String::new();
+        let mut had_error = false;
+
+        while let Some(evt) = stream.next().await {
+            if service.cancel.load(Ordering::SeqCst) {
+                return Ok(acc);
+            }
+            match evt {
+                Ok(StreamEvent::Token(t)) => {
+                    acc.push_str(&t);
+                    emit(
+                        app,
+                        ChatEventOut::Token {
+                            id: id.into(),
+                            text: t,
+                        },
+                    );
+                }
+                Ok(StreamEvent::Done) => break,
+                Err(e) => {
+                    if !acc.trim().is_empty() {
+                        tracing::warn!(?e, "Stream ended with error after receiving tokens, completing gracefully");
+                        break;
+                    }
+                    tracing::warn!(?e, "Stream error before receiving tokens");
+                    had_error = true;
+                    last_error = e.to_string();
+                    break;
+                }
+            }
         }
+
+        if !acc.trim().is_empty() {
+            return Ok(acc);
+        }
+
+        tracing::warn!(
+            model = %spec.endpoint_id,
+            had_error,
+            "Model returned empty stream or failed, auto-failing over to next model in chain"
+        );
     }
-    Ok(acc)
+
+    Err(last_error)
 }
 
 pub(super) async fn stream_local(
@@ -89,7 +151,7 @@ pub(super) async fn stream_local(
     id: &str,
     messages: &[ChatMessage],
 ) -> Result<String, String> {
-    use komorebi_llm::{LlmError, LlmEvent};
+    use april_llm::{LlmError, LlmEvent};
 
     let engine = build_local_engine(app);
     match engine.stream_chat(messages).await {

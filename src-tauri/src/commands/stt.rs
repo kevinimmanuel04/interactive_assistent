@@ -11,7 +11,7 @@ pub fn set_whisper_model(app: AppHandle<Wry>, path: String) -> Result<(), String
 #[tauri::command]
 pub fn start_recording(
     app: AppHandle<Wry>,
-    recorder: State<'_, komorebi_voice::stt::Recorder>,
+    recorder: State<'_, april_voice::stt::Recorder>,
 ) -> Result<(), String> {
     let device = settings::get_audio_input(&app);
     recorder
@@ -23,7 +23,7 @@ pub fn start_recording(
 #[tauri::command]
 pub async fn stop_recording(
     app: AppHandle<Wry>,
-    recorder: State<'_, komorebi_voice::stt::Recorder>,
+    recorder: State<'_, april_voice::stt::Recorder>,
 ) -> Result<String, String> {
     let samples = recorder.stop().map_err(|e| e.to_string())?;
 
@@ -34,50 +34,54 @@ pub async fn stop_recording(
     //   4. Local whisper-rs (bundled fallback)
     if settings::get_deepgram_enabled(&app) {
         if let Some(key) = settings::get_deepgram_key(&app) {
-            let cfg = komorebi_voice::deepgram::DeepgramConfig {
+            let cfg = april_voice::deepgram::DeepgramConfig {
                 api_key: key,
                 model: settings::get_deepgram_model(&app),
                 language: settings::get_deepgram_language(&app),
             };
-            return komorebi_voice::deepgram::transcribe(&cfg, &samples, 16_000)
+            return april_voice::deepgram::transcribe(&cfg, &samples, 16_000)
                 .await
                 .map_err(|e| e.to_string());
         }
     }
     if settings::get_faster_whisper_enabled(&app) {
-        let cfg = komorebi_voice::faster_whisper::FasterWhisperConfig {
+        let cfg = april_voice::faster_whisper::FasterWhisperConfig {
             base_url: settings::get_faster_whisper_url(&app),
             model: settings::get_faster_whisper_model(&app),
             language: settings::get_faster_whisper_language(&app),
         };
-        return komorebi_voice::faster_whisper::transcribe(&cfg, &samples, 16_000)
-            .await
-            .map_err(|e| e.to_string());
+        if let Ok(txt) = april_voice::faster_whisper::transcribe(&cfg, &samples, 16_000).await {
+            return Ok(txt);
+        }
     }
     if settings::get_openrouter_stt_enabled(&app) {
         if let Some(key) = settings::get_openrouter_key(&app) {
-            let cfg = komorebi_voice::openrouter::OpenRouterSttConfig {
+            let cfg = april_voice::openrouter::OpenRouterSttConfig {
                 api_key: key,
                 model: settings::get_openrouter_stt_model(&app),
             };
-            return komorebi_voice::openrouter::transcribe(&cfg, &samples, 16_000)
-                .await
-                .map_err(|e| e.to_string());
+            if let Ok(txt) = april_voice::openrouter::transcribe(&cfg, &samples, 16_000).await {
+                return Ok(txt);
+            }
         }
     }
 
-    let model_path = settings::get_whisper_model_path(&app)
-        .ok_or_else(|| "no Whisper model configured".to_string())?;
-    let path = std::path::PathBuf::from(model_path);
-    tauri::async_runtime::spawn_blocking(move || {
-        komorebi_voice::stt::transcribe(&path, &samples).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    if let Some(model_path) = settings::get_whisper_model_path(&app) {
+        let path = std::path::PathBuf::from(model_path);
+        let res = tauri::async_runtime::spawn_blocking(move || {
+            april_voice::stt::transcribe(&path, &samples).map_err(|e| e.to_string())
+        })
+        .await;
+        if let Ok(Ok(txt)) = res {
+            return Ok(txt);
+        }
+    }
+
+    Ok("".to_string())
 }
 
 #[tauri::command]
-pub fn cancel_recording(recorder: State<'_, komorebi_voice::stt::Recorder>) -> Result<(), String> {
+pub fn cancel_recording(recorder: State<'_, april_voice::stt::Recorder>) -> Result<(), String> {
     // Stop without transcribing; ignore EmptyRecording / NotRecording.
     let _ = recorder.stop();
     Ok(())
@@ -132,7 +136,7 @@ pub fn set_faster_whisper_language(app: AppHandle<Wry>, language: String) -> Res
 
 #[tauri::command]
 pub async fn validate_faster_whisper(url: String) -> Result<(), String> {
-    komorebi_voice::faster_whisper::validate(&url)
+    april_voice::faster_whisper::validate(&url)
         .await
         .map_err(|e| e.to_string())
 }
@@ -154,7 +158,7 @@ pub fn clear_deepgram_key(app: AppHandle<Wry>) -> Result<(), String> {
 /// committing the value to the store.
 #[tauri::command]
 pub async fn validate_deepgram_key(key: String) -> Result<(), String> {
-    komorebi_voice::deepgram::validate_key(&key)
+    april_voice::deepgram::validate_key(&key)
         .await
         .map_err(|e| e.to_string())
 }
@@ -180,7 +184,7 @@ pub fn set_deepgram_language(app: AppHandle<Wry>, language: String) -> Result<()
 /// picker. Also returns the system defaults for each direction.
 #[tauri::command]
 pub fn list_audio_devices() -> serde_json::Value {
-    let (inputs, outputs, def_in, def_out) = komorebi_voice::stt::list_devices();
+    let (inputs, outputs, def_in, def_out) = april_voice::stt::list_devices();
     serde_json::json!({
         "inputs": inputs,
         "outputs": outputs,

@@ -1,6 +1,6 @@
 //! Local intent classifier integration.
 //!
-//! Holds a Tauri-managed lazy-loaded [`komorebi_intent::IntentEngine`].
+//! Holds a Tauri-managed lazy-loaded [`april_intent::IntentEngine`].
 //! The engine downloads a quantized multilingual MiniLM ONNX model
 //! (~120 MB) on first use and caches it in the app data directory.
 //!
@@ -14,9 +14,9 @@
 //! 1. Returns `None` immediately when the engine isn't loaded — the
 //!    caller falls back to the existing keyword logic.
 //! 2. Otherwise embeds the query and returns the top match if its
-//!    cosine score clears [`komorebi_intent::DEFAULT_ACCEPT_THRESHOLD`].
+//!    cosine score clears [`april_intent::DEFAULT_ACCEPT_THRESHOLD`].
 
-use komorebi_intent::{Intent, IntentEngine, IntentMatch};
+use april_intent::{Intent, IntentEngine, IntentMatch};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::Manager;
@@ -66,7 +66,7 @@ impl IntentState {
 /// engine isn't loaded yet, the query is empty, or no intent clears
 /// the default acceptance threshold.
 pub async fn detect_intent(app: &tauri::AppHandle<tauri::Wry>, query: &str) -> Option<IntentMatch> {
-    detect_intent_above(app, query, komorebi_intent::DEFAULT_ACCEPT_THRESHOLD).await
+    detect_intent_above(app, query, april_intent::DEFAULT_ACCEPT_THRESHOLD).await
 }
 
 /// Same as [`detect_intent`] but with an explicit threshold. Used by
@@ -90,11 +90,11 @@ pub async fn detect_intent_above(
 
 /// Resolve the matching skill name (volume/screenshot/clipboard/open/
 /// media) when the embedding classifier reports an action-taking intent
-/// above [`komorebi_intent::SKILL_ACCEPT_THRESHOLD`]. Returns `None`
+/// above [`april_intent::SKILL_ACCEPT_THRESHOLD`]. Returns `None`
 /// when the model isn't loaded, the score is too low, or the matched
 /// intent isn't a skill (Chat / Weather / ImageGen).
 pub async fn detect_skill(app: &tauri::AppHandle<tauri::Wry>, query: &str) -> Option<&'static str> {
-    let m = detect_intent_above(app, query, komorebi_intent::SKILL_ACCEPT_THRESHOLD).await?;
+    let m = detect_intent_above(app, query, april_intent::SKILL_ACCEPT_THRESHOLD).await?;
     let name = m.intent.skill_name()?;
     tracing::info!(skill = name, score = m.score, "intent: skill chosen");
     Some(name)

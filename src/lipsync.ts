@@ -1,4 +1,4 @@
-﻿// Hybrid playback:
+// Hybrid playback:
 //   - HTMLAudioElement plays a Blob object-URL built from raw WAV bytes
 //     (read from a temp file via the `read_tts_bytes` command). This is
 //     the same path the browser uses for <audio src="blob:..."> — no
@@ -93,7 +93,16 @@ class LipSyncBus {
       console.warn("[tts] read_tts_bytes failed:", err);
       return;
     }
-    if (token !== this.playToken) return;
+    await this.playRawBytes(bytes, token, "audio/wav");
+  }
+
+  async playBytes(bytes: ArrayBuffer, mimeType = "audio/mp3"): Promise<void> {
+    const token = ++this.playToken;
+    this.stop();
+    await this.playRawBytes(bytes, token, mimeType);
+  }
+
+  private async playRawBytes(bytes: ArrayBuffer, token: number, mimeType: string): Promise<void> {
 
     // 1) Pre-compute envelope off the audio path.
     try {
@@ -122,7 +131,7 @@ class LipSyncBus {
     if (token !== this.playToken) return;
 
     // 2) Play via blob object-URL on a fresh <audio> element.
-    const blob = new Blob([bytes], { type: "audio/wav" });
+    const blob = new Blob([bytes], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const el = new Audio();
     if (this.preferredSinkId) {
@@ -134,34 +143,43 @@ class LipSyncBus {
     el.src = url;
     el.preload = "auto";
     el.volume = Math.min(1, this.volume);
-    const cleanup = () => {
-      URL.revokeObjectURL(url);
-    };
-    el.onended = () => {
-      cleanup();
-      if (this.el === el) {
-        this.el = null;
-        this.stopLoop();
-      }
-    };
-    el.onerror = (e) => {
-      console.warn("[tts] audio element error:", e);
-      cleanup();
-      if (this.el === el) {
-        this.el = null;
-        this.stopLoop();
-      }
-    };
     this.el = el;
-    try {
-      await el.play();
-    } catch (err) {
-      console.warn("[tts] audio.play() failed:", err);
-      cleanup();
-      this.el = null;
-      return;
-    }
-    this.startLoop();
+    const cleanup = () => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {}
+    };
+    return new Promise<void>((resolve) => {
+      let resolved = false;
+      const done = () => {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          if (this.el === el) {
+            this.el = null;
+            this.stopLoop();
+          }
+          resolve();
+        }
+      };
+
+      el.onended = () => {
+        done();
+      };
+      el.onerror = (e) => {
+        console.warn("[tts] audio element error:", e);
+        done();
+      };
+
+      el.play()
+        .then(() => {
+          this.startLoop();
+        })
+        .catch((err) => {
+          console.warn("[tts] audio.play() failed:", err);
+          done();
+        });
+    });
   }
 
   stop(): void {
@@ -230,6 +248,48 @@ class LipSyncBus {
       }
     };
     window.requestAnimationFrame(decay);
+  }
+
+  connectAudioStream(stream: MediaStream): () => void {
+    try {
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const source = ctx.createMediaStreamSource(stream);
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.5;
+      source.connect(analyser);
+
+      const pcm = new Uint8Array(analyser.frequencyBinCount);
+      let animId: number;
+
+      const tick = () => {
+        analyser.getByteFrequencyData(pcm);
+        let sum = 0;
+        for (let i = 0; i < pcm.length; i++) {
+          sum += pcm[i];
+        }
+        const avg = sum / pcm.length;
+        const level = Math.min(1, Math.max(0, avg / 128));
+        this.smoothed += (level - this.smoothed) * 0.3;
+        this.emit(this.smoothed);
+        animId = requestAnimationFrame(tick);
+      };
+      animId = requestAnimationFrame(tick);
+
+      return () => {
+        cancelAnimationFrame(animId);
+        source.disconnect();
+        ctx.close().catch(() => {});
+        this.smoothed = 0;
+        this.emit(0);
+      };
+    } catch (err) {
+      console.warn("[lipsync] connectAudioStream error:", err);
+      return () => {};
+    }
   }
 
   private emit(level: number): void {

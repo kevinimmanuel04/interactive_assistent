@@ -30,8 +30,8 @@ mod speak;
 mod tool_loop;
 mod vision;
 
-use komorebi_router::ChatMessage;
-use komorebi_skills::SkillRegistry;
+use april_router::ChatMessage;
+use april_skills::SkillRegistry;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Wry};

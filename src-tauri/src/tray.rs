@@ -1,7 +1,7 @@
 //! System tray icon, menu, and the helper that toggles the main window.
 //!
-//! The Komorebi window is borderless / decorationless, so users have no
-//! native way to quit. The tray gives them an obvious "Quit Komorebi"
+//! The April window is borderless / decorationless, so users have no
+//! native way to quit. The tray gives them an obvious "Quit April"
 //! action plus a left-click toggle to show/hide the avatar.
 
 use tauri::{
@@ -14,10 +14,10 @@ use tauri::{
 /// failure so tray issues never block app startup.
 pub(crate) fn install(app: &tauri::App) -> tauri::Result<()> {
     let show_item = MenuItem::with_id(app, "show", "Show / Hide", true, None::<&str>)?;
-    let quit_item = MenuItem::with_id(app, "quit", "Quit Komorebi", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "quit", "Quit April", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&show_item, &quit_item])?;
     let mut tray_builder = TrayIconBuilder::with_id("main")
-        .tooltip("Komorebi")
+        .tooltip("April")
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {

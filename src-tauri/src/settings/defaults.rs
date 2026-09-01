@@ -4,7 +4,7 @@
 
 pub const DEFAULT_LANGUAGE: &str = "auto";
 
-pub const DEFAULT_TELEMETRY_ENDPOINT: &str = "https://telemetry.komorebi.svitix.com/v1/feedback";
+pub const DEFAULT_TELEMETRY_ENDPOINT: &str = "https://telemetry.april.svitix.com/v1/feedback";
 
 pub const DEFAULT_TRAINING_MAX_CPU_PCT: i64 = 50;
 pub const DEFAULT_TRAINING_BATTERY_FLOOR_PCT: i64 = 40;
@@ -20,7 +20,7 @@ pub const DEFAULT_OPENROUTER_TTS_MODEL: &str = "openai/gpt-4o-audio-preview";
 pub const DEFAULT_OPENROUTER_TTS_VOICE: &str = "shimmer";
 pub const DEFAULT_OPENROUTER_STT_MODEL: &str = "openai/gpt-4o-audio-preview";
 
-pub const DEFAULT_GAME_COACH_MODEL: &str = "openai/gpt-4o-mini";
+pub const DEFAULT_GAME_COACH_MODEL: &str = "deepseek-v4-flash-free";
 
 pub const DEFAULT_FASTER_WHISPER_URL: &str = "http://localhost:8000";
 pub const DEFAULT_FASTER_WHISPER_MODEL: &str = "Systran/faster-whisper-base";

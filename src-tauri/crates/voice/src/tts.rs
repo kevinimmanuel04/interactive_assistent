@@ -132,7 +132,7 @@ async fn synthesize(cfg: &PiperConfig, text: &str) -> Result<Vec<u8>, TtsError> 
     // against a known-good manual invocation. Also save to a temp file so
     // it can be re-fed to Piper outside the app.
     let bytes = text.as_bytes();
-    let dump_path = std::env::temp_dir().join("komorebi-tts-last-input.txt");
+    let dump_path = std::env::temp_dir().join("april-tts-last-input.txt");
     let _ = std::fs::write(&dump_path, bytes);
     let head: Vec<String> = bytes.iter().take(32).map(|b| format!("{b:02X}")).collect();
     let tail: Vec<String> = bytes
@@ -229,7 +229,7 @@ async fn synthesize(cfg: &PiperConfig, text: &str) -> Result<Vec<u8>, TtsError> 
     // translated to 0x0D 0x0A by the C runtime — silently corrupting
     // the audio with static/garbage. Writing to a real file avoids that.
     let out_path = std::env::temp_dir().join(format!(
-        "komorebi-piper-{}.wav",
+        "april-piper-{}.wav",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_nanos())

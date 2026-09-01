@@ -1,6 +1,6 @@
 //! Phase-1 feedback telemetry plumbing.
 //!
-//! Owns a single [`komorebi_storage::FeedbackStore`] instance (lazy
+//! Owns a single [`april_storage::FeedbackStore`] instance (lazy
 //! per-process), exposes high-level helpers for `commands.rs`, and runs
 //! a background uploader that drains the local queue when the user has
 //! opted into telemetry.
@@ -14,9 +14,9 @@
 //!   * marks rows as uploaded only on a 2xx response.
 //!
 //! No raw prompt/response text is stored or transmitted — only sha256
-//! hashes (see [`komorebi_storage::feedback`]).
+//! hashes (see [`april_storage::feedback`]).
 
-use komorebi_storage::{FeedbackError, FeedbackRecord, FeedbackStats, FeedbackStore};
+use april_storage::{FeedbackError, FeedbackRecord, FeedbackStats, FeedbackStore};
 use once_cell::sync::OnceCell;
 use serde::Serialize;
 use std::path::PathBuf;

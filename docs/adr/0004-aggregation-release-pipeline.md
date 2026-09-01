@@ -44,7 +44,7 @@ should not leak about any single contributor).
   7. **Sign and publish.** The promoted artifact is signed with a
      project Ed25519 release key and uploaded to R2 plus a public
      mirror. The signing key's public half is shipped with every
-     Komorebi build; clients refuse to load LoRAs that don't verify.
+     April build; clients refuse to load LoRAs that don't verify.
 
 * **Reproducibility.** The aggregator records, for each round:
   contributor count after validation, post-trim count, server noise

@@ -1,6 +1,6 @@
 //! Local-LLM intent classifier.
 //!
-//! Mirror of [`komorebi_cloud::CloudSkillClassifier`] that routes through
+//! Mirror of [`april_cloud::CloudSkillClassifier`] that routes through
 //! the bundled llama.cpp engine instead of OpenRouter. Same prompt, same
 //! JSON contract, same parser — only the transport changes.
 //!
@@ -9,9 +9,9 @@
 
 use std::sync::Arc;
 
-use komorebi_cloud::{build_skill_system_prompt, parse_skill_json, SkillIntent};
-use komorebi_llm::{CompletionOptions, LlmEngine, LlmError};
-use komorebi_router::ChatMessage;
+use april_cloud::{build_skill_system_prompt, parse_skill_json, SkillIntent};
+use april_llm::{CompletionOptions, LlmEngine, LlmError};
+use april_router::ChatMessage;
 
 /// Asks the local LLM the same skill-routing question the cloud
 /// classifier asks. Falls through to `Ok(None)` (no intent) when the

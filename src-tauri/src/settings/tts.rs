@@ -106,7 +106,7 @@ pub fn set_piper_voice<R: Runtime>(app: &AppHandle<R>, path: &str) -> Result<()>
 
 // --- SoVITS ---------------------------------------------------------------
 
-pub fn get_sovits_config(app: &AppHandle<Wry>) -> Option<komorebi_voice::sovits::SoVitsConfig> {
+pub fn get_sovits_config(app: &AppHandle<Wry>) -> Option<april_voice::sovits::SoVitsConfig> {
     let endpoint = read_string(app, KEY_SOVITS_ENDPOINT)?;
     if endpoint.trim().is_empty() {
         return None;
@@ -116,7 +116,7 @@ pub fn get_sovits_config(app: &AppHandle<Wry>) -> Option<komorebi_voice::sovits:
     let prompt_lang = read_string(app, KEY_SOVITS_PROMPT_LANG).unwrap_or_else(|| "ja".into());
     let text_lang = read_string(app, KEY_SOVITS_TEXT_LANG).unwrap_or_else(|| "auto".into());
     let speed = get_f64(app, KEY_SOVITS_SPEED).unwrap_or(1.0) as f32;
-    Some(komorebi_voice::sovits::SoVitsConfig {
+    Some(april_voice::sovits::SoVitsConfig {
         endpoint,
         ref_audio_path: ref_audio,
         prompt_text,

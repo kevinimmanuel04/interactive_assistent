@@ -17,9 +17,9 @@
 use std::time::Duration;
 
 use futures::StreamExt;
-use komorebi_cloud::OpenRouterClient;
-use komorebi_llm::{default_engine, LlmConfig, LlmEvent};
-use komorebi_router::{ChatMessage, Mode};
+use april_cloud::OpenRouterClient;
+use april_llm::{default_engine, LlmConfig, LlmEvent};
+use april_router::{ChatMessage, Mode};
 use tauri::{AppHandle, Wry};
 
 use crate::settings;

@@ -7,7 +7,7 @@ use tauri::{AppHandle, Emitter, Wry};
 pub async fn get_weather(
     app: AppHandle<Wry>,
     city: Option<String>,
-) -> Result<komorebi_weather::WeatherReport, String> {
+) -> Result<april_weather::WeatherReport, String> {
     let report = crate::weather::fetch(&app, city).await?;
     let _ = app.emit("weather:result", &report);
     Ok(report)

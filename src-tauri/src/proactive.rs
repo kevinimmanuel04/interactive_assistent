@@ -19,9 +19,9 @@
 //! offline.
 
 use crate::settings;
-use komorebi_cloud::OpenRouterClient;
-use komorebi_desktop::{procs, AppKind};
-use komorebi_router::ChatMessage;
+use april_cloud::OpenRouterClient;
+use april_desktop::{procs, AppKind};
+use april_router::ChatMessage;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Wry};
@@ -231,7 +231,7 @@ fn decide_via_rules(snap: &Snapshot) -> Option<(String, String)> {
     None
 }
 
-const SYSTEM_PROMPT: &str = "You are the proactive nudge engine of Komorebi, a desktop \
+const SYSTEM_PROMPT: &str = "You are the proactive nudge engine of April, a desktop \
 assistant. You receive a snapshot of the user's environment and decide whether \
 to suggest something. Be sparing — the host already throttles you to once every \
 few minutes, but you should still skip nudging when nothing useful comes to mind.\n\n\

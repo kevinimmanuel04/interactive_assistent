@@ -1,5 +1,5 @@
 [package]
-name = "komorebi-weather"
+name = "april-weather"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

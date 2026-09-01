@@ -8,7 +8,7 @@
 
 use crate::settings;
 use base64::Engine as _;
-use komorebi_imagegen::{
+use april_imagegen::{
     local::{Device, LocalSd},
     openrouter::OpenRouterImage,
     replicate::ReplicateImage,
@@ -199,11 +199,22 @@ fn save_to_disk(app: &AppHandle<Wry>, png: &[u8]) -> Result<String, String> {
     Ok(path.to_string_lossy().to_string())
 }
 
-/// Synchronously save a base64 PNG to a user-chosen path. Used by the
-/// "Save as…" button after generation.
-pub fn save_image_to_path(png_base64: &str, target: &str) -> Result<(), String> {
+/// Synchronously save a base64 PNG to a user-chosen path (or Downloads folder if relative).
+pub fn save_image_to_path(png_base64: &str, target: &str) -> Result<String, String> {
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(png_base64.trim())
         .map_err(|e| e.to_string())?;
-    std::fs::write(target, bytes).map_err(|e| e.to_string())
+
+    let path = if std::path::Path::new(target).is_absolute() {
+        std::path::PathBuf::from(target)
+    } else {
+        let downloads = std::env::var("USERPROFILE")
+            .map(|p| std::path::PathBuf::from(p).join("Downloads"))
+            .unwrap_or_else(|_| std::env::current_dir().unwrap_or_default());
+        let _ = std::fs::create_dir_all(&downloads);
+        downloads.join(target)
+    };
+
+    std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+    Ok(path.to_string_lossy().to_string())
 }

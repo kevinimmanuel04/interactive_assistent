@@ -33,7 +33,7 @@ pub(crate) fn run(
     match app.path().app_data_dir() {
         Ok(dir) => {
             let db = dir.join("rag.db");
-            match komorebi_storage::RagIndex::open(&db) {
+            match april_storage::RagIndex::open(&db) {
                 Ok(idx) => {
                     app.manage(Arc::new(idx));
                     tracing::info!(?db, "RAG index opened");
@@ -79,6 +79,6 @@ pub(crate) fn run(
         }
     }
 
-    tracing::info!("Komorebi started");
+    tracing::info!("April started");
     Ok(())
 }

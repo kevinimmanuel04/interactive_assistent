@@ -1,6 +1,6 @@
 name: Release build
 
-# Builds downloadable Komorebi installers for Windows and Linux.
+# Builds downloadable April installers for Windows and Linux.
 #
 # Triggers:
 #   * push of a tag like v0.1.0  -> draft GitHub release + latest.json
@@ -30,12 +30,12 @@ jobs:
           - name: windows
             os: windows-latest
             rust-target: x86_64-pc-windows-msvc
-            artifact: komorebi-windows
+            artifact: april-windows
             bundle-dir: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis
           - name: linux
             os: ubuntu-24.04
             rust-target: x86_64-unknown-linux-gnu
-            artifact: komorebi-linux
+            artifact: april-linux
             bundle-dir: src-tauri/target/x86_64-unknown-linux-gnu/release/bundle
     steps:
       - uses: actions/checkout@v6
@@ -139,7 +139,7 @@ jobs:
           # The Piper binary `espeak-ng` links against `libespeak-ng.so.1` that
           # ships next to it under src-tauri/binaries/piper/, so make linuxdeploy
           # see it. Empty on Windows; only set on Linux runs.
-          LD_LIBRARY_PATH: ${{ matrix.platform.name == 'linux' && format('{0}/src-tauri/binaries/piper:{0}/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/Komorebi.AppDir/usr/lib/Komorebi/binaries/piper', github.workspace) || '' }}
+          LD_LIBRARY_PATH: ${{ matrix.platform.name == 'linux' && format('{0}/src-tauri/binaries/piper:{0}/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/April.AppDir/usr/lib/April/binaries/piper', github.workspace) || '' }}
         run: pnpm tauri build --target ${{ matrix.platform.rust-target }} -- --features full
 
       - name: Verify Windows bundle output
@@ -226,14 +226,14 @@ jobs:
       - name: Download Windows installer
         uses: actions/download-artifact@v8
         with:
-          name: komorebi-windows
-          path: bundles/komorebi-windows
+          name: april-windows
+          path: bundles/april-windows
 
       - name: Download Linux installer
         uses: actions/download-artifact@v8
         with:
-          name: komorebi-linux
-          path: bundles/komorebi-linux
+          name: april-linux
+          path: bundles/april-linux
 
       - name: List downloaded artifacts
         run: |
@@ -246,8 +246,8 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          win=$(find bundles/komorebi-windows -name '*-setup.exe' | head -n1 || true)
-          lin=$(find bundles/komorebi-linux -name '*.AppImage' | head -n1 || true)
+          win=$(find bundles/april-windows -name '*-setup.exe' | head -n1 || true)
+          lin=$(find bundles/april-linux -name '*.AppImage' | head -n1 || true)
           version="${TAG#v}"
           base="https://github.com/${REPO}/releases/download/${TAG}"
           sig() { [ -n "${1:-}" ] && [ -f "${1}.sig" ] && cat "${1}.sig" || echo ""; }
@@ -255,12 +255,12 @@ jobs:
 
           if [ -z "$win" ] || [ ! -f "${win}.sig" ]; then
             echo "::error::Missing NSIS installer or .sig (win='$win')."
-            ls -R bundles/komorebi-windows || true
+            ls -R bundles/april-windows || true
             exit 1
           fi
           if [ -z "$lin" ] || [ ! -f "${lin}.sig" ]; then
             echo "::error::Missing AppImage or .sig (lin='$lin')."
-            ls -R bundles/komorebi-linux || true
+            ls -R bundles/april-linux || true
             exit 1
           fi
 

@@ -11,9 +11,9 @@ pub fn set_openrouter_key(app: AppHandle<Wry>, key: String) -> Result<(), String
 #[tauri::command]
 pub fn set_mode(app: AppHandle<Wry>, mode: String) -> Result<(), String> {
     let m = match mode.as_str() {
-        "auto" => komorebi_router::Mode::Auto,
-        "local" => komorebi_router::Mode::Local,
-        "cloud" => komorebi_router::Mode::Cloud,
+        "auto" => april_router::Mode::Auto,
+        "local" => april_router::Mode::Local,
+        "cloud" => april_router::Mode::Cloud,
         other => return Err(format!("unknown mode: {other}")),
     };
     settings::set_mode(&app, m).map_err(|e| e.to_string())
@@ -60,11 +60,11 @@ pub async fn list_openrouter_models(app: AppHandle<Wry>) -> Result<serde_json::V
     let key = settings::get_openrouter_key(&app)
         .ok_or_else(|| "OpenRouter API key is not set.".to_string())?;
     let client = reqwest::Client::builder()
-        .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("april/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| e.to_string())?;
     let resp = client
-        .get("https://openrouter.ai/api/v1/models")
+        .get("https://opencode.ai/zen/v1/models")
         .bearer_auth(&key)
         .send()
         .await

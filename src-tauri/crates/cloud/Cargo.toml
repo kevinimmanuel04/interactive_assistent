@@ -1,5 +1,5 @@
 [package]
-name = "komorebi-cloud"
+name = "april-cloud"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,7 +16,7 @@ async-trait.workspace = true
 async-stream = "0.3"
 bytes = "1"
 base64 = "0.22"
-komorebi-router = { path = "../router" }
+april-router = { path = "../router" }
 
 [dev-dependencies]
 tokio = { version = "1.52", features = ["macros", "rt"] }

@@ -1,7 +1,9 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState, type JSX } from "react";
+import { useEffect, useRef, useState, type JSX } from "react";
 import { t, useLocale } from "../i18n";
+import EnergyOrb from "./EnergyOrb";
 import { ThumbDownIcon, ThumbUpIcon } from "./icons";
+import { getActiveCharacter } from "../utils/characters";
 
 const imgButtonStyle: React.CSSProperties = {
   fontSize: 11,
@@ -37,23 +39,10 @@ interface Props {
   onSaveImage?: () => void;
   onCopyImage?: () => void;
   onCancelImage?: () => void;
-  /**
-   * Phase-1 feedback hook. When provided and the bubble shows a final
-   * (non-thinking) assistant reply, two thumbs buttons appear underneath.
-   * The parent is responsible for calling [`feedbackRecord`] with the
-   * captured prompt/response pair — the bubble only emits +1 / -1.
-   */
   onFeedback?: (rating: 1 | -1) => void;
-  /**
-   * Stable id for the current turn. When this changes, the local
-   * "already rated" lock resets so a new reply can be rated again.
-   */
   feedbackKey?: string | number | null;
 }
 
-// Minimal markdown renderer: triple-backtick fenced code blocks (with
-// optional language), inline `code`, and **bold**. Anything else passes
-// through as plain text with whitespace preserved.
 function renderMarkdown(src: string): JSX.Element[] {
   const out: JSX.Element[] = [];
   const fence = /```([a-zA-Z0-9_+-]*)\n([\s\S]*?)```/g;
@@ -112,7 +101,6 @@ function renderMarkdown(src: string): JSX.Element[] {
 
 function renderInline(src: string, baseKey: number): JSX.Element[] {
   const out: JSX.Element[] = [];
-  // Tokenize on inline backticks and **bold**.
   const re = /`([^`\n]+)`|\*\*([^*\n]+)\*\*/g;
   let last = 0;
   let k = baseKey;
@@ -150,7 +138,7 @@ function renderInline(src: string, baseKey: number): JSX.Element[] {
 
 export default function ChatBubble({
   text,
-  route,
+  route: _route,
   thinking,
   userEcho,
   imageBase64,
@@ -164,9 +152,15 @@ export default function ChatBubble({
   feedbackKey,
 }: Props) {
   useLocale();
-  // Local lock: only allow one rating per turn (resets when feedbackKey
-  // changes \u2014 a new reply is a new chance to rate).
   const [rated, setRated] = useState<1 | -1 | null>(null);
+  const [charName, setCharName] = useState(() => getActiveCharacter().name);
+
+  useEffect(() => {
+    const handleCharChange = () => setCharName(getActiveCharacter().name);
+    window.addEventListener("april-character-changed", handleCharChange);
+    return () => window.removeEventListener("april-character-changed", handleCharChange);
+  }, []);
+
   useEffect(() => {
     setRated(null);
   }, [feedbackKey]);
@@ -175,12 +169,10 @@ export default function ChatBubble({
     setRated(r);
     try {
       onFeedback(r);
-    } catch {
-      /* swallow */
-    }
+    } catch {}
   };
-  const showFeedback =
-    !!onFeedback && !!text && !thinking && !!route && route !== "skill";
+
+  const showFeedback = false;
   const show =
     !!text ||
     !!thinking ||
@@ -188,11 +180,19 @@ export default function ChatBubble({
     !!imageBase64 ||
     imageStatus === "generating" ||
     imageStatus === "error";
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [text, userEcho, thinking]);
+
   return (
     <AnimatePresence>
       {show && (
         <motion.div
           key="bubble"
+          ref={scrollRef}
           className="interactive"
           initial={{ opacity: 0, y: 8, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -200,59 +200,73 @@ export default function ChatBubble({
           transition={{ duration: 0.18, ease: "easeOut" }}
           style={{
             position: "absolute",
-            top: 44,
+            bottom: 82,
             left: 12,
             right: 12,
             zIndex: 10,
-            padding: "10px 14px",
+            padding: "12px 16px",
             borderRadius: 14,
-            background: "rgba(20, 20, 28, 0.88)",
+            background: "rgba(18, 18, 26, 0.94)",
             color: "#fff",
-            fontSize: 14,
+            fontSize: 13.5,
             lineHeight: 1.4,
-            backdropFilter: "blur(10px)",
-            WebkitBackdropFilter: "blur(10px)",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
             boxShadow: "0 6px 24px rgba(0,0,0,0.45)",
-            border: "1px solid rgba(255,255,255,0.1)",
+            border: "1px solid rgba(255,255,255,0.12)",
             whiteSpace: "pre-wrap",
-            maxHeight: "45vh",
+            maxHeight: 140,
             overflowY: "auto",
+            scrollbarWidth: "none",
+            msOverflowStyle: "none",
           }}
         >
-          {route && (
-            <div
-              style={{
-                fontSize: 10,
-                opacity: 0.65,
-                letterSpacing: 0.5,
-                textTransform: "uppercase",
-                marginBottom: 4,
-              }}
-            >
-              {route}
-            </div>
-          )}
-          {userEcho && (
-            <div
-              style={{
-                fontSize: 12,
-                opacity: 0.85,
-                padding: "4px 8px",
-                borderRadius: 8,
-                background: "rgba(255,255,255,0.06)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                marginBottom: text || thinking ? 8 : 0,
-              }}
-            >
-              <span style={{ opacity: 0.6, marginRight: 4 }}>{t("bubble.user")}</span>
-              {userEcho}
-            </div>
-          )}
-          {thinking && !text ? (
-            <span style={{ opacity: 0.7 }}>…</span>
-          ) : text ? (
-            <div>{renderMarkdown(text)}</div>
-          ) : null}
+          {/* EXACTLY ONE Smooth Morphing Energy Orb (Icon when thinking/typing -> Ambient Glow when talking) */}
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              overflow: "hidden",
+              pointerEvents: "none",
+              borderRadius: 14,
+              zIndex: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <EnergyOrb size={28} mode={text ? "background" : "icon"} />
+          </div>
+
+          <div style={{ position: "relative", zIndex: 1 }}>
+            {userEcho && (
+              <div
+                style={{
+                  fontSize: 12.5,
+                  fontWeight: 500,
+                  color: "#e0e7ff",
+                  opacity: 0.95,
+                  padding: "4px 8px",
+                  borderRadius: 8,
+                  background: "rgba(255,255,255,0.06)",
+                  marginBottom: text || thinking ? 6 : 0,
+                }}
+              >
+                {userEcho}
+              </div>
+            )}
+
+            {thinking && !text ? (
+              <div style={{ padding: "4px 0" }}>
+                <span style={{ opacity: 0.9, fontSize: 13, fontWeight: 600, color: "#c4b5fd" }}>
+                  {charName} is thinking...
+                </span>
+              </div>
+            ) : text ? (
+              <div>{renderMarkdown(text)}</div>
+            ) : null}
+          </div>
+
           {showFeedback && (
             <div
               style={{
@@ -313,6 +327,7 @@ export default function ChatBubble({
               )}
             </div>
           )}
+
           {imageStatus === "generating" && !imageBase64 && (
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: text ? 8 : 0 }}>
               <span style={{ opacity: 0.75 }}>{t("bubble.image.generating")}</span>
@@ -334,11 +349,13 @@ export default function ChatBubble({
               )}
             </div>
           )}
+
           {imageStatus === "error" && imageError && (
             <div style={{ marginTop: 6, color: "#ff8080", fontSize: 12 }}>
               {t("bubble.image.error")} {imageError}
             </div>
           )}
+
           {imageBase64 && (
             <div style={{ marginTop: text || userEcho ? 8 : 0 }}>
               <img

@@ -28,7 +28,7 @@ pub fn cancel_image_generation(app: AppHandle<Wry>) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn save_generated_image(png_base64: String, target_path: String) -> Result<(), String> {
+pub fn save_generated_image(png_base64: String, target_path: String) -> Result<String, String> {
     crate::imagegen::save_image_to_path(&png_base64, &target_path)
 }
 

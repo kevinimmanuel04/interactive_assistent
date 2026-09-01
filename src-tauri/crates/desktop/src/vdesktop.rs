@@ -62,7 +62,7 @@ pub fn perform(action: VirtualDesktopAction) -> Result<(), DesktopError> {
     let script = format!(
         r#"
 $sig = '[DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);'
-$T = Add-Type -MemberDefinition $sig -Name 'KeySendVD' -Namespace 'Komorebi' -PassThru
+$T = Add-Type -MemberDefinition $sig -Name 'KeySendVD' -Namespace 'April' -PassThru
 {down}
 Start-Sleep -Milliseconds 30
 {up}

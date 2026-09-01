@@ -49,7 +49,7 @@ export default function OpenRouterVoiceSection({ settings, refresh }: Props) {
   useEffect(() => {
     setEnabled(settings?.openrouter_tts_enabled ?? false);
     setModel(settings?.openrouter_tts_model ?? "openai/gpt-4o-audio-preview");
-    setVoice(settings?.openrouter_tts_voice ?? "alloy");
+    setVoice(settings?.openrouter_tts_voice ?? "shimmer");
   }, [
     settings?.openrouter_tts_enabled,
     settings?.openrouter_tts_model,

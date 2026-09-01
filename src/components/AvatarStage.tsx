@@ -3,25 +3,20 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import AnimatedPlaceholder from "./AnimatedPlaceholder";
 import Live2DCanvas from "./Live2DCanvas";
+import VrmCanvas from "./VrmCanvas";
 
-/**
- * Avatar stage: renders the Live2D canvas when a model URL is configured
- * (and the Cubism runtime is available), otherwise shows an animated SVG
- * placeholder. Doubles as the window drag handle.
- *
- * Tracks window size so the avatar scales responsively when the user
- * resizes the Komorebi window.
- */
 export default function AvatarStage({
   modelUrl,
   zoom = 1,
   offsetX = 0,
   offsetY = 0,
+  isRotateMode = false,
 }: {
   modelUrl: string | null;
   zoom?: number;
   offsetX?: number;
   offsetY?: number;
+  isRotateMode?: boolean;
 }) {
   const [size, setSize] = useState(() => ({
     w: window.innerWidth,
@@ -38,11 +33,9 @@ export default function AvatarStage({
   const lastDragReactRef = useRef(0);
 
   const startDrag = (e: React.PointerEvent) => {
+    // If in 3D rotation mode, disable window dragging so left-click rotates character
+    if (isRotateMode) return;
     if (e.button !== 0) return;
-    // Defer native window-drag until the pointer actually moves a few
-    // pixels. Otherwise even a quick click is consumed by the OS drag
-    // loop and the canvas's `pointerup` (tap-to-react / play special
-    // motion) never fires.
     const startX = e.clientX;
     const startY = e.clientY;
     let dragStarted = false;
@@ -52,8 +45,6 @@ export default function AvatarStage({
       dragStarted = true;
       cleanup();
       void getCurrentWindow().startDragging();
-      // Throttle drag reactions: at most one every 12 s so a long drag
-      // session doesn't spam TTS.
       const now = performance.now();
       if (now - lastDragReactRef.current > 12_000) {
         lastDragReactRef.current = now;
@@ -71,13 +62,17 @@ export default function AvatarStage({
     window.addEventListener("pointercancel", onUp);
   };
 
-  // Leave ~100 px of headroom for the chat bubble and top bar.
-  const H = Math.max(260, size.h - 120);
-  const W = Math.max(220, Math.min(size.w - 24, Math.round(H * 0.7)));
+  const MAX_AVATAR_HEIGHT = 600;
+  const MAX_AVATAR_WIDTH = 400;
+  const H = Math.min(MAX_AVATAR_HEIGHT, Math.max(260, size.h - 120));
+  const W = Math.min(MAX_AVATAR_WIDTH, Math.max(220, Math.round(H * 0.7)));
+  const isVrm = Boolean(
+    modelUrl && (modelUrl.toLowerCase().endsWith(".vrm") || modelUrl.toLowerCase().includes(".vrm"))
+  );
 
   return (
     <div
-      className="interactive"
+      className="avatar-stage-container interactive"
       onPointerDown={startDrag}
       style={{
         position: "absolute",
@@ -89,18 +84,30 @@ export default function AvatarStage({
         display: "flex",
         alignItems: "flex-end",
         justifyContent: "center",
-        cursor: "grab",
+        cursor: isRotateMode ? "grab" : "grab",
       }}
     >
       {modelUrl ? (
-        <Live2DCanvas
-          modelUrl={modelUrl}
-          width={W}
-          height={H}
-          zoom={zoom}
-          offsetX={offsetX}
-          offsetY={offsetY}
-        />
+        isVrm ? (
+          <VrmCanvas
+            modelUrl={modelUrl}
+            width={W}
+            height={H}
+            zoom={zoom}
+            offsetX={offsetX}
+            offsetY={offsetY}
+            isRotateMode={isRotateMode}
+          />
+        ) : (
+          <Live2DCanvas
+            modelUrl={modelUrl}
+            width={W}
+            height={H}
+            zoom={zoom}
+            offsetX={offsetX}
+            offsetY={offsetY}
+          />
+        )
       ) : (
         <AnimatedPlaceholder />
       )}

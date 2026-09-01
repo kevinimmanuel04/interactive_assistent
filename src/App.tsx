@@ -1,20 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import AvatarStage from "./components/AvatarStage";
 import ChatBubble from "./components/ChatBubble";
+
 import InputField from "./components/InputField";
 import ModelWizard from "./components/ModelWizard";
 import RegionPicker from "./components/RegionPicker";
 import SettingsPanel from "./components/SettingsPanel";
 import { ToastHost, toast } from "./components/Toast";
-import TopBar from "./components/TopBar";
+import { saveMessage } from "./services/chatStorage";
 import { exit as tauriExit } from "@tauri-apps/plugin-process";
-import { invoke } from "@tauri-apps/api/core";
 import { avatarState } from "./avatarState";
-import { lipSync } from "./lipsync";
 import { checkForUpdatesQuietly } from "./updater";
 import { bootstrapLocale, useLocale } from "./i18n";
 import {
-  cancelGeneration,
   cancelImageGeneration,
   desktopListScreens,
   desktopScreenshot,
@@ -24,10 +22,8 @@ import {
   generateImage,
   getSettings,
   getWeather,
-  resetChat,
   saveGeneratedImage,
   sendMessage,
-  setListenEnabled,
   visionCaptureFull,
   visionWithImage,
   type PublicSettings,
@@ -38,15 +34,58 @@ import { useTtsAudio } from "./hooks/useTtsAudio";
 import { useTransientBubbles } from "./hooks/useTransientBubbles";
 import { useChatStream, type LastTurn, type Route } from "./hooks/useChatStream";
 import { useImageStream } from "./hooks/useImageStream";
-import { useRelationship } from "./hooks/useRelationship";
 import { useListenController } from "./hooks/useListenController";
+import { useChatStore } from "./store/chatStore";
+import { checkAndExecuteDirectIntent } from "./utils/intentHandler";
 
 export default function App() {
+  useEffect(() => {
+    const syncAcrossTabs = (e: StorageEvent) => {
+      if (e.key === "april-chat-store") {
+        useChatStore.persist.rehydrate();
+      }
+    };
+    window.addEventListener("storage", syncAcrossTabs);
+    return () => window.removeEventListener("storage", syncAcrossTabs);
+  }, []);
+
   // ── UI panels ──────────────────────────────────────────────────────
-  const [inputOpen, setInputOpen] = useState(true);
+  const [_inputOpen, setInputOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [isRotateMode, setIsRotateMode] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  // ── Open Chat Window (separate native window) ──────────────────────
+  const openChatWindow = useCallback(async () => {
+    try {
+      const { WebviewWindow } = await import("@tauri-apps/api/webviewWindow");
+      // If chat window already exists, just focus it
+      const existing = await WebviewWindow.getByLabel("chat");
+      if (existing) {
+        await existing.show();
+        await existing.setFocus();
+        return;
+      }
+      // Create new chat window
+      new WebviewWindow("chat", {
+        url: "chat.html",
+        title: "April Chat",
+        width: 1200,
+        height: 800,
+        minWidth: 600,
+        minHeight: 400,
+        center: true,
+        decorations: true,
+        transparent: false,
+        alwaysOnTop: false,
+        resizable: true,
+        focus: true,
+      });
+    } catch (err) {
+      console.warn("[App] Failed to open chat window:", err);
+    }
+  }, []);
   const [pickerInitialPrompt, setPickerInitialPrompt] = useState("");
   const [pickerPrebuilt, setPickerPrebuilt] = useState<{
     bytes: Uint8Array;
@@ -58,6 +97,7 @@ export default function App() {
   const [userEcho, setUserEcho] = useState<string | null>(null);
   const [thinking, setThinking] = useState(false);
   const [route, setRoute] = useState<Route | null>(null);
+  const [modelLabel, setModelLabel] = useState<string | null>(null);
   const [feedbackKey, setFeedbackKey] = useState<number>(0);
 
   // ── Image generation state ─────────────────────────────────────────
@@ -74,16 +114,10 @@ export default function App() {
   // ── Refs ───────────────────────────────────────────────────────────
   const activeImageIdRef = useRef<string | null>(null);
   const activeIdRef = useRef<string | null>(null);
-  // Accumulated *raw* token stream including any `<mood:X>` markers, used
-  // for emotion classification. The visible bubble text strips the markers
-  // before display, so we can't re-derive the raw text from it.
   const rawTextRef = useRef<string>("");
   const bubbleTimer = useRef<number | null>(null);
   const settingsRef = useRef<PublicSettings | null>(null);
   const handleSubmitRef = useRef<((text: string) => void) | null>(null);
-  // Tracks the most recent assistant turn so the feedback buttons can
-  // attach the right prompt/response pair to a 👍/👎 click. Lives in a
-  // ref because the chat-event handler closure mustn't depend on it.
   const lastTurnRef = useRef<LastTurn | null>(null);
 
   // ── Settings refresh ───────────────────────────────────────────────
@@ -95,26 +129,21 @@ export default function App() {
     void bootstrapLocale();
   }, [refreshSettings]);
 
-  // Re-bootstrap locale whenever the language preference changes.
   useEffect(() => {
     if (settings?.language !== undefined) void bootstrapLocale();
   }, [settings?.language]);
-  // Subscribe to locale changes so all `t(...)` calls re-render.
   useLocale();
 
-  // Check for app updates in the background on startup.
   useEffect(() => {
     checkForUpdatesQuietly();
   }, []);
 
-  // Keep a ref of the latest settings so hooks created once
-  // (like ListenController) always read the current values.
   useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
 
   // ── Helpers shared by handlers and effects ────────────────────────
-  const scheduleBubbleHide = useCallback((ms = 8000) => {
+  const scheduleBubbleHide = useCallback((ms = 20000) => {
     if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current);
     bubbleTimer.current = window.setTimeout(() => {
       setBubbleText(null);
@@ -131,12 +160,6 @@ export default function App() {
     async (prompt: string) => {
       try {
         setPickerInitialPrompt(prompt);
-        // Capture the screenshot BEFORE we resize/raise the main window
-        // to fullscreen. Otherwise, when an external app is also
-        // capturing the desktop (e.g. Discord screen-share), DWM stops
-        // compositing through our transparent layered window and the
-        // monitor capture comes back as a black rectangle covering the
-        // desktop.
         const screens = await desktopListScreens();
         const primary = screens.find((s) => s.is_primary) ?? screens[0] ?? null;
         const bytes = await desktopScreenshot(0);
@@ -161,7 +184,7 @@ export default function App() {
     }
   }, []);
 
-  // ── Hooks (effects extracted out of App for clarity) ──────────────
+  // ── Hooks ──────────────────────────────────────────────────────────
   useHotkeys({
     onToggleInput: useCallback(() => setInputOpen((v) => !v), []),
     onVisionRegion: useCallback(
@@ -177,7 +200,7 @@ export default function App() {
 
   useTransientBubbles({ activeIdRef, setBubbleText, bubbleTimer });
 
-  const { listening, heardHint } = useListenController({
+  useListenController({
     settings,
     settingsRef,
     refreshSettings,
@@ -192,10 +215,12 @@ export default function App() {
     settingsRef,
     rawTextRef,
     setRoute,
+    setModelLabel,
     setBubbleText,
     setThinking,
     setFeedbackKey,
     scheduleBubbleHide,
+    onGenerateImage: (prompt) => void handleImagePrompt(prompt),
   });
 
   useImageStream({
@@ -208,15 +233,6 @@ export default function App() {
     setThinking,
     scheduleBubbleHide,
   });
-
-  const relationship = useRelationship({ setBubbleText, scheduleBubbleHide });
-
-  // ── Handlers ──────────────────────────────────────────────────────
-  const handleToggleListen = useCallback(async () => {
-    const next = !(settings?.listen_enabled ?? false);
-    await setListenEnabled(next);
-    refreshSettings();
-  }, [settings?.listen_enabled, refreshSettings]);
 
   const handleImagePrompt = useCallback(
     async (prompt: string, size?: { width: number; height: number }) => {
@@ -270,7 +286,6 @@ export default function App() {
       const buf = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
       const blob = new Blob([buf], { type: "image/png" });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const CI: any = (window as any).ClipboardItem;
       if (CI && navigator.clipboard?.write) {
         await navigator.clipboard.write([new CI({ "image/png": blob })]);
@@ -290,7 +305,6 @@ export default function App() {
     }
   }, []);
 
-  // Weather slash command — always emits a chat-style bubble in response.
   const handleWeatherSlash = useCallback(
     async (city: string) => {
       if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current);
@@ -329,6 +343,9 @@ export default function App() {
   );
 
   const handleSubmit = async (text: string) => {
+    // 0. Intercept Direct OS Commands (Open App, Search Browser, Window Controls)
+    const handled = await checkAndExecuteDirectIntent(text, { setBubbleText });
+    if (handled) return;
     if (
       text.trim().toLowerCase().startsWith("/img ") ||
       text.trim().toLowerCase() === "/img"
@@ -351,6 +368,7 @@ export default function App() {
       return;
     }
     if (bubbleTimer.current) window.clearTimeout(bubbleTimer.current);
+    saveMessage("user", text);
     setBubbleText("");
     setUserEcho(text);
     setThinking(true);
@@ -360,9 +378,8 @@ export default function App() {
     setImageStatus(null);
     setImageError(null);
     avatarState.setThinking();
+    avatarState.setUserPrompt(text);
     activeIdRef.current = "pending";
-    // Stash the prompt now; route + modelLabel are filled in once the
-    // backend emits "started" with the resolved route.
     lastTurnRef.current = {
       id: "pending",
       prompt: text,
@@ -371,10 +388,6 @@ export default function App() {
       modelLabel: "",
     };
     try {
-      // Auto screen-watch mode: every text turn implicitly attaches a
-      // fresh screenshot, so the assistant is "looking" at the desktop
-      // throughout the conversation. Costs an OpenRouter vision request
-      // per message — gated behind an explicit setting + key.
       const id =
         settings?.auto_screen_watch_enabled && settings?.has_openrouter_key
           ? await visionCaptureFull(text)
@@ -390,10 +403,6 @@ export default function App() {
   };
   handleSubmitRef.current = handleSubmit;
 
-  // Generic vision dispatcher: kicks the chat-state machine the same way
-  // handleSubmit does, then awaits the chosen invoke. Backend emits the
-  // normal `chat:*` event stream so the bubble, route badge, emotion tags,
-  // and TTS pipeline all work without further wiring.
   const runVision = async (
     label: string,
     prompt: string,
@@ -405,7 +414,6 @@ export default function App() {
     setThinking(true);
     setRoute(null);
     avatarState.setThinking();
-    activeIdRef.current = "pending";
     try {
       const id = await invoker();
       if (activeIdRef.current === "pending") activeIdRef.current = id;
@@ -418,40 +426,42 @@ export default function App() {
     }
   };
 
-  const handleVisionFull = (prompt: string) =>
-    runVision("👁 screen", prompt, () => visionCaptureFull(prompt));
   const handleVisionImage = (prompt: string, pngBase64: string) =>
     runVision("🖼 image", prompt, () => visionWithImage(prompt, pngBase64));
 
-  const handleReset = async () => {
-    await cancelGeneration();
-    await resetChat();
-    lipSync.stop();
-    avatarState.reset();
-    setBubbleText(null);
-    setUserEcho(null);
-    setRoute(null);
-    setThinking(false);
-  };
-
-  // ── Render ────────────────────────────────────────────────────────
-  const sttReady = Boolean(
-    (settings?.stt_available && settings?.whisper_model_path) ||
-      (settings?.openrouter_stt_enabled && settings?.has_openrouter_key) ||
-      settings?.faster_whisper_enabled ||
-      (settings?.deepgram_enabled && settings?.has_deepgram_key),
-  );
+  const activeModelUrl =
+    localStorage.getItem("april_model_url") ||
+    localStorage.getItem("april_model_url") ||
+    settings?.live2d_model_url ||
+    "/april.vrm";
 
   return (
-    <>
-      <AvatarStage
-        modelUrl={
-          settings?.live2d_model_url ?? "/live2d/mao_pro/mao_pro.model3.json"
-        }
-        zoom={settings?.avatar_zoom ?? 1}
-        offsetX={settings?.avatar_offset_x ?? 0}
-        offsetY={settings?.avatar_offset_y ?? 0}
-      />
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height: "100%",
+        display: "flex",
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          height: "100%",
+          position: "absolute",
+          top: 0,
+          left: 0,
+        }}
+      >
+        <AvatarStage
+          modelUrl={activeModelUrl}
+          zoom={settings?.avatar_zoom ?? 1}
+          offsetX={settings?.avatar_offset_x ?? 0}
+          offsetY={settings?.avatar_offset_y ?? 0}
+          isRotateMode={isRotateMode}
+        />
+      </div>
+
       <ChatBubble
         text={bubbleText}
         route={route}
@@ -476,21 +486,25 @@ export default function App() {
             response: turn.response,
             rating,
             lang,
-          }).catch(() => {});
+          });
+          toast.success("Feedback saved — thanks!");
         }}
       />
       <InputField
-        open={inputOpen && !settingsOpen && !wizardOpen}
-        onClose={() => setInputOpen(false)}
+        open={true}
+        onClose={() => {}}
         onSubmit={handleSubmit}
-        onVisionFull={handleVisionFull}
-        onOpenVisionRegionPicker={(prompt) => {
-          void openPickerWithPrompt(prompt);
+        sttEnabled={true}
+        modelLabel={modelLabel}
+        isRotateMode={isRotateMode}
+        onToggleRotateMode={setIsRotateMode}
+        onToggleDrawer={openChatWindow}
+        onToggleSettings={() => {
+          setWizardOpen(false);
+          setSettingsOpen((v) => !v);
         }}
-        onVisionImage={handleVisionImage}
-        onImagePrompt={(prompt) => void handleImagePrompt(prompt)}
-        visionEnabled={Boolean(settings?.has_openrouter_key)}
-        sttEnabled={sttReady}
+        onQuit={() => tauriExit(0)}
+        onSpeechUpdate={(text) => setUserEcho(text)}
       />
       <SettingsPanel
         open={settingsOpen}
@@ -503,36 +517,7 @@ export default function App() {
         onSettingsChanged={refreshSettings}
         settings={settings}
       />
-      <TopBar
-        mode={settings?.mode ?? "auto"}
-        hasKey={settings?.has_openrouter_key ?? false}
-        listenEnabled={settings?.listen_enabled ?? false}
-        listenReady={sttReady}
-        listening={listening}
-        heard={heardHint}
-        onToggleListen={handleToggleListen}
-        onToggleSettings={() => {
-          setWizardOpen(false);
-          setSettingsOpen((v) => !v);
-        }}
-        onToggleWizard={() => {
-          setSettingsOpen(false);
-          setWizardOpen((v) => !v);
-        }}
-        onReset={handleReset}
-        onQuit={() => tauriExit(0)}
-        autoWatch={settings?.auto_screen_watch_enabled === true}
-        autoWatchAvailable={Boolean(settings?.has_openrouter_key)}
-        onToggleAutoWatch={async () => {
-          const next = !(settings?.auto_screen_watch_enabled ?? false);
-          await invoke("set_auto_screen_watch_enabled", { enabled: next });
-          refreshSettings();
-        }}
-        relationship={relationship}
-        showRelationshipBadge={
-          (settings?.relationship_visibility ?? "indicator") !== "hidden"
-        }
-      />
+
       <RegionPicker
         open={pickerOpen}
         initialPrompt={pickerInitialPrompt}
@@ -542,9 +527,6 @@ export default function App() {
         }}
         onSubmit={(s) => {
           void closePicker();
-          // Composited PNG already includes every region rectangle and
-          // its importance tag, so route through `visionWithImage` rather
-          // than asking the backend to re-crop a single rect.
           handleVisionImage(s.prompt, s.imageBase64);
         }}
         onGenerateVariant={(prompt, size) => {
@@ -553,6 +535,6 @@ export default function App() {
         }}
       />
       <ToastHost />
-    </>
+    </div>
   );
 }

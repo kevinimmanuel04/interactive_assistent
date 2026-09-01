@@ -21,7 +21,7 @@ impl ReplicateImage {
             return Err(ImageGenError::MissingCredential("replicate_api_token"));
         }
         let http = reqwest::Client::builder()
-            .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("april/", env!("CARGO_PKG_VERSION")))
             .build()?;
         Ok(Self {
             http,

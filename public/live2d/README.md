@@ -1,14 +1,14 @@
-﻿# Live2D assets
+# Live2D assets
 
-Komorebi supports Cubism 2 / 3 / 4 / 5 models via [pixi-live2d-display-lipsyncpatch](https://github.com/RaSan147/pixi-live2d-display).
+April supports Cubism 2 / 3 / 4 / 5 models via [pixi-live2d-display-lipsyncpatch](https://github.com/RaSan147/pixi-live2d-display).
 
 ## Default model
 
-Komorebi ships with **`mao_pro`** under `public/live2d/mao_pro/` (Cubism 5 sample, `mao_pro.model3.json`). It is loaded automatically on first run.
+April ships with **`mao_pro`** under `public/live2d/mao_pro/` (Cubism 5 sample, `mao_pro.model3.json`). It is loaded automatically on first run.
 
 ## Cubism Core for Web
 
-The Cubism 4/5 runtime requires `Live2DCubismCore`. Komorebi falls back to the official CDN (`https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js`) automatically. To run fully offline, download `live2dcubismcore.min.js` from <https://www.live2d.com/en/sdk/download/web/> (EULA applies) and drop it into `public/` so it is served at `/live2dcubismcore.min.js`.
+The Cubism 4/5 runtime requires `Live2DCubismCore`. April falls back to the official CDN (`https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js`) automatically. To run fully offline, download `live2dcubismcore.min.js` from <https://www.live2d.com/en/sdk/download/web/> (EULA applies) and drop it into `public/` so it is served at `/live2dcubismcore.min.js`.
 
 ## Adding your own model
 

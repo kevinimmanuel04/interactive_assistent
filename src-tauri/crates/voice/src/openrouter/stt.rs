@@ -52,8 +52,8 @@ pub async fn transcribe(
     let resp = http_client()?
         .post(ENDPOINT)
         .bearer_auth(&cfg.api_key)
-        .header("HTTP-Referer", "https://komorebi.svitix.com")
-        .header("X-Title", "Komorebi")
+        .header("HTTP-Referer", "https://april.svitix.com")
+        .header("X-Title", "April")
         .json(&body)
         .send()
         .await

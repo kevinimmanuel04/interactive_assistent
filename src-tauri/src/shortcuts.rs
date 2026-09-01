@@ -6,7 +6,7 @@
 use tauri::Emitter;
 use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut};
 
-/// The two hotkeys Komorebi registers globally. Returned as a tuple so
+/// The two hotkeys April registers globally. Returned as a tuple so
 /// the builder can both register them AND capture them in its handler
 /// closure for equality checks.
 pub(crate) fn defaults() -> (Shortcut, Shortcut) {

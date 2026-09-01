@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
+import CloseButton from "../CloseButton";
 import { useEffect, useState } from "react";
 import {
   deleteAsset,
@@ -163,19 +164,7 @@ export default function ModelWizard({
             }}
           >
             <strong>{t("wizard.title")}</strong>
-            <button
-              onClick={onClose}
-              style={{
-                background: "transparent",
-                border: "none",
-                color: "#aaa",
-                cursor: "pointer",
-                fontSize: 16,
-              }}
-              aria-label={t("common.close")}
-            >
-              ×
-            </button>
+            <CloseButton onClick={onClose} title={t("common.close")} size={28} />
           </div>
           <div style={{ opacity: 0.65, fontSize: 11 }}>{t("wizard.info")}</div>
           <div style={{ display: "flex", gap: 6 }}>

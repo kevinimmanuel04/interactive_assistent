@@ -13,7 +13,7 @@ export const EN = {
   "topbar.reset": "Reset conversation",
   "topbar.downloads": "Model downloads",
   "topbar.settings": "Settings",
-  "topbar.quit": "Quit Komorebi",
+  "topbar.quit": "Quit April AI",
   "topbar.no_key": "No OpenRouter key",
   "topbar.key_saved": "OpenRouter key saved",
   // Common
@@ -32,7 +32,7 @@ export const EN = {
   "settings.tab.advanced": "Advanced",
   "settings.tab.advanced.hint": "Local models, hardware, RAG, training and other power-user knobs",
   "settings.language.title": "Language",
-  "settings.language.hint": "Pick the language Komorebi answers in. Auto follows your OS locale.",
+  "settings.language.hint": "Pick the language April answers in. Auto follows your OS locale.",
   "settings.language.auto": "Auto (system)",
   "settings.language.en": "English",
   "settings.language.ru": "Русский",
@@ -64,7 +64,7 @@ export const EN = {
   "settings.training.schedule.scheduled": "Nightly",
   // Weather
   "weather.title": "Weather",
-  "weather.hint": "Komorebi can answer “погода в Берлине”, “/weather Tokyo”, or just “what's the weather”. Open-Meteo is free and needs no key.",
+  "weather.hint": "April can answer “погода в Берлине”, “/weather Tokyo”, or just “what's the weather”. Open-Meteo is free and needs no key.",
   "weather.provider": "Provider",
   "weather.provider.openmeteo": "Open-Meteo (free, no key)",
   "weather.provider.owm": "OpenWeatherMap (requires key)",
@@ -221,7 +221,7 @@ export const EN = {
   "settings.sovits.ref_audio.placeholder": "Reference audio path (absolute path on the server)",
   "settings.sovits.prompt_text.placeholder": "Transcript of the reference clip",
   "settings.sovits.speed": "Speed ×{value}",
-  "settings.sovits.hint": "Run GPT-SoVITS separately from RVC-Boss/GPT-SoVITS (python api_v2.py starts the FastAPI server on :9880). Point the reference-audio field at a 3–10 s anime/seiyuu clip and fill in its transcript; Komorebi POSTs text to /tts and plays the returned WAV.",
+  "settings.sovits.hint": "Run GPT-SoVITS separately from RVC-Boss/GPT-SoVITS (python api_v2.py starts the FastAPI server on :9880). Point the reference-audio field at a 3–10 s anime/seiyuu clip and fill in its transcript; April POSTs text to /tts and plays the returned WAV.",
   // OpenRouter TTS
   "settings.or_tts.title": "OpenRouter TTS",
   "settings.or_tts.no_key": "Set your OpenRouter API key above to enable cloud TTS.",
@@ -259,7 +259,7 @@ export const EN = {
   "settings.coach.hint": "A screenshot is captured every ~30s only when a game window is focused. The image is downscaled to 960px before being sent.",
   // Wake word
   "settings.wake.label": "Wake word",
-  "settings.wake.placeholder": "e.g. \"Komorebi\" (leave empty to disable)",
+  "settings.wake.placeholder": "e.g. \"April\" (leave empty to disable)",
   "settings.wake.hint": "In continuous-listen mode, transcripts must contain this phrase to be sent. Leave empty to send every utterance. Simple case-insensitive substring match — no ML model, just a gate.",
   // Smart routing
   "settings.smart.label": "Smart routing",
@@ -298,7 +298,7 @@ export const EN = {
   "settings.or_picker.hint": "Save an OpenRouter API key above to browse available models.",
   // Faster-Whisper
   "settings.fw.enable": "Use Faster-Whisper (local server, ~4× faster than bundled Whisper)",
-  "settings.fw.hint": "Run speaches / faster-whisper-server locally (Docker or pip), then point Komorebi at its URL. Free, fully offline once a model is pulled.",
+  "settings.fw.hint": "Run speaches / faster-whisper-server locally (Docker or pip), then point April at its URL. Free, fully offline once a model is pulled.",
   "settings.fw.url": "Server URL",
   "settings.fw.url.placeholder": "http://localhost:8000",
   "settings.fw.model": "Model",

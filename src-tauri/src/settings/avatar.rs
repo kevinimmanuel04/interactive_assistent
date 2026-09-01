@@ -29,11 +29,11 @@ pub fn set_live2d_model_url<R: Runtime>(app: &AppHandle<R>, url: &str) -> Result
 }
 
 pub fn read_avatar_zoom(app: &AppHandle<Wry>) -> f64 {
-    get_f64(app, KEY_AVATAR_ZOOM).unwrap_or(1.0)
+    get_f64(app, KEY_AVATAR_ZOOM).unwrap_or(0.55)
 }
 
 pub fn read_avatar_offset_x(app: &AppHandle<Wry>) -> f64 {
-    get_f64(app, KEY_AVATAR_OFFSET_X).unwrap_or(0.0)
+    get_f64(app, KEY_AVATAR_OFFSET_X).unwrap_or(-0.10)
 }
 
 pub fn read_avatar_offset_y(app: &AppHandle<Wry>) -> f64 {

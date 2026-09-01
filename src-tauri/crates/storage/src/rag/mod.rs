@@ -178,7 +178,7 @@ mod tests {
         std::fs::create_dir_all(&src).unwrap();
         std::fs::write(
             src.join("hello.md"),
-            "# Komorebi\nKomorebi is a desktop virtual assistant.\n",
+            "# April\nApril is a desktop virtual assistant.\n",
         )
         .unwrap();
         std::fs::write(
@@ -191,7 +191,7 @@ mod tests {
         let rep = rag.index_folder(&src).unwrap();
         assert_eq!(rep.files_indexed, 2);
 
-        let hits = rag.search("komorebi assistant", 5).unwrap();
+        let hits = rag.search("april assistant", 5).unwrap();
         assert!(!hits.is_empty());
         assert!(hits[0].path.ends_with("hello.md"));
 
@@ -201,13 +201,13 @@ mod tests {
 
         // Removing the folder wipes documents.
         rag.remove_folder(&src).unwrap();
-        assert!(rag.search("komorebi", 5).unwrap().is_empty());
+        assert!(rag.search("april", 5).unwrap().is_empty());
 
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn tempdir_simple() -> PathBuf {
-        let base = std::env::temp_dir().join(format!("komorebi-rag-test-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("april-rag-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(&base).unwrap();
         base

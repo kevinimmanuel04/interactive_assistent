@@ -1,4 +1,4 @@
-//! Desktop automation primitives for Komorebi.
+//! Desktop automation primitives for April.
 //!
 //! Gives the assistant eyes (screenshots), hands (mouse + keyboard),
 //! and situational awareness (running processes, active window).

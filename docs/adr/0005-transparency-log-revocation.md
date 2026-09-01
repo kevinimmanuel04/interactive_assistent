@@ -95,5 +95,5 @@ in-flight contribution before it lands in an aggregate.
   contributions across rounds"? It would re-introduce linkability
   unless we let the client store its own history. Probably the
   latter — the desktop already has all the data.
-* Repo location and naming. Likely `komorebi-transparency` under the
+* Repo location and naming. Likely `april-transparency` under the
   same org as the main repo.

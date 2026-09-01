@@ -60,7 +60,7 @@ jobs:
         with:
           workspaces: src-tauri
           key: local-llm
-      - run: cargo check -p komorebi-llm --features local-llm
+      - run: cargo check -p april-llm --features local-llm
 
   rust-stt:
     # Verifies the `stt` feature compiles (pulls in whisper.cpp via CMake +
@@ -78,4 +78,4 @@ jobs:
         with:
           workspaces: src-tauri
           key: stt
-      - run: cargo check -p komorebi-voice --features stt
+      - run: cargo check -p april-voice --features stt

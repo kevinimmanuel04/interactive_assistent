@@ -1,4 +1,4 @@
-// Light-weight i18n layer for Komorebi.
+// Light-weight i18n layer for April.
 //
 // No external library — three flat dictionaries (en/ru/uk) and a
 // `t(key, params?)` helper. The active language is bootstrapped from

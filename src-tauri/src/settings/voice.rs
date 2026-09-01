@@ -163,3 +163,24 @@ pub fn get_deepgram_language(app: &AppHandle<Wry>) -> Option<String> {
 pub fn set_deepgram_language<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
     write_optional_string(app, KEY_DEEPGRAM_LANGUAGE, v)
 }
+
+// --- ElevenLabs -----------------------------------------------------------
+
+const KEY_ELEVENLABS_KEY: &str = "elevenlabs_api_key";
+const KEY_ELEVENLABS_VOICE_ID: &str = "elevenlabs_voice_id";
+
+pub fn get_elevenlabs_key(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_ELEVENLABS_KEY)
+}
+
+pub fn set_elevenlabs_key<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_ELEVENLABS_KEY, v)
+}
+
+pub fn get_elevenlabs_voice_id(app: &AppHandle<Wry>) -> Option<String> {
+    read_string(app, KEY_ELEVENLABS_VOICE_ID)
+}
+
+pub fn set_elevenlabs_voice_id<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> {
+    write_optional_string(app, KEY_ELEVENLABS_VOICE_ID, v)
+}

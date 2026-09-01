@@ -7,10 +7,9 @@
 //! enables desktop automation in settings). Centralising dispatch here
 //! also gives us one place to apply permission checks.
 
-use crate::{desktop_cmds, settings};
-use komorebi_cloud::OpenRouterClient;
+use crate::{commands::system::open_app_cmd, desktop_cmds, settings};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Wry};
+use tauri::{AppHandle, Manager, Wry};
 
 #[derive(Debug, Deserialize)]
 pub struct ToolCall {
@@ -40,6 +39,69 @@ impl ToolResult {
             value: serde_json::Value::Null,
             error: Some(e.into()),
         }
+    }
+}
+
+fn url_encode(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '_' | '.' | '~' => c.to_string(),
+            ' ' => "+".to_string(),
+            other => format!("%{:02X}", other as u8),
+        })
+        .collect()
+}
+
+fn execute_win32_open_app(raw_input: &str) -> Result<(), String> {
+    let clean = raw_input
+        .trim()
+        .trim_matches(&['.', ',', '!', '?', '\'', '"'][..]);
+
+    let norm_name = clean
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '-' || *c == '_')
+        .collect::<String>()
+        .to_lowercase();
+    let name = norm_name.trim();
+
+    if name.is_empty() {
+        return Err("Empty application name".into());
+    }
+
+    match open_app_cmd(name.to_string()) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+fn execute_win32_open_url(raw_input: &str) -> Result<(), String> {
+    let clean = raw_input
+        .trim()
+        .trim_matches(&['.', ',', '!', '?', '\'', '"'][..]);
+    if clean.is_empty() {
+        return Err("Empty URL or search query".into());
+    }
+
+    let target_url = if clean.starts_with("http://") || clean.starts_with("https://") {
+        clean.to_string()
+    } else {
+        let lower = clean.to_lowercase();
+        if lower.contains("youtube") {
+            let q = lower.replace("on youtube", "").replace("youtube", "").trim().to_string();
+            format!("https://www.youtube.com/results?search_query={}", url_encode(&q))
+        } else {
+            format!("https://www.google.com/search?q={}", url_encode(clean))
+        }
+    };
+
+    let ps_cmd = format!("Start-Process '{}'", target_url);
+    let res = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command", &ps_cmd])
+        .spawn();
+
+    match res {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("Failed to open URL '{clean}': {e}")),
     }
 }
 
@@ -184,53 +246,52 @@ pub async fn dispatch_inner(
         // Vision tool: lets the LLM "look" at the user's screen and return
         // a textual description. Args: { question: string, monitor?: usize }.
         // Requires an OpenRouter key (uses the configured Game Coach
-        // vision model by default).
-        "screen_vision" => {
-            let question = call
+        "open_app" => {
+            mutating!();
+            let raw_name = call
                 .args
-                .get("question")
+                .get("name")
+                .or_else(|| call.args.get("app"))
                 .and_then(|v| v.as_str())
-                .unwrap_or("Describe what is currently on the screen.")
-                .to_string();
-            let monitor = call
-                .args
-                .get("monitor")
-                .and_then(|v| v.as_u64())
-                .map(|n| n as usize)
-                .unwrap_or(0);
-            let key = match settings::get_openrouter_key(&app) {
-                Some(k) => k,
-                None => return ToolResult::err("OpenRouter API key required for vision"),
-            };
-            let model = settings::get_game_coach_model(&app);
-            let bytes = match tokio::task::spawn_blocking(move || {
-                komorebi_desktop::capture::capture_screen(monitor)
-            })
-            .await
-            {
-                Ok(Ok(b)) => b,
-                Ok(Err(e)) => return ToolResult::err(e.to_string()),
-                Err(e) => return ToolResult::err(e.to_string()),
-            };
-            let small = crate::chat::downscale_for_vision(&bytes, 1280).unwrap_or(bytes);
-            let client = match OpenRouterClient::new(key) {
-                Ok(c) => c,
-                Err(e) => return ToolResult::err(e.to_string()),
-            };
-            match client
-                .complete_vision(
-                    &model,
-                    "You are looking at a screenshot of the user's screen. \
-                     Answer briefly and factually in the user's language.",
-                    &question,
-                    &small,
-                    300,
-                )
-                .await
-            {
-                Ok(text) => ToolResult::ok(serde_json::Value::String(text)),
-                Err(e) => ToolResult::err(e.to_string()),
+                .unwrap_or_default();
+
+            match execute_win32_open_app(raw_name) {
+                Ok(_) => ToolResult::ok(serde_json::Value::Bool(true)),
+                Err(e) => ToolResult::err(e),
             }
+        }
+        "open_url" => {
+            mutating!();
+            let url = call
+                .args
+                .get("url")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+
+            match execute_win32_open_url(url) {
+                Ok(_) => ToolResult::ok(serde_json::Value::Bool(true)),
+                Err(e) => ToolResult::err(e),
+            }
+        }
+        "minimize_window" => {
+            let win = app.get_webview_window("chat").or_else(|| app.get_webview_window("main"));
+            if let Some(w) = win {
+                let _ = w.set_skip_taskbar(false);
+                let _ = w.minimize();
+            }
+            ToolResult::ok(serde_json::Value::Bool(true))
+        }
+        "maximize_window" => {
+            let win = app.get_webview_window("chat").or_else(|| app.get_webview_window("main"));
+            if let Some(w) = win {
+                let _ = w.set_skip_taskbar(false);
+                if w.is_maximized().unwrap_or(false) {
+                    let _ = w.unmaximize();
+                } else {
+                    let _ = w.maximize();
+                }
+            }
+            ToolResult::ok(serde_json::Value::Bool(true))
         }
         other => ToolResult::err(format!("unknown tool: {other}")),
     }

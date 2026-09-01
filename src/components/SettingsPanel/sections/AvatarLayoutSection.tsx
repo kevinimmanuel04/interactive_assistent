@@ -11,6 +11,7 @@ import {
 import { t, useLocale } from "../../../i18n";
 import Slider from "../lib/Slider";
 import { subCardStyle } from "../styles";
+import { ResetButton } from "../../ResetButton";
 
 interface Props {
   settings: PublicSettings | null;
@@ -19,13 +20,13 @@ interface Props {
 
 export default function AvatarLayoutSection({ settings, refresh }: Props) {
   useLocale();
-  const [zoom, setZoom] = useState<number>(settings?.avatar_zoom ?? 1);
-  const [ox, setOx] = useState<number>(settings?.avatar_offset_x ?? 0);
+  const [zoom, setZoom] = useState<number>(settings?.avatar_zoom ?? 0.55);
+  const [ox, setOx] = useState<number>(settings?.avatar_offset_x ?? -0.10);
   const [oy, setOy] = useState<number>(settings?.avatar_offset_y ?? 0);
 
   useEffect(() => {
-    setZoom(settings?.avatar_zoom ?? 1);
-    setOx(settings?.avatar_offset_x ?? 0);
+    setZoom(settings?.avatar_zoom ?? 0.55);
+    setOx(settings?.avatar_offset_x ?? -0.10);
     setOy(settings?.avatar_offset_y ?? 0);
   }, [
     settings?.avatar_zoom,
@@ -89,28 +90,19 @@ export default function AvatarLayoutSection({ settings, refresh }: Props) {
         }}
         onCommit={() => void commitOffset(ox, oy)}
       />
-      <button
-        onClick={() => {
-          setZoom(1);
-          setOx(0);
-          setOy(0);
-          void commitZoom(1);
-          void commitOffset(0, 0);
-        }}
-        style={{
-          marginTop: 6,
-          padding: "4px 10px",
-          fontSize: 11,
-          borderRadius: 4,
-          border: "1px solid rgba(255,255,255,0.15)",
-          background: "rgba(255,255,255,0.06)",
-          color: "#fff",
-          cursor: "pointer",
-        }}
-      >
-        {t("settings.avatar.reset")}
-      </button>
-      <div style={{ opacity: 0.5, fontSize: 11, marginTop: 4 }}>
+      <div style={{ marginTop: 10 }}>
+        <ResetButton
+          label={t("settings.avatar.reset")}
+          onClick={() => {
+            setZoom(0.55);
+            setOx(-0.10);
+            setOy(0);
+            void commitZoom(0.55);
+            void commitOffset(-0.10, 0);
+          }}
+        />
+      </div>
+      <div style={{ opacity: 0.5, fontSize: 11, marginTop: 8 }}>
         {t("settings.avatar.reset_hint")}
       </div>
     </div>

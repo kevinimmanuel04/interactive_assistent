@@ -54,6 +54,18 @@ export const btnStyle: CSSProperties = {
   fontSize: 12,
 };
 
+export const primaryButtonStyle: CSSProperties = {
+  padding: "6px 12px",
+  borderRadius: 8,
+  border: "1px solid rgba(255,255,255,0.15)",
+  background: "#7c4dff",
+  color: "#fff",
+  cursor: "pointer",
+  fontSize: 12,
+  fontWeight: 600,
+  whiteSpace: "nowrap",
+};
+
 export const hintStyle: CSSProperties = {
   fontSize: 10,
   opacity: 0.55,

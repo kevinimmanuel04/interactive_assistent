@@ -1,6 +1,6 @@
 //! Relationship / affinity system.
 //!
-//! Tracks how the user has been treating Komorebi over time. The state is
+//! Tracks how the user has been treating April over time. The state is
 //! a small JSON blob persisted via `tauri-plugin-store`; SQLite is overkill
 //! for one-row + a small event log.
 //!

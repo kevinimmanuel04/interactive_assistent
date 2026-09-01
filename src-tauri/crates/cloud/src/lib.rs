@@ -6,12 +6,14 @@
 //! from a secure store (Phase 1: tauri-plugin-store; Phase 3 hardening: OS keyring)
 //! and pass it in via [`OpenRouterClient::new`].
 
+pub mod router;
+
 use futures::{Stream, StreamExt};
-use komorebi_router::ChatMessage;
+use april_router::ChatMessage;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
-pub const DEFAULT_MODEL: &str = "anthropic/claude-3.5-sonnet";
+pub const DEFAULT_MODEL: &str = "google/gemini-2.5-flash";
 const OPENROUTER_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
 
 #[derive(thiserror::Error, Debug)]
@@ -53,6 +55,8 @@ struct Choice {
 struct Delta {
     #[serde(default)]
     content: Option<String>,
+    #[serde(default)]
+    _reasoning_content: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -72,19 +76,28 @@ pub struct OpenRouterClient {
 }
 
 impl OpenRouterClient {
+    pub fn endpoint_url(&self) -> &'static str {
+        if self.api_key.starts_with("sk-or-") {
+            "https://openrouter.ai/api/v1/chat/completions"
+        } else {
+            "https://opencode.ai/zen/v1/chat/completions"
+        }
+    }
+
     pub fn new(api_key: impl Into<String>) -> Result<Self, CloudError> {
         let api_key = api_key.into();
         if api_key.trim().is_empty() {
             return Err(CloudError::MissingApiKey);
         }
         let http = reqwest::Client::builder()
-            .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("april/", env!("CARGO_PKG_VERSION")))
+            .connect_timeout(std::time::Duration::from_secs(5))
             .build()?;
         Ok(Self {
             http,
             api_key,
-            app_referer: "https://komorebi.svitix.com".into(),
-            app_title: "Komorebi".into(),
+            app_referer: "https://april.svitix.com".into(),
+            app_title: "April".into(),
         })
     }
 
@@ -103,7 +116,7 @@ impl OpenRouterClient {
 
         let resp = self
             .http
-            .post(OPENROUTER_URL)
+            .post(self.endpoint_url())
             .bearer_auth(&self.api_key)
             .header("HTTP-Referer", &self.app_referer)
             .header("X-Title", &self.app_title)
@@ -125,6 +138,43 @@ impl OpenRouterClient {
         let byte_stream = resp.bytes_stream();
         let event_stream = sse_to_events(byte_stream);
         Ok(Box::pin(event_stream))
+    }
+
+    pub async fn stream_chat_with_failover(
+        &self,
+        route: &router::ResolvedRoute,
+        messages: &[ChatMessage],
+    ) -> Result<(TokenStream, String), CloudError> {
+        let mut last_err = CloudError::MissingApiKey;
+
+        for (idx, spec) in route.chain.iter().enumerate() {
+            let current_label = if idx == 0 {
+                route.initial_label.clone()
+            } else {
+                format!("🔁 Switched to {}", spec.display_name)
+            };
+
+            tracing::info!(
+                model = %spec.endpoint_id,
+                attempt = idx + 1,
+                label = %current_label,
+                "stream_chat_with_failover: attempting model"
+            );
+
+            match self.stream_chat(spec.endpoint_id, messages).await {
+                Ok(stream) => return Ok((stream, current_label)),
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        model = %spec.endpoint_id,
+                        "model call failed, switching to next model in chain"
+                    );
+                    last_err = e;
+                }
+            }
+        }
+
+        Err(last_err)
     }
 
     /// Non-streaming completion. Used for proactive-agent decisions and
@@ -210,7 +260,7 @@ impl OpenRouterClient {
         });
         let resp = self
             .http
-            .post(OPENROUTER_URL)
+            .post(self.endpoint_url())
             .bearer_auth(&self.api_key)
             .header("HTTP-Referer", &self.app_referer)
             .header("X-Title", &self.app_title)
@@ -273,7 +323,7 @@ impl OpenRouterClient {
         });
         let resp = self
             .http
-            .post(OPENROUTER_URL)
+            .post(self.endpoint_url())
             .bearer_auth(&self.api_key)
             .header("HTTP-Referer", &self.app_referer)
             .header("X-Title", &self.app_title)
@@ -313,7 +363,7 @@ impl OpenRouterClient {
 
 // --- Intent classification -------------------------------------------------
 
-pub const DEFAULT_CLASSIFIER_MODEL: &str = "meta-llama/llama-3.2-3b-instruct";
+pub const DEFAULT_CLASSIFIER_MODEL: &str = "deepseek-v4-flash-free";
 
 /// Uses a small OpenRouter model to decide between `Local` and `Cloud`
 /// when the keyword router is inconclusive. Skill detection stays in the
@@ -332,7 +382,7 @@ impl CloudIntentClassifier {
             return Err(CloudError::MissingApiKey);
         }
         let http = reqwest::Client::builder()
-            .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("april/", env!("CARGO_PKG_VERSION")))
             .build()?;
         Ok(Self {
             http,
@@ -357,12 +407,17 @@ impl CloudIntentClassifier {
             temperature: Some(0.0),
             max_tokens: Some(4),
         };
+        let target_url = if self.api_key.starts_with("sk-or-") {
+            "https://openrouter.ai/api/v1/chat/completions"
+        } else {
+            "https://opencode.ai/zen/v1/chat/completions"
+        };
         let fut = self
             .http
-            .post(OPENROUTER_URL)
+            .post(target_url)
             .bearer_auth(&self.api_key)
-            .header("HTTP-Referer", "https://komorebi.svitix.com")
-            .header("X-Title", "Komorebi")
+            .header("HTTP-Referer", "https://april.svitix.com")
+            .header("X-Title", "April")
             .json(&body)
             .send();
         let resp = tokio::time::timeout(self.timeout, fut)
@@ -407,24 +462,24 @@ CLOUD = coding help, translations, long analysis, nuanced reasoning, essays, \
 anything that benefits from a large model.\n\n\
 Respond with only the single word LOCAL or CLOUD. No punctuation, no explanation.";
 
-fn parse_classifier_reply(raw: &str) -> Option<komorebi_router::Route> {
+fn parse_classifier_reply(raw: &str) -> Option<april_router::Route> {
     let s = raw.trim().to_ascii_uppercase();
     // The model sometimes wraps the answer in quotes or adds a period.
     let s = s
         .trim_start_matches(['"', '\'', '`'])
         .trim_end_matches(['"', '\'', '`', '.', ',']);
     if s.starts_with("LOCAL") {
-        Some(komorebi_router::Route::Local)
+        Some(april_router::Route::Local)
     } else if s.starts_with("CLOUD") {
-        Some(komorebi_router::Route::Cloud)
+        Some(april_router::Route::Cloud)
     } else {
         None
     }
 }
 
 #[async_trait::async_trait]
-impl komorebi_router::IntentClassifier for CloudIntentClassifier {
-    async fn decide(&self, query: &str) -> Option<komorebi_router::Route> {
+impl april_router::IntentClassifier for CloudIntentClassifier {
+    async fn decide(&self, query: &str) -> Option<april_router::Route> {
         match self.call(query).await {
             Ok(reply) => {
                 let parsed = parse_classifier_reply(&reply);
@@ -448,7 +503,7 @@ impl komorebi_router::IntentClassifier for CloudIntentClassifier {
 /// built-in skills (if any) the user wants to invoke.
 ///
 /// Returned name must match one of the skill names registered in
-/// `komorebi_skills::SkillRegistry`. If the model says "none" or
+/// `april_skills::SkillRegistry`. If the model says "none" or
 /// returns garbage, we fall back to the keyword router.
 pub struct CloudSkillClassifier {
     http: reqwest::Client,
@@ -480,7 +535,7 @@ impl CloudSkillClassifier {
             return Err(CloudError::MissingApiKey);
         }
         let http = reqwest::Client::builder()
-            .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
+            .user_agent(concat!("april/", env!("CARGO_PKG_VERSION")))
             .build()?;
         let mut doc = String::from("Available skills:\n");
         for (name, desc) in skills {
@@ -505,12 +560,17 @@ impl CloudSkillClassifier {
             temperature: Some(0.0),
             max_tokens: Some(64),
         };
+        let target_url = if self.api_key.starts_with("sk-or-") {
+            "https://openrouter.ai/api/v1/chat/completions"
+        } else {
+            "https://opencode.ai/zen/v1/chat/completions"
+        };
         let fut = self
             .http
-            .post(OPENROUTER_URL)
+            .post(target_url)
             .bearer_auth(&self.api_key)
-            .header("HTTP-Referer", "https://komorebi.svitix.com")
-            .header("X-Title", "Komorebi")
+            .header("HTTP-Referer", "https://april.svitix.com")
+            .header("X-Title", "April")
             .json(&body)
             .send();
         let resp = tokio::time::timeout(self.timeout, fut)
@@ -670,6 +730,14 @@ where
                     yield Ok(StreamEvent::Done);
                     return;
                 }
+                if payload.contains(r#""error""#) {
+                    tracing::warn!(payload = %payload, "received error payload in sse stream");
+                    yield Err(CloudError::Api {
+                        status: 500,
+                        body: payload.to_string(),
+                    });
+                    return;
+                }
                 match serde_json::from_str::<StreamChunk>(payload) {
                     Ok(chunk) => {
                         for ch in chunk.choices {
@@ -747,7 +815,7 @@ mod tests {
 
     #[test]
     fn classifier_reply_parses_variants() {
-        use komorebi_router::Route;
+        use april_router::Route;
         assert_eq!(parse_classifier_reply("LOCAL"), Some(Route::Local));
         assert_eq!(parse_classifier_reply("  local\n"), Some(Route::Local));
         assert_eq!(parse_classifier_reply("\"CLOUD\"."), Some(Route::Cloud));

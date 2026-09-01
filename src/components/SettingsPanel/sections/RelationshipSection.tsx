@@ -18,6 +18,7 @@ import {
 } from "../../../api";
 import { t, useLocale } from "../../../i18n";
 import { toast } from "../../Toast";
+import { ResetButton } from "../../ResetButton";
 import {
   btnStyle,
   h3Style,
@@ -196,16 +197,16 @@ export default function RelationshipSection({ settings, refresh }: Props) {
           </ul>
         </details>
       )}
-      <button
-        onClick={async () => {
-          if (!confirm(t("rel.reset.confirm"))) return;
-          await resetRelationship();
-          await refresh();
-        }}
-        style={{ ...btnStyle, marginTop: 8 }}
-      >
-        {t("rel.reset.button")}
-      </button>
+      <div style={{ marginTop: 10 }}>
+        <ResetButton
+          label={t("rel.reset.button")}
+          onClick={async () => {
+            if (!confirm(t("rel.reset.confirm"))) return;
+            await resetRelationship();
+            await refresh();
+          }}
+        />
+      </div>
     </section>
   );
 }

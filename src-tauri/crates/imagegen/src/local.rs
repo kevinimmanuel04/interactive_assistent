@@ -54,7 +54,7 @@ impl Generator for LocalSd {
         // Output path: a unique file in std::env::temp_dir(). sd.cpp writes
         // a PNG; we read+delete it after success.
         let out = std::env::temp_dir().join(format!(
-            "komorebi-imagegen-{}.png",
+            "april-imagegen-{}.png",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_nanos())

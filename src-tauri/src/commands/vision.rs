@@ -46,7 +46,7 @@ fn set_capture_excluded(_window: &tauri::WebviewWindow<Wry>, _excluded: bool) {}
 pub async fn vision_capture_full(app: AppHandle<Wry>, prompt: String) -> Result<String, String> {
     let monitor = 0usize;
     let bytes =
-        tokio::task::spawn_blocking(move || komorebi_desktop::capture::capture_screen(monitor))
+        tokio::task::spawn_blocking(move || april_desktop::capture::capture_screen(monitor))
             .await
             .map_err(|e| e.to_string())?
             .map_err(|e| e.to_string())?;
@@ -74,7 +74,7 @@ pub async fn vision_capture_region(
     let monitor = args.monitor.unwrap_or(0);
     let (x, y, w, h) = (args.x, args.y, args.width, args.height);
     let bytes = tokio::task::spawn_blocking(move || {
-        komorebi_desktop::capture::capture_region(monitor, x, y, w, h)
+        april_desktop::capture::capture_region(monitor, x, y, w, h)
     })
     .await
     .map_err(|e| e.to_string())?

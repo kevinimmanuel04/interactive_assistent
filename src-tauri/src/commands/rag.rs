@@ -5,14 +5,14 @@ use tauri::{AppHandle, Manager, State, Wry};
 
 #[tauri::command]
 pub fn rag_list_folders(
-    rag: State<'_, Arc<komorebi_storage::RagIndex>>,
-) -> Result<Vec<komorebi_storage::FolderStats>, String> {
+    rag: State<'_, Arc<april_storage::RagIndex>>,
+) -> Result<Vec<april_storage::FolderStats>, String> {
     rag.folders().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn rag_add_folder(
-    rag: State<'_, Arc<komorebi_storage::RagIndex>>,
+    rag: State<'_, Arc<april_storage::RagIndex>>,
     path: String,
 ) -> Result<(), String> {
     rag.add_folder(std::path::Path::new(&path))
@@ -21,7 +21,7 @@ pub fn rag_add_folder(
 
 #[tauri::command]
 pub fn rag_remove_folder(
-    rag: State<'_, Arc<komorebi_storage::RagIndex>>,
+    rag: State<'_, Arc<april_storage::RagIndex>>,
     path: String,
 ) -> Result<(), String> {
     rag.remove_folder(std::path::Path::new(&path))
@@ -34,9 +34,9 @@ pub fn rag_remove_folder(
 pub async fn rag_reindex(
     app: AppHandle<Wry>,
     path: Option<String>,
-) -> Result<komorebi_storage::IndexReport, String> {
-    let rag: Arc<komorebi_storage::RagIndex> = app
-        .try_state::<Arc<komorebi_storage::RagIndex>>()
+) -> Result<april_storage::IndexReport, String> {
+    let rag: Arc<april_storage::RagIndex> = app
+        .try_state::<Arc<april_storage::RagIndex>>()
         .ok_or_else(|| "RAG index not initialized".to_string())?
         .inner()
         .clone();

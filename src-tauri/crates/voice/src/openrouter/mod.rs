@@ -20,7 +20,7 @@ mod wav;
 pub use stt::{transcribe, OpenRouterSttConfig};
 pub use tts::{OpenRouterTts, OpenRouterTtsConfig};
 
-const ENDPOINT: &str = "https://openrouter.ai/api/v1/chat/completions";
+const ENDPOINT: &str = "https://opencode.ai/zen/v1/chat/completions";
 
 #[derive(thiserror::Error, Debug)]
 pub enum OpenRouterVoiceError {
@@ -41,7 +41,7 @@ pub enum OpenRouterVoiceError {
 fn http_client() -> Result<reqwest::Client, OpenRouterVoiceError> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
-        .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("april/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| OpenRouterVoiceError::Request(e.to_string()))
 }

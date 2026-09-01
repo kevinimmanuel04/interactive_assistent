@@ -83,13 +83,28 @@ const MOOD_TAG = /<mood:(neutral|happy|sad|angry|surprised|thinking)>/gi;
  * get pronounced by TTS. Use on every token chunk.
  */
 export function stripMoodTags(text: string): string {
-  return text
+  let cleaned = text
     .replace(MOOD_TAG, "")
-    // Tool-call protocol markers: backend leaks <tool_call>{...}</tool_call>
-    // and <tool_status>NAME</tool_status> into the visible token stream
-    // because we don't pre-process the SSE feed. Strip them client-side.
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, "")
     .replace(/<tool_status>[\s\S]*?<\/tool_status>/gi, "");
+
+  // Strip "Here's a thinking process: ..." blocks entirely
+  if (/Here'?s a thinking process:/i.test(cleaned) || /Check Constraints:/i.test(cleaned)) {
+    // Drop everything up to the final non-reasoning paragraph if present, or return empty if still thinking
+    const lines = cleaned.split("\n");
+    const validLines = lines.filter((l) => {
+      const trimmed = l.trim();
+      if (/Here'?s a thinking process:/i.test(trimmed)) return false;
+      if (/^\d+\.\s*\*\*/.test(trimmed)) return false;
+      if (/^-\s*(Must|Tags|Tone|Current|Should|dear)/i.test(trimmed)) return false;
+      if (/^(Analyze|Check|Select|Formulate)\b/i.test(trimmed)) return false;
+      return true;
+    });
+    cleaned = validLines.join("\n");
+  }
+
+  return cleaned.trim();
 }
 
 /**

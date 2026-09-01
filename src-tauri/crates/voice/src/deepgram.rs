@@ -42,7 +42,7 @@ pub struct DeepgramConfig {
 fn http_client() -> Result<reqwest::Client, DeepgramError> {
     reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
-        .user_agent(concat!("komorebi/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("april/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| DeepgramError::Request(e.to_string()))
 }

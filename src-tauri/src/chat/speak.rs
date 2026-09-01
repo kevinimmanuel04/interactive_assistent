@@ -30,20 +30,23 @@ pub(super) async fn maybe_speak(app: &AppHandle<Wry>, text: String) {
 /// clicks, buzzes, or garbled phonemes. Keeps letters, digits, basic
 /// punctuation, and common Unicode letters (Cyrillic, etc.).
 fn sanitize_for_tts(text: &str) -> String {
-    // First: drop any <mood:X> tags so they aren't pronounced as
-    // "less-than mood colon happy greater-than".
     let stripped = strip_mood_tags(text);
+    let stripped = strip_inline_tag_block(&stripped, "think");
     let stripped = strip_inline_tag_block(&stripped, "tool_call");
     let stripped = strip_inline_tag_block(&stripped, "tool_status");
-    // Remove fenced code blocks entirely.
+    // Remove fenced code blocks and thinking process steps entirely.
     let mut out = String::with_capacity(stripped.len());
     let mut in_fence = false;
     for line in stripped.lines() {
-        if line.trim_start().starts_with("```") {
+        let trimmed = line.trim();
+        if trimmed.starts_with("```") {
             in_fence = !in_fence;
             continue;
         }
         if in_fence {
+            continue;
+        }
+        if trimmed.to_lowercase().contains("thinking process:") {
             continue;
         }
         out.push_str(line);

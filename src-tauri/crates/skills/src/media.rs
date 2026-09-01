@@ -139,7 +139,7 @@ fn apply(action: MediaAction) -> Result<String, SkillError> {
 $signature = @'
 [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
 '@
-$Type = Add-Type -MemberDefinition $signature -Name 'KeyboardSend' -Namespace 'Komorebi' -PassThru
+$Type = Add-Type -MemberDefinition $signature -Name 'KeyboardSend' -Namespace 'April' -PassThru
 $Type::keybd_event([byte]{vk}, 0, 0, [UIntPtr]::Zero)
 $Type::keybd_event([byte]{vk}, 0, 2, [UIntPtr]::Zero)
 "#

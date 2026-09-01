@@ -81,9 +81,9 @@ export default function SmartRoutingSection({ settings, refresh }: Props) {
         kind="text"
         enabled={hasKey && enabled}
         disabled={busy || !enabled}
-        placeholder="meta-llama/llama-3.2-3b-instruct"
+        placeholder="deepseek-v4-flash-free"
         fallback={[
-          "meta-llama/llama-3.2-3b-instruct",
+          "deepseek-v4-flash-free",
           "openai/gpt-4o-mini",
           "anthropic/claude-3-haiku",
           "google/gemini-flash-1.5",

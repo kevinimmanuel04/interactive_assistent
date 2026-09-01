@@ -9,7 +9,7 @@ use tauri::{AppHandle, Manager, Wry};
 /// keep local-model context windows happy.
 pub(super) fn build_rag_context(app: &AppHandle<Wry>, prompt: &str) -> Option<String> {
     let rag = app
-        .try_state::<Arc<komorebi_storage::RagIndex>>()?
+        .try_state::<Arc<april_storage::RagIndex>>()?
         .inner()
         .clone();
     let hits = match rag.search(prompt, 6) {

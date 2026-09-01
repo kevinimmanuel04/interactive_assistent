@@ -23,35 +23,35 @@ const KEY_CHAT_TOOL_CALLS: &str = "chat_tool_calls_enabled";
 
 pub fn get_openrouter_model(app: &AppHandle<Wry>) -> String {
     read_string(app, KEY_OPENROUTER_MODEL)
-        .unwrap_or_else(|| komorebi_cloud::DEFAULT_MODEL.to_string())
+        .unwrap_or_else(|| april_cloud::DEFAULT_MODEL.to_string())
 }
 
 pub fn set_openrouter_model<R: Runtime>(app: &AppHandle<R>, model: &str) -> Result<()> {
     write_optional_string(app, KEY_OPENROUTER_MODEL, model)
 }
 
-pub fn get_mode(app: &AppHandle<Wry>) -> komorebi_router::Mode {
+pub fn get_mode(app: &AppHandle<Wry>) -> april_router::Mode {
     match read_string(app, KEY_MODE).as_deref() {
-        Some("local") => komorebi_router::Mode::Local,
-        Some("cloud") => komorebi_router::Mode::Cloud,
-        _ => komorebi_router::Mode::Auto,
+        Some("local") => april_router::Mode::Local,
+        Some("auto") => april_router::Mode::Auto,
+        _ => april_router::Mode::Cloud,
     }
 }
 
-pub fn set_mode<R: Runtime>(app: &AppHandle<R>, mode: komorebi_router::Mode) -> Result<()> {
+pub fn set_mode<R: Runtime>(app: &AppHandle<R>, mode: april_router::Mode) -> Result<()> {
     let v = match mode {
-        komorebi_router::Mode::Auto => "auto",
-        komorebi_router::Mode::Local => "local",
-        komorebi_router::Mode::Cloud => "cloud",
+        april_router::Mode::Auto => "auto",
+        april_router::Mode::Local => "local",
+        april_router::Mode::Cloud => "cloud",
     };
     write_optional_string(app, KEY_MODE, v)
 }
 
 pub fn mode_str(app: &AppHandle<Wry>) -> &'static str {
     match get_mode(app) {
-        komorebi_router::Mode::Auto => "auto",
-        komorebi_router::Mode::Local => "local",
-        komorebi_router::Mode::Cloud => "cloud",
+        april_router::Mode::Auto => "auto",
+        april_router::Mode::Local => "local",
+        april_router::Mode::Cloud => "cloud",
     }
 }
 
@@ -110,7 +110,7 @@ pub fn set_smart_routing<R: Runtime>(app: &AppHandle<R>, on: bool) -> Result<()>
 
 pub fn get_classifier_model(app: &AppHandle<Wry>) -> String {
     read_string(app, KEY_CLASSIFIER_MODEL)
-        .unwrap_or_else(|| komorebi_cloud::DEFAULT_CLASSIFIER_MODEL.to_string())
+        .unwrap_or_else(|| april_cloud::DEFAULT_CLASSIFIER_MODEL.to_string())
 }
 
 pub fn set_classifier_model<R: Runtime>(app: &AppHandle<R>, model: &str) -> Result<()> {

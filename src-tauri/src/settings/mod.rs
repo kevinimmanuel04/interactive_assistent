@@ -83,7 +83,10 @@ pub use api_keys::{
     get_deepgram_key, get_openrouter_key, get_replicate_token, get_weather_api_key,
     set_deepgram_key, set_openrouter_key, set_replicate_token, set_weather_api_key,
 };
-pub use avatar::{set_avatar_offset_x, set_avatar_offset_y, set_avatar_zoom, set_live2d_model_url};
+pub use avatar::{
+    read_live2d_model_url, set_avatar_offset_x, set_avatar_offset_y, set_avatar_zoom,
+    set_live2d_model_url,
+};
 pub use game_coach::{
     get_game_coach_enabled, get_game_coach_model, get_game_coach_use_vision,
     set_game_coach_enabled, set_game_coach_model, set_game_coach_use_vision,
@@ -129,13 +132,14 @@ pub use user::{
 };
 pub use voice::{
     get_audio_input, get_auto_listen, get_deepgram_enabled, get_deepgram_language,
-    get_deepgram_model, get_faster_whisper_enabled, get_faster_whisper_language,
-    get_faster_whisper_model, get_faster_whisper_url, get_listen_enabled,
-    get_openrouter_stt_enabled, get_openrouter_stt_model, get_whisper_model_path, set_audio_input,
-    set_audio_output, set_auto_listen, set_deepgram_enabled, set_deepgram_language,
-    set_deepgram_model, set_faster_whisper_enabled, set_faster_whisper_language,
-    set_faster_whisper_model, set_faster_whisper_url, set_listen_enabled,
-    set_openrouter_stt_enabled, set_openrouter_stt_model, set_wake_word, set_whisper_model_path,
+    get_deepgram_model, get_elevenlabs_key, get_elevenlabs_voice_id, get_faster_whisper_enabled,
+    get_faster_whisper_language, get_faster_whisper_model, get_faster_whisper_url,
+    get_listen_enabled, get_openrouter_stt_enabled, get_openrouter_stt_model, get_whisper_model_path,
+    set_audio_input, set_audio_output, set_auto_listen, set_deepgram_enabled,
+    set_deepgram_language, set_deepgram_model, set_elevenlabs_key, set_elevenlabs_voice_id,
+    set_faster_whisper_enabled, set_faster_whisper_language, set_faster_whisper_model,
+    set_faster_whisper_url, set_listen_enabled, set_openrouter_stt_enabled, set_openrouter_stt_model,
+    set_wake_word, set_whisper_model_path,
 };
 pub use weather::{
     get_weather_default_city, get_weather_provider, get_weather_units, get_weather_use_ip,
@@ -249,7 +253,7 @@ pub fn public_snapshot(app: &AppHandle<Wry>) -> PublicSettings {
         piper_voice_path: tts::get_piper_voice(app),
         live2d_model_url: avatar::read_live2d_model_url(app),
         whisper_model_path: voice::get_whisper_model_path(app),
-        stt_available: komorebi_voice::stt::is_available(),
+        stt_available: april_voice::stt::is_available(),
         wake_word: voice::read_wake_word(app),
         listen_enabled: voice::get_listen_enabled(app),
         smart_routing: routing::get_smart_routing(app),

@@ -7,7 +7,7 @@ import type { Runtime } from "./runtime";
  * these in its `.model3.json` expressions list, it will be activated when
  * the corresponding emotion becomes dominant. Any miss is silent.
  *
- * Each emotion maps to an ordered list of candidate names — Komorebi tries
+ * Each emotion maps to an ordered list of candidate names — April tries
  * them in turn so the same code works for models that name expressions
  * descriptively (`happy`, `sad`) AND for SDK samples that use generic IDs
  * (`exp_01`..`exp_08`, e.g. mao_pro Cubism 5 default).

@@ -96,16 +96,94 @@ impl Skill for OpenSkill {
 
 #[cfg(target_os = "windows")]
 fn launch_app(app: &str) -> Result<(), SkillError> {
-    // `cmd /C start "" <app>` resolves App Paths (so "notepad", "calc",
-    // "msedge" all work) and doesn't keep a console window attached.
-    let status = std::process::Command::new("cmd")
-        .args(["/C", "start", "", app])
-        .status()
-        .map_err(|e| SkillError::Exec(format!("spawn cmd: {e}")))?;
-    if !status.success() {
-        return Err(SkillError::Exec(format!("cmd start {app} exit != 0")));
+    let clean = app
+        .trim()
+        .trim_matches(&['.', ',', '!', '?', '\'', '"'][..]);
+
+    let norm_name = clean
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace() || *c == '-' || *c == '_')
+        .collect::<String>()
+        .to_lowercase();
+    let name = norm_name.trim();
+
+    if name.is_empty() {
+        return Err(SkillError::Exec("Empty application name".into()));
     }
-    Ok(())
+
+    // Tier 1: System Aliases & Protocols
+    if name == "file explorer" || name == "explorer" || name == "this pc" || name == "my computer" || name == "files" || name == "file" {
+        let _ = std::process::Command::new("explorer.exe").spawn();
+        return Ok(());
+    }
+
+    if name.contains("riot") || name.contains("valorant") || name.contains("league") {
+        let riot_paths = [
+            r"C:\Riot Games\Riot Client\RiotClientServices.exe",
+            r"C:\Program Files\Riot Games\Riot Client\RiotClientServices.exe",
+            r"C:\Program Files (x86)\Riot Games\Riot Client\RiotClientServices.exe",
+        ];
+        for path in &riot_paths {
+            if std::path::Path::new(path).exists() {
+                if let Ok(_) = std::process::Command::new(path).spawn() {
+                    return Ok(());
+                }
+            }
+        }
+        let script = "Start-Process 'C:\\Riot Games\\Riot Client\\RiotClientServices.exe' -ErrorAction SilentlyContinue; if (!$?) { Start-Process 'riotclient:' }";
+        let _ = std::process::Command::new("powershell").args(["-NoProfile", "-Command", script]).spawn();
+        return Ok(());
+    }
+
+    if name.contains("store") || name.contains("microsoft store") {
+        let _ = std::process::Command::new("powershell").args(["-NoProfile", "-Command", "Start-Process 'ms-windows-store:'"]).spawn();
+        return Ok(());
+    }
+
+    if name == "chrome" || name == "google chrome" {
+        if let Ok(_) = std::process::Command::new("chrome.exe").spawn() {
+            return Ok(());
+        }
+    }
+
+    if name == "notepad" {
+        if let Ok(_) = std::process::Command::new("notepad.exe").spawn() {
+            return Ok(());
+        }
+    }
+
+    if name == "calculator" || name == "calc" {
+        let _ = std::process::Command::new("powershell").args(["-NoProfile", "-Command", "Start-Process 'calculator:'"]).spawn();
+        return Ok(());
+    }
+
+    if name == "spotify" {
+        let _ = std::process::Command::new("powershell").args(["-NoProfile", "-Command", "Start-Process 'spotify:'"]).spawn();
+        return Ok(());
+    }
+
+    if name == "vs code" || name == "vscode" || name == "code" {
+        if let Ok(_) = std::process::Command::new("code.cmd").spawn() {
+            return Ok(());
+        }
+        if let Ok(_) = std::process::Command::new("code").spawn() {
+            return Ok(());
+        }
+    }
+
+    // Tier 2: PowerShell Start Menu & Registry Search Algorithm
+    let ps_search = format!(
+        "$app = Get-ChildItem -Path '$env:ProgramData\\Microsoft\\Windows\\Start Menu\\Programs', '$env:APPDATA\\Microsoft\\Windows\\Start Menu\\Programs' -Recurse -Include *.lnk | Where-Object {{ $_.Name -like '*{name}*' }} | Select-Object -First 1; if ($app) {{ Start-Process $app.FullName }} else {{ Start-Process '{name}' -ErrorAction SilentlyContinue }}"
+    );
+    
+    let res = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-Command", &ps_search])
+        .spawn();
+
+    match res {
+        Ok(_) => Ok(()),
+        Err(e) => Err(SkillError::Exec(format!("Could not launch app '{name}': {e}"))),
+    }
 }
 
 #[cfg(target_os = "macos")]

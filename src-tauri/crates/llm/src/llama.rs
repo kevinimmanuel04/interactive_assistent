@@ -6,7 +6,7 @@
 use crate::{CompletionOptions, LlmConfig, LlmEngine, LlmError, LlmEvent, LlmStream};
 use async_trait::async_trait;
 use futures::stream::StreamExt;
-use komorebi_router::{ChatMessage, Role};
+use april_router::{ChatMessage, Role};
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};

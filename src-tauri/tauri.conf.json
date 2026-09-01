@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Komorebi",
+  "productName": "April",
   "version": "2.0.10",
-  "identifier": "app.komorebi.desktop",
+  "identifier": "app.april.desktop",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Komorebi",
+        "title": "April",
         "width": 480,
         "height": 760,
         "minWidth": 360,
@@ -22,7 +22,7 @@
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
-        "skipTaskbar": true,
+        "skipTaskbar": false,
         "shadow": false,
         "focus": false,
         "visible": true
@@ -36,6 +36,9 @@
     "active": true,
     "targets": "all",
     "createUpdaterArtifacts": true,
+    "externalBin": [
+      "binaries/backend"
+    ],
     "resources": [
       "binaries/piper/**/*"
     ],
@@ -47,13 +50,13 @@
     ],
     "category": "Utility",
     "shortDescription": "Anime-avatar virtual assistant",
-    "longDescription": "Komorebi is a cross-platform virtual assistant with an animated anime avatar and hybrid local/cloud AI."
+    "longDescription": "April is a cross-platform virtual assistant with an animated anime avatar and hybrid local/cloud AI."
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNEMUM0QzUzMTM3RDg1QgpSV1JiMkRjeHhjVFJBNnMwbnZ4ME81VkQ2ZVd1WC85aEhvR0dhQzhoeXAxTEVPc1F4NG9DVEpkcwo=",
       "endpoints": [
-        "https://github.com/kiskaserver/interactive_assistent/releases/latest/download/latest.json"
+        "https://github.com/april-ai/interactive_assistent/releases/latest/download/latest.json"
       ]
     }
   }

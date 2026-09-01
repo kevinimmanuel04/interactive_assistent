@@ -1,14 +1,14 @@
-//! Tauri command wrappers exposing `komorebi-desktop` to the frontend +
+//! Tauri command wrappers exposing `april-desktop` to the frontend +
 //! the LLM tool-use layer.
 
 use crate::settings;
-use komorebi_desktop::{capture, files, input, procs, vdesktop};
+use april_desktop::{capture, files, input, procs, vdesktop};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::{AppHandle, Wry};
 
 fn workspace_root(app: &AppHandle<Wry>) -> Result<PathBuf, String> {
-    // User-configurable (see settings); defaults to a Komorebi folder under
+    // User-configurable (see settings); defaults to a April folder under
     // the OS Documents dir so the assistant has an explicitly scoped sandbox.
     if let Some(custom) = settings::get_agent_workspace(app) {
         let p = PathBuf::from(custom);
@@ -18,7 +18,7 @@ fn workspace_root(app: &AppHandle<Wry>) -> Result<PathBuf, String> {
         return Ok(p);
     }
     let base = dirs_docs().ok_or_else(|| "no documents directory".to_string())?;
-    let dir = base.join("Komorebi");
+    let dir = base.join("April");
     if !dir.exists() {
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     }
@@ -161,10 +161,10 @@ pub fn desktop_context_snapshot() -> ContextSnapshot {
     let top = procs::top_processes(10).unwrap_or_default();
     let is_gaming = top
         .iter()
-        .any(|p| p.kind == komorebi_desktop::AppKind::Game && p.cpu > 1.0)
+        .any(|p| p.kind == april_desktop::AppKind::Game && p.cpu > 1.0)
         || active_window
             .as_ref()
-            .map(|w| w.kind == komorebi_desktop::AppKind::Game || w.is_fullscreen)
+            .map(|w| w.kind == april_desktop::AppKind::Game || w.is_fullscreen)
             .unwrap_or(false);
     ContextSnapshot {
         is_gaming,

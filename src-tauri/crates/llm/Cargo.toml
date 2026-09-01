@@ -1,5 +1,5 @@
 [package]
-name = "komorebi-llm"
+name = "april-llm"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -18,7 +18,7 @@ tracing.workspace = true
 async-trait.workspace = true
 async-stream = "0.3"
 futures.workspace = true
-komorebi-router = { path = "../router" }
+april-router = { path = "../router" }
 
 # Optional: pulled in only when `local-llm` is enabled.
 llama-cpp-2 = { version = "0.1", optional = true }

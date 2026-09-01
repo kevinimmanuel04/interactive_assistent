@@ -5,7 +5,7 @@
 
 ## Context
 
-Komorebi ships with several default model/router/prompt combinations.
+April ships with several default model/router/prompt combinations.
 Today we have no signal at all about which of them actually produce
 helpful answers. Server logs are out of the question — the whole point
 of the product is that conversations stay on the user's machine.

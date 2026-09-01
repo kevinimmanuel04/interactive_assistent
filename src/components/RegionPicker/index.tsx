@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import CloseButton from "../CloseButton";
 import { desktopListScreens, desktopScreenshot, ScreenInfo } from "../../api";
 import { t, useLocale } from "../../i18n";
 import { composeAnnotated } from "./compose";
@@ -551,24 +552,7 @@ export default function RegionPicker({
               {t("region.clear_all")}
             </button>
           )}
-          <button
-            onClick={onCancel}
-            aria-label={t("region.close.tip")}
-            title={`${t("region.close.tip")} (Esc)`}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 16,
-              border: "1px solid rgba(255,255,255,0.14)",
-              background: "rgba(255,255,255,0.08)",
-              color: "#fff",
-              fontSize: 18,
-              lineHeight: 1,
-              cursor: "pointer",
-            }}
-          >
-            ×
-          </button>
+          <CloseButton onClick={onCancel} title={`${t("region.close.tip")} (Esc)`} size={32} />
         </div>
       </div>
 

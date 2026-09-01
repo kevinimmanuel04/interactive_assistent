@@ -23,11 +23,11 @@
 //! [proposal 0002]: ../../docs/proposals/0002-game-coach-text-vision-split.md
 
 use crate::settings;
-use komorebi_cloud::OpenRouterClient;
-use komorebi_desktop::procs::ActiveWindow;
-use komorebi_desktop::{capture, procs, AppKind};
-use komorebi_llm::CompletionOptions;
-use komorebi_router::ChatMessage;
+use april_cloud::OpenRouterClient;
+use april_desktop::procs::ActiveWindow;
+use april_desktop::{capture, procs, AppKind};
+use april_llm::CompletionOptions;
+use april_router::ChatMessage;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Wry};
 
@@ -216,7 +216,7 @@ async fn run_text(
         Ok(Ok(raw)) if !raw.trim().is_empty() => {
             return Some((raw.trim().trim_matches('"').to_string(), "text-local"));
         }
-        Ok(Err(komorebi_llm::LlmError::NotAvailable)) => {
+        Ok(Err(april_llm::LlmError::NotAvailable)) => {
             tracing::debug!("coach: local engine unavailable, trying cloud text fallback");
         }
         Ok(Err(e)) => {

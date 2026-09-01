@@ -1,5 +1,5 @@
 [package]
-name = "komorebi-intent"
+name = "april-intent"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

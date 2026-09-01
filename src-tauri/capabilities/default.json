@@ -1,15 +1,24 @@
 {
   "$schema": "https://schema.tauri.app/config/2/capability",
   "identifier": "default",
-  "description": "Default permissions for main window",
-  "windows": ["main"],
+  "description": "Default permissions for main and chat windows",
+  "windows": ["main", "chat"],
   "permissions": [
     "core:default",
+    "core:window:default",
     "core:window:allow-start-dragging",
     "core:window:allow-set-position",
     "core:window:allow-set-size",
     "core:window:allow-show",
     "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-center",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-create",
+    "core:webview:allow-create-webview-window",
     "core:event:default",
     "store:default",
     "global-shortcut:allow-is-registered",
@@ -21,6 +30,28 @@
     "opener:allow-open-url",
     "dialog:default",
     "dialog:allow-save",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "shell:default",
+    "shell:allow-spawn",
+    "shell:allow-execute",
+    "shell:allow-open",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/backend",
+          "sidecar": true
+        }
+      ]
+    },
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/backend",
+          "sidecar": true
+        }
+      ]
+    }
   ]
 }

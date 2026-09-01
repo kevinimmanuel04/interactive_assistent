@@ -1,5 +1,5 @@
 //! Weather provider settings + helper to assemble a
-//! [`komorebi_weather::WeatherConfig`] for the weather skill.
+//! [`april_weather::WeatherConfig`] for the weather skill.
 
 use super::api_keys::get_weather_api_key;
 use super::defaults::{DEFAULT_WEATHER_PROVIDER, DEFAULT_WEATHER_UNITS};
@@ -48,15 +48,15 @@ pub fn set_weather_units<R: Runtime>(app: &AppHandle<R>, v: &str) -> Result<()> 
     write_optional_string(app, KEY_WEATHER_UNITS, normalized)
 }
 
-/// Build a [`komorebi_weather::WeatherConfig`] from the persisted settings.
-pub fn weather_config(app: &AppHandle<Wry>) -> komorebi_weather::WeatherConfig {
-    komorebi_weather::WeatherConfig {
-        provider: Some(komorebi_weather::Provider::parse(&get_weather_provider(
+/// Build a [`april_weather::WeatherConfig`] from the persisted settings.
+pub fn weather_config(app: &AppHandle<Wry>) -> april_weather::WeatherConfig {
+    april_weather::WeatherConfig {
+        provider: Some(april_weather::Provider::parse(&get_weather_provider(
             app,
         ))),
         api_key: get_weather_api_key(app),
         default_city: get_weather_default_city(app),
         use_ip: get_weather_use_ip(app),
-        units: Some(komorebi_weather::Units::parse(&get_weather_units(app))),
+        units: Some(april_weather::Units::parse(&get_weather_units(app))),
     }
 }

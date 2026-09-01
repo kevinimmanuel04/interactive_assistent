@@ -1,4 +1,4 @@
-//! Tauri-side glue around `komorebi-weather`.
+//! Tauri-side glue around `april-weather`.
 //!
 //! Exposes:
 //! * [`maybe_handle`] — pre-check used by the chat pipeline. If the user
@@ -10,7 +10,7 @@
 use tauri::{AppHandle, Emitter, Wry};
 
 use crate::settings;
-use komorebi_weather::{
+use april_weather::{
     extract_city_from_text, fetch as wfetch, format_report, is_weather_query, WeatherReport,
 };
 

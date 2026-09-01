@@ -8,8 +8,8 @@ use super::speak::maybe_speak;
 use super::tool_loop::run_with_tools;
 use super::ChatService;
 use crate::settings;
-use komorebi_cloud::CloudIntentClassifier;
-use komorebi_router::{classify, classify_async, ChatMessage, Route};
+use april_cloud::CloudIntentClassifier;
+use april_router::{classify, classify_async, ChatMessage, Route};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, Wry};
@@ -43,7 +43,7 @@ pub(super) async fn run_generation(
 
     // Weather pre-check. The LLM has no built-in weather tool, so we
     // ALWAYS intercept weather queries — independent of smart routing —
-    // and answer them via `komorebi-weather` (Open-Meteo by default,
+    // and answer them via `april-weather` (Open-Meteo by default,
     // keyless). We still avoid hijacking conversational mentions like
     // "обсудим погоду позже": require either an explicit city in the
     // prompt, an interrogative form, a leading weather noun, or a
@@ -78,11 +78,11 @@ pub(super) async fn run_generation(
     // this is a cheap `false` and we fall through to keyword logic.
     let intent_says_weather = matches!(
         crate::intent::detect_intent(&app, &prompt).await,
-        Some(m) if m.intent == komorebi_intent::Intent::Weather
+        Some(m) if m.intent == april_intent::Intent::Weather
     );
 
-    if (komorebi_weather::is_weather_query(&prompt)
-        && (komorebi_weather::extract_city_from_text(&prompt).is_some()
+    if (april_weather::is_weather_query(&prompt)
+        && (april_weather::extract_city_from_text(&prompt).is_some()
             || starts_with_weather_word
             || has_question_form
             || has_weather_fallback))
@@ -93,6 +93,7 @@ pub(super) async fn run_generation(
             ChatEventOut::Started {
                 id: id.clone(),
                 route: "skill".into(),
+                model_label: None,
             },
         );
         if let Some(reply) = crate::weather::maybe_handle(&app, &prompt).await {
@@ -131,7 +132,12 @@ pub(super) async fn run_generation(
         smart_routing = smart,
         "chat: run_generation start"
     );
-    let route = if smart {
+    let is_file_attachment = prompt.contains("[Attached File:")
+        || prompt.contains("[Attached Document:")
+        || prompt.contains("👁️")
+        || prompt.starts_with("![");
+
+    let route = if smart && !is_file_attachment {
         // Smart-skill pre-pass: ask the best classifier we have access to
         // whether this prompt is a skill invocation. Cloud (when keyed) is
         // strictly more accurate; local LLM is the offline fallback;
@@ -148,11 +154,12 @@ pub(super) async fn run_generation(
                 ChatEventOut::Started {
                     id: id.clone(),
                     route: "skill".into(),
+                    model_label: None,
                 },
             );
             let reply = match service.skills.dispatch_named(&intent.skill, &cmd).await {
                 Ok(r) => r.text,
-                Err(komorebi_skills::SkillError::NotApplicable) => {
+                Err(april_skills::SkillError::NotApplicable) => {
                     // The named skill couldn't parse the rephrased command;
                     // fall back to the registry's own keyword dispatch.
                     match service.skills.dispatch(&prompt).await {
@@ -160,7 +167,7 @@ pub(super) async fn run_generation(
                         Err(_) => "Skill couldn't run that. Try rephrasing.".into(),
                     }
                 }
-                Err(komorebi_skills::SkillError::Exec(m)) => {
+                Err(april_skills::SkillError::Exec(m)) => {
                     format!("Skill failed: {m}")
                 }
             };
@@ -211,6 +218,7 @@ pub(super) async fn run_generation(
                 Route::Cloud => "cloud".into(),
                 Route::Skill => "skill".into(),
             },
+            model_label: None,
         },
     );
 
@@ -223,7 +231,8 @@ pub(super) async fn run_generation(
         let hist = service.history.lock().await;
         let mut m = Vec::with_capacity(hist.len() + 4);
         let lang = crate::settings::resolve_language(&app);
-        m.push(system_prompt(lang));
+        let model_url = crate::settings::read_live2d_model_url(&app).unwrap_or_else(|| "/april.vrm".to_string());
+        m.push(system_prompt(lang, &model_url));
         // Relationship persona/context — drives tone, pet-names, and how
         // closely the assistant treats the user. Always present.
         m.push(ChatMessage::system(
@@ -271,10 +280,10 @@ pub(super) async fn run_generation(
                 );
                 reply
             }
-            Err(komorebi_skills::SkillError::NotApplicable) => {
+            Err(april_skills::SkillError::NotApplicable) => {
                 tracing::info!("skill not applicable, falling back to LLM");
                 effective_route = match settings::get_mode(&app) {
-                    komorebi_router::Mode::Local => Route::Local,
+                    april_router::Mode::Local => Route::Local,
                     _ => Route::Cloud,
                 };
                 emit(
@@ -285,11 +294,12 @@ pub(super) async fn run_generation(
                             Route::Local => "local".into(),
                             _ => "cloud".into(),
                         },
+                        model_label: None,
                     },
                 );
                 run_with_tools(&app, &service, &id, effective_route, messages).await?
             }
-            Err(komorebi_skills::SkillError::Exec(msg)) => {
+            Err(april_skills::SkillError::Exec(msg)) => {
                 let reply = format!("Skill failed: {msg}");
                 emit(
                     &app,

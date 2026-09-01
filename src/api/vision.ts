@@ -72,3 +72,7 @@ export async function setGameCoachModel(model: string): Promise<void> {
 export async function setGameCoachUseVision(enabled: boolean): Promise<void> {
   await invoke("set_game_coach_use_vision", { enabled });
 }
+
+export async function setAutoScreenWatchEnabled(enabled: boolean): Promise<void> {
+  await invoke("set_auto_screen_watch_enabled", { enabled });
+}

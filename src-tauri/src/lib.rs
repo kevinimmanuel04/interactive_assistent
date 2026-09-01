@@ -1,4 +1,4 @@
-//! Komorebi desktop entrypoint.
+//! April desktop entrypoint.
 
 mod chat;
 mod coach;
@@ -28,7 +28,7 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,komorebi=debug".into()),
+                .unwrap_or_else(|_| "info,april=debug".into()),
         )
         .init();
 
@@ -37,7 +37,7 @@ pub fn run() {
     tauri::Builder::default()
         .on_window_event(|window, event| {
             // Intercept window close → hide to tray instead of quitting.
-            // Users still have the tray menu "Quit Komorebi" for a real exit.
+            // Users still have the tray menu "Quit April" for a real exit.
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 api.prevent_close();
                 let _ = window.hide();
@@ -55,6 +55,28 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_localhost::Builder::new(9527).build())
+        .setup(|app| {
+            use tauri_plugin_shell::ShellExt;
+            match app.shell().sidecar("backend") {
+                Ok(sidecar_cmd) => {
+                    match sidecar_cmd.spawn() {
+                        Ok((_rx, child)) => {
+                            tracing::info!("[sidecar] Spawned Python backend sidecar successfully");
+                            std::mem::forget(child);
+                        }
+                        Err(e) => {
+                            tracing::warn!("[sidecar] Could not spawn backend sidecar process: {}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("[sidecar] Backend sidecar binary not found (dev mode or uncompiled): {}", e);
+                }
+            }
+            Ok(())
+        })
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
@@ -66,9 +88,9 @@ pub fn run() {
                 .build(),
         )
         .manage(Arc::new(chat::ChatService::new()))
-        .manage(komorebi_voice::tts::PiperTts::new())
-        .manage(komorebi_voice::sovits::SoVitsTts::new())
-        .manage(komorebi_voice::stt::Recorder::new())
+        .manage(april_voice::tts::PiperTts::new())
+        .manage(april_voice::sovits::SoVitsTts::new())
+        .manage(april_voice::stt::Recorder::new())
         .manage::<commands::RegionPickerState>(std::sync::Mutex::new(None))
         .manage::<Arc<imagegen::ImageGenState>>(Arc::new(imagegen::ImageGenState::default()))
         .manage::<Arc<intent::IntentState>>(Arc::new(intent::IntentState::default()))
@@ -77,9 +99,17 @@ pub fn run() {
             commands::chat::send_message,
             commands::chat::cancel_generation,
             commands::chat::reset_chat,
+            commands::chat::save_chat_sessions,
+            commands::chat::load_chat_sessions,
             // system
             commands::system::get_settings,
             commands::system::system_info,
+            commands::system::minimize_window,
+            commands::system::maximize_window,
+            commands::system::open_app_cmd,
+            commands::system::open_url_cmd,
+            commands::system::open_folder_or_file_cmd,
+            commands::system::type_text_cmd,
             // routing / OpenRouter
             commands::routing::set_openrouter_key,
             commands::routing::set_mode,
@@ -108,6 +138,10 @@ pub fn run() {
             commands::tts::set_openrouter_tts_enabled,
             commands::tts::set_openrouter_tts_model,
             commands::tts::set_openrouter_tts_voice,
+            commands::tts::get_elevenlabs_key,
+            commands::tts::set_elevenlabs_key,
+            commands::tts::get_elevenlabs_voice_id,
+            commands::tts::set_elevenlabs_voice_id,
             commands::tts::speak_text,
             commands::tts::speak_reaction,
             commands::tts::react_event,

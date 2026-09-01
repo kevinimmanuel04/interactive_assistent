@@ -60,7 +60,7 @@ pub use agent::{
     set_auto_screen_watch_enabled, set_desktop_automation_enabled, set_proactive_enabled,
 };
 pub use avatar::{set_avatar_offset, set_avatar_zoom, set_live2d_model};
-pub use chat::{cancel_generation, reset_chat, send_message};
+pub use chat::{cancel_generation, load_chat_sessions, reset_chat, save_chat_sessions, send_message};
 pub use feedback::{
     feedback_purge, feedback_record, feedback_stats, set_telemetry_enabled, set_telemetry_endpoint,
     FeedbackStatsDto,

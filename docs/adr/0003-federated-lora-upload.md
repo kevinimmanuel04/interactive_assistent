@@ -14,7 +14,7 @@ informative than a sha256 hash.
 
 We need a contribution protocol that:
 
-1. accepts updates only from real Komorebi installs (Sybil resistance)
+1. accepts updates only from real April installs (Sybil resistance)
    without tying the upload to a long-lived account;
 2. bounds the influence any single contribution can have on the next
    round's aggregate;
