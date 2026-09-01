@@ -22,7 +22,7 @@
 ## 📥 How to Download & Install
 
 ### Step 1: Download the Installer
-Go to the **[Releases Page](https://github.com/april-ai/interactive_assistent/releases/latest)** and download the latest Windows setup installer:
+Go to the **[Releases Page](https://github.com/kevinimmanuel04/interactive_assistent/releases/latest)** and download the latest Windows setup installer:
 - 📦 **`April_2.0.10_x64-setup.exe`** (Recommended)
 - 📦 **`April_2.0.10_x64_en-US.msi`** (Alternative MSI package)
 
@@ -49,7 +49,7 @@ April includes built-in update detection so you always stay up to date:
    - Click **"Check for Updates"**.
 
 3. **Manual Re-installation**:
-   You can also visit the [Releases Page](https://github.com/april-ai/interactive_assistent/releases/latest) anytime to download the newest `.exe` installer. Running the new installer will automatically upgrade your existing installation without deleting your preferences!
+   You can also visit the [Releases Page](https://github.com/kevinimmanuel04/interactive_assistent/releases/latest) anytime to download the newest `.exe` installer. Running the new installer will automatically upgrade your existing installation without deleting your preferences!
 
 ---
 
